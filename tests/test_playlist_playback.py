@@ -379,19 +379,25 @@ def test_external_stop_or_pause_cancels_pending_start(setup, monkeypatch, contro
 
 
 def _prev_app(play_mode, current, history):
-    """Minimal app for exercising on_prev_track's back-stack logic."""
+    """Minimal app for exercising on_prev_track's back-stack logic.
+
+    Fork #9: the stack holds queue entries, not indices. `history` lists queue positions;
+    999 stands for an entry that is no longer queued.
+    """
     played = []
+    seeks = []
+    queue = [SimpleNamespace(n=i) for i in range(100)]
     app = SimpleNamespace(
-        current_track_list=list(range(100)),
+        current_track_list=queue,
         current_track_index=current,
         play_mode=play_mode,
         MODE_NORMAL=4, MODE_LOOP=0, MODE_ONE=1, MODE_SHUFFLE=2, MODE_SMART=3,
-        _play_history=list(history),
-        # A position past the restart threshold so Previous steps tracks
-        # instead of rewinding the current one to 0.
-        player=SimpleNamespace(get_position=lambda: (30.0, 240.0), seek=lambda *_a: None),
+        _play_history=[queue[i] if i < len(queue) else SimpleNamespace(n=i) for i in history],
+        # Near the start of the track, so Previous steps tracks instead of restarting this one.
+        player=SimpleNamespace(get_position=lambda: (1.0, 240.0), seek=lambda pos: seeks.append(pos)),
     )
     app.play_track = lambda index, from_history=False: played.append((index, from_history))
+    app.queue, app.seeks = queue, seeks
     return app, played
 
 
@@ -401,13 +407,15 @@ def test_previous_in_shuffle_returns_actually_played_track():
     app, played = _prev_app(play_mode=2, current=7, history=[3, 42])
     playback_actions.on_prev_track(app)
     assert played == [(42, True)]
-    assert app._play_history == [3]
+    assert app._play_history == [app.queue[3]]
 
 
-def test_previous_in_shuffle_falls_back_to_positional_when_history_empty():
+def test_previous_in_shuffle_with_no_history_restarts_the_track():
+    # Fork: upstream fell back to positional current-1, an arbitrary track under shuffle.
     app, played = _prev_app(play_mode=2, current=7, history=[])
     playback_actions.on_prev_track(app)
-    assert played == [(6, False)]
+    assert played == []
+    assert app.seeks == [0.0]
 
 
 def test_previous_in_normal_mode_stays_positional():
@@ -415,11 +423,11 @@ def test_previous_in_normal_mode_stays_positional():
     app, played = _prev_app(play_mode=4, current=7, history=[3, 42])
     playback_actions.on_prev_track(app)
     assert played == [(6, False)]
-    assert app._play_history == [3, 42]
+    assert app._play_history == [app.queue[3], app.queue[42]]
 
 
 def test_previous_skips_stale_history_entries():
-    # Entries equal to the current index (or out of range) are discarded
+    # Entries that are the current track or no longer queued are discarded
     # rather than replaying the current track or crashing.
     app, played = _prev_app(play_mode=2, current=7, history=[5, 7, 999])
     playback_actions.on_prev_track(app)

@@ -5,7 +5,7 @@ import time
 
 from actions import audio_settings_actions
 
-_PREV_RESTART_THRESHOLD_S = 5.0
+_PREV_RESTART_THRESHOLD_S = 3.0
 _PREV_DOUBLE_TAP_WINDOW_S = 2.0
 
 
@@ -35,22 +35,112 @@ def _stop_after_queue_end(app):
         app._remote_publish_playback_event("stopped")
 
 
+_MAX_PLAY_HISTORY = 500
+
+
+def _active_queue(app):
+    if hasattr(app, "_get_active_queue"):
+        return app._get_active_queue()
+    return list(getattr(app, "current_track_list", []) or [])
+
+
+def _index_of(queue, entry):
+    """Position of `entry` in `queue` by identity: queue entries are the objects themselves."""
+    for i, item in enumerate(queue):
+        if item is entry:
+            return i
+    return -1
+
+
+def _shuffle_like(app):
+    mode = getattr(app, "play_mode", None)
+    return mode is not None and mode in (getattr(app, "MODE_SHUFFLE", 2), getattr(app, "MODE_SMART", 3))
+
+
+def _shuffle_order(app, queue, current):
+    """Remaining shuffle play order as queue entries, next first; built on demand.
+
+    Fork #9: upstream drew random.choice() over every other index on each call, i.e. with
+    replacement. Tracks repeated, Play Next was ignored under shuffle, and the gapless prefetch
+    drew a different track than Next then played.
+    """
+    order = getattr(app, "_shuffle_order", None)
+    if order is None:
+        gen = getattr(app, "_generate_shuffle_list", None)
+        if callable(gen):
+            gen()
+            src = list(getattr(app, "shuffle_indices", None) or [])
+        else:
+            src = list(range(len(queue)))
+            random.shuffle(src)
+        order = [queue[i] for i in src if isinstance(i, int) and 0 <= i < len(queue) and i != current]
+        app._shuffle_order = order
+    return order
+
+
 def _choose_shuffle_index(app, current, total):
+    """Next index under shuffle. Stable until that track starts, so prefetch and Next agree."""
     from actions.playlist_playback import uses_shuffled_playlist_order
     if uses_shuffled_playlist_order(app):
         return (current + 1) % total
-    if not hasattr(app, "shuffle_indices") or not app.shuffle_indices:
-        app._generate_shuffle_list()
-
-    raw_candidates = list(getattr(app, "shuffle_indices", []) or [])
-    candidates = [idx for idx in raw_candidates if isinstance(idx, int) and 0 <= idx < total and idx != current]
-    if candidates:
-        return random.choice(candidates)
-
+    queue = _active_queue(app)
+    current_entry = queue[current] if 0 <= current < len(queue) else None
+    for _cycle in range(2):
+        order = _shuffle_order(app, queue, current)
+        while order:
+            idx = _index_of(queue, order[0])
+            if idx >= 0 and order[0] is not current_entry:
+                return idx
+            del order[0]  # removed from the queue meanwhile, or it's the current track
+        app._shuffle_order = None  # every track had its turn: start a new cycle
     fallback = [idx for idx in range(total) if idx != current]
-    if fallback:
-        return random.choice(fallback)
-    return current
+    return random.choice(fallback) if fallback else current
+
+
+def record_track_change(app, queue, entry, from_history=False):
+    """Bookkeeping when `entry` (a queue item) starts playing.
+
+    Pushes the entry being left onto the Previous back-stack, unless this is a Previous step or
+    that entry is no longer queued, and drops the new entry from the remaining shuffle order.
+    The stack holds entries rather than indices, so Play Next, Add to Queue, moves and
+    removals don't make Previous land on a neighbour (fork #9).
+    """
+    prev_entry = getattr(app, "_current_queue_entry", None)
+    if (not from_history and prev_entry is not None and prev_entry is not entry
+            and _index_of(queue, prev_entry) >= 0):
+        history = getattr(app, "_play_history", None)
+        if history is None:
+            history = app._play_history = []
+        history.append(prev_entry)
+        if len(history) > _MAX_PLAY_HISTORY:
+            del history[:-_MAX_PLAY_HISTORY]
+    app._current_queue_entry = entry
+    order = getattr(app, "_shuffle_order", None)
+    if order:
+        order[:] = [e for e in order if e is not entry]
+
+
+def shuffle_order_add(app, entries, play_next):
+    """Fold newly queued entries into the shuffle order.
+
+    Play Next puts them first in line; anything else goes to random positions.
+    """
+    entries = [e for e in (entries or []) if e is not None]
+    if not entries or not _shuffle_like(app):
+        return
+    from actions.playlist_playback import uses_shuffled_playlist_order
+    if uses_shuffled_playlist_order(app):
+        return  # that queue already plays in queue order
+    queue = _active_queue(app)
+    current = getattr(app, "current_track_index", -1)
+    order = _shuffle_order(app, queue, current if isinstance(current, int) else -1)
+    added = {id(e) for e in entries}
+    order[:] = [e for e in order if id(e) not in added]
+    if play_next:
+        order[0:0] = entries
+    else:
+        for e in entries:
+            order.insert(random.randint(0, len(order)), e)
 
 
 def on_play_pause(app, btn):
@@ -144,15 +234,25 @@ def on_next_track(app, btn=None):
         _stop_after_queue_end(app)
 
 
+def _restart_current(app, player, now, current, arm=True):
+    player.seek(0.0)
+    if arm:
+        app._prev_track_rewind_armed_until = now + _PREV_DOUBLE_TAP_WINDOW_S
+        app._prev_track_rewind_armed_index = current
+    if hasattr(app, "_mpris_emit_seeked"):
+        app._mpris_emit_seeked(0.0)
+    if hasattr(app, "_mpris_sync_position"):
+        app._mpris_sync_position(force=True)
+    if hasattr(app, "_remote_publish_playback_event"):
+        app._remote_publish_playback_event("seek")
+
+
 def on_prev_track(app, btn=None):
-    queue = app._get_active_queue() if hasattr(app, "_get_active_queue") else list(getattr(app, "current_track_list", []) or [])
+    queue = _active_queue(app)
     if not queue:
         return
 
     total = len(queue)
-    if total == 0:
-        return
-
     current = getattr(app, "current_track_index", 0)
     if current is None:
         current = 0
@@ -163,38 +263,44 @@ def on_prev_track(app, btn=None):
     rewind_to_start_armed = rewind_armed_index == current and now <= rewind_armed_until
 
     player = getattr(app, "player", None)
-    if player is not None and hasattr(player, "get_position") and hasattr(player, "seek"):
+    can_seek = player is not None and hasattr(player, "get_position") and hasattr(player, "seek")
+    if can_seek:
         try:
             pos_s, _dur_s = player.get_position()
             pos_s = float(pos_s or 0.0)
         except Exception:
             pos_s = None
-        if pos_s is not None and math.isfinite(pos_s) and pos_s <= _PREV_RESTART_THRESHOLD_S:
-            if not rewind_to_start_armed:
-                player.seek(0.0)
-                app._prev_track_rewind_armed_until = now + _PREV_DOUBLE_TAP_WINDOW_S
-                app._prev_track_rewind_armed_index = current
-                if hasattr(app, "_mpris_emit_seeked"):
-                    app._mpris_emit_seeked(0.0)
-                if hasattr(app, "_mpris_sync_position"):
-                    app._mpris_sync_position(force=True)
-                if hasattr(app, "_remote_publish_playback_event"):
-                    app._remote_publish_playback_event("seek")
-                return
+        # Standard player behaviour, as upstream #50 asked: a few seconds in, Previous restarts
+        # the track, and near its start it steps back. Upstream implemented it inverted. The arm
+        # lets a quick second press step back even while the reported position still lags the seek.
+        if (pos_s is not None and math.isfinite(pos_s) and pos_s > _PREV_RESTART_THRESHOLD_S
+                and not rewind_to_start_armed):
+            _restart_current(app, player, now, current)
+            return
 
     app._prev_track_rewind_armed_until = 0.0
     app._prev_track_rewind_armed_index = None
 
-    # In shuffle/smart the queue order isn't the play order, so a positional
-    # `current - 1` returns an arbitrary track. Walk the actually-played
-    # back-stack instead so Previous returns the track just heard.
-    if app.play_mode in [app.MODE_SHUFFLE, app.MODE_SMART]:
+    shuffle_like = _shuffle_like(app)
+    if shuffle_like:
+        # Shuffle play order isn't queue order: walk the back-stack of entries actually heard.
         history = getattr(app, "_play_history", None)
+        current_entry = queue[current] if 0 <= current < total else None
         while history:
             target = history.pop()
-            if isinstance(target, int) and 0 <= target < total and target != current:
-                app.play_track(target, from_history=True)
+            idx = _index_of(queue, target)
+            if idx >= 0 and target is not current_entry:
+                order = getattr(app, "_shuffle_order", None)
+                if order is not None and current_entry is not None:
+                    order.insert(0, current_entry)  # so Next comes back to the track we left
+                app.play_track(idx, from_history=True)
                 return
+
+    at_start = shuffle_like or (app.play_mode == getattr(app, "MODE_NORMAL", 4) and current == 0)
+    if at_start and can_seek:
+        # Nothing to step back to: restart rather than jump to an arbitrary or wrapped track.
+        _restart_current(app, player, now, current, arm=False)
+        return
 
     prev_idx = (current - 1) % total
     if 0 <= prev_idx < total:

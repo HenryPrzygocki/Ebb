@@ -124,19 +124,30 @@ def hydrate_queue_metadata(app, entries, start_position=0):
     def task():
         last_refresh = 0.0
         pending = False
+        failed = []
         for offset in source.pages_for(order):
             if not still_queued():
                 return
             try:
                 added = source.hydrate_page(offset)
             except Exception as exc:
+                # Upstream stopped at the first failed page, which left the rest of the queue
+                # "details pending" (fork #8). Skip it and retry once at the end.
                 logger.info("Queue metadata page at %d not loaded: %s", offset, exc)
-                break
+                failed.append(offset)
+                continue
             pending = pending or added > 0
             now = time.monotonic()
             if pending and now - last_refresh >= 1.5:
                 GLib.idle_add(refresh)
                 last_refresh, pending = now, False
+        for offset in failed:
+            if not still_queued():
+                return
+            try:
+                pending = source.hydrate_page(offset) > 0 or pending
+            except Exception as exc:
+                logger.info("Queue metadata page at %d not loaded on retry: %s", offset, exc)
         if pending:
             GLib.idle_add(refresh)
 

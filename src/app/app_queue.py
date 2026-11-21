@@ -32,10 +32,17 @@ def _get_current_track_view_tracks(self):
 
 def _set_play_queue(self, tracks):
     self._playlist_play_request = getattr(self, "_playlist_play_request", 0) + 1
-    self.play_queue = list(tracks or [])
+    new_queue = list(tracks or [])
+    current_entry = getattr(self, "_current_queue_entry", None)
+    self.play_queue = new_queue
     self.shuffle_indices = []
-    # A new queue invalidates the actually-played back-stack.
-    self._play_history = []
+    # A new queue invalidates the actually-played back-stack and the shuffle order. An edit of
+    # the playing queue (insert, move, Play Next: the playing entry is still in it) keeps both.
+    # They hold entries, not indices, so the position shift doesn't invalidate them (fork #9;
+    # upstream wiped the stack on every edit).
+    if current_entry is None or not any(t is current_entry for t in new_queue):
+        self._play_history = []
+        self._shuffle_order = None
     if hasattr(self, "_render_now_playing_queue"):
         GLib.idle_add(lambda: (self._render_now_playing_queue(self._get_active_queue()), False)[1])
     if hasattr(self, "_mpris_sync_metadata"):
@@ -309,6 +316,7 @@ def _insert_queue_at(self, tracks, index, event_reason="queue_inserted"):
         current_index = int(getattr(self, "current_track_index", -1))
     except Exception:
         current_index = -1
+    original_current = current_index
 
     if not additions:
         return {
@@ -338,6 +346,9 @@ def _insert_queue_at(self, tracks, index, event_reason="queue_inserted"):
     if 0 <= self.current_track_index < len(new_queue):
         self.playing_track = new_queue[self.current_track_index]
         self.playing_track_id = getattr(self.playing_track, "id", None)
+
+    from actions.playback_actions import shuffle_order_add
+    shuffle_order_add(self, additions, play_next=insert_index == original_current + 1)
 
     if hasattr(self, "_refresh_queue_views"):
         GLib.idle_add(self._refresh_queue_views)

@@ -112,9 +112,10 @@ def test_on_next_track_normal_does_not_wrap_at_end():
     assert app._sync_playback_status_icon_calls == [True]
 
 
-def test_on_prev_track_within_5_seconds_restarts_current_track():
+def test_on_prev_track_after_3_seconds_restarts_current_track():
+    # Fork: standard behaviour (upstream #50). Upstream restarted in the first 5 s instead.
     app = _make_app()
-    app.player.position = 4.9
+    app.player.position = 30.0
     seeked = []
     synced = []
     remote = []
@@ -131,19 +132,9 @@ def test_on_prev_track_within_5_seconds_restarts_current_track():
     assert remote == ["seek"]
 
 
-def test_on_prev_track_at_5_seconds_still_restarts_current_track():
+def test_on_prev_track_at_3_seconds_goes_to_previous_track():
     app = _make_app()
-    app.player.position = 5.0
-
-    playback_actions.on_prev_track(app)
-
-    assert app.player.seek_calls == [0.0]
-    assert app.play_track_calls == []
-
-
-def test_on_prev_track_after_5_seconds_goes_to_previous_track():
-    app = _make_app()
-    app.player.position = 5.1
+    app.player.position = 3.0
 
     playback_actions.on_prev_track(app)
 
@@ -151,30 +142,51 @@ def test_on_prev_track_after_5_seconds_goes_to_previous_track():
     assert app.play_track_calls == [0]
 
 
-def test_on_prev_track_second_click_within_2_seconds_goes_to_previous_track(monkeypatch):
+def test_on_prev_track_in_first_seconds_goes_to_previous_track():
     app = _make_app()
-    app.player.position = 4.9
-    now = {"value": 100.0}
-    monkeypatch.setattr(playback_actions.time, "monotonic", lambda: now["value"])
+    app.player.position = 1.2
 
     playback_actions.on_prev_track(app)
-    now["value"] = 101.5
 
+    assert app.player.seek_calls == []
+    assert app.play_track_calls == [0]
+
+
+def test_on_prev_track_second_click_after_restart_goes_to_previous_track():
+    app = _make_app()
+    app.player.position = 30.0
+
+    playback_actions.on_prev_track(app)
     playback_actions.on_prev_track(app)
 
     assert app.player.seek_calls == [0.0]
     assert app.play_track_calls == [0]
 
 
-def test_on_prev_track_second_click_after_2_seconds_restarts_current_track_again(monkeypatch):
+def test_on_prev_track_double_tap_steps_back_while_position_lags(monkeypatch):
     app = _make_app()
-    app.player.position = 4.9
+    app.player.position = 30.0
+    app.player.seek = lambda value: app.player.seek_calls.append(float(value))  # position lags
+    now = {"value": 100.0}
+    monkeypatch.setattr(playback_actions.time, "monotonic", lambda: now["value"])
+
+    playback_actions.on_prev_track(app)
+    now["value"] = 101.5
+    playback_actions.on_prev_track(app)
+
+    assert app.player.seek_calls == [0.0]
+    assert app.play_track_calls == [0]
+
+
+def test_on_prev_track_lagging_position_after_window_restarts_again(monkeypatch):
+    app = _make_app()
+    app.player.position = 30.0
+    app.player.seek = lambda value: app.player.seek_calls.append(float(value))
     now = {"value": 100.0}
     monkeypatch.setattr(playback_actions.time, "monotonic", lambda: now["value"])
 
     playback_actions.on_prev_track(app)
     now["value"] = 102.1
-
     playback_actions.on_prev_track(app)
 
     assert app.player.seek_calls == [0.0, 0.0]

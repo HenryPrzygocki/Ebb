@@ -13,7 +13,6 @@ logger = logging.getLogger(__name__)
 MAX_PREFETCH_CACHE = 6
 # Cap the Previous back-stack so a long shuffle session can't grow it without
 # bound; older entries fall off the front.
-_MAX_PLAY_HISTORY = 500
 # Tidal CDN stream URLs are pre-signed and expire; 20 min is a safe margin.
 PREFETCH_URL_TTL_SECONDS = 20 * 60
 NO_LYRICS_BOTTOM_HINT = "No usable lyrics for this track."
@@ -321,24 +320,16 @@ def play_track(app, index, from_history=False):
     app._play_request_id = getattr(app, "_play_request_id", 0) + 1
     request_id = app._play_request_id
     track = queue[index]
+    entry = track  # the queue item itself; `track` may become its resolved track
     if isinstance(track, PlaylistQueueTrack):
         if track.resolved_track is None:
             from actions.playlist_playback import resolve_for_playback
             resolve_for_playback(app, track, index, request_id, from_history=from_history)
             return
         track = track.resolved_track
-    # Record the track we're leaving so Previous can return to the track
-    # actually heard, not a positional neighbour — this is what makes
-    # "back" correct under shuffle, where play order != queue order. A
-    # Previous navigation (from_history) must not re-push its own step.
-    prev_index = getattr(app, "current_track_index", None)
-    if not from_history and isinstance(prev_index, int) and 0 <= prev_index != index:
-        history = getattr(app, "_play_history", None)
-        if history is None:
-            history = app._play_history = []
-        history.append(prev_index)
-        if len(history) > _MAX_PLAY_HISTORY:
-            del history[:-_MAX_PLAY_HISTORY]
+    # Back-stack + shuffle-order bookkeeping, by queue entry (fork #9).
+    from actions.playback_actions import record_track_change
+    record_track_change(app, queue, entry, from_history=from_history)
     app.current_track_index = index
     app.playing_track = track
     app.playing_track_id = track.id

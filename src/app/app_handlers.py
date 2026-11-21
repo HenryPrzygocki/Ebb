@@ -225,6 +225,7 @@ def on_artist_fav_clicked(self, btn):
 
 
 def _generate_shuffle_list(self):
+    self._shuffle_order = None  # rebuilt from the new permutation on the next pick
     queue = self._get_active_queue()
     if not queue:
         self.shuffle_indices = []
