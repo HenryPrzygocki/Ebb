@@ -914,3 +914,24 @@ def test_monitor_selected_device_presence_accepts_requested_device_id(monkeypatc
     assert notices == []
     assert refreshes == []
     assert hotplug == []
+
+
+def test_match_saved_device_prefers_stable_id_over_display_name():
+    devices = [
+        {"name": "Default PipeWire Sink", "device_id": "pipewire"},
+        {"name": "Bose QC Ultra 2 (USB)", "device_id": "alsa_output.usb-Bose-00.analog-stereo"},
+    ]
+    # WirePlumber renamed the sink: the saved display name is gone, the node name is not.
+    assert audio_settings_actions._match_saved_device(
+        devices, "alsa_output.usb-Bose-00.analog-stereo", "Bose QC Ultra 2 HP (USB) Analog Stereo"
+    ) == (1, "id")
+
+
+def test_match_saved_device_falls_back_to_name_then_first_entry():
+    devices = [
+        {"name": "Default PipeWire Sink", "device_id": "pipewire"},
+        {"name": "Speakers", "device_id": "alsa_output.pci-analog-stereo"},
+    ]
+    assert audio_settings_actions._match_saved_device(devices, "", "Speakers") == (1, "name")
+    assert audio_settings_actions._match_saved_device(devices, "gone-node", "Gone") == (0, None)
+    assert audio_settings_actions._match_saved_device([], "x", "y") == (0, None)

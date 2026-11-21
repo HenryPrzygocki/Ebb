@@ -504,6 +504,7 @@ def _refresh_devices_for_current_driver_ui_only(app, reason="hotplug-watch", pre
                             app.device_dd.set_selected(target_idx)
                             app.current_device_name = target_device.get("name") or app.current_device_name
                             app.settings["device"] = app.current_device_name
+                            app.settings["device_id"] = str(target_device.get("device_id") or "")
                             app.save_settings()
                             app.ignore_device_change = False
                             app.update_tech_label(app.player.stream_info)
@@ -639,8 +640,9 @@ def refresh_devices_keep_driver_select_first(app, reason="device-refresh"):
             app.device_dd.set_selected(sel_idx)
             target = devices[sel_idx]
             app.current_device_name = target["name"]
-            app.settings["device"] = target["name"]
-            app.save_settings()
+            # Fork: don't persist this pick. It is a transient fallback after a
+            # disconnect; saving it meant one USB hiccup permanently replaced the
+            # user's chosen device with whatever happened to sort first.
             _sync_output_bit_depth_dropdown(app, target)
             app.ignore_device_change = False
             app.update_tech_label(app.player.stream_info)
@@ -1371,13 +1373,14 @@ def on_driver_changed(app, dd, p):
             app.device_dd.set_model(Gtk.StringList.new([d["name"] for d in devices]))
 
             saved_dev = app.settings.get("device")
-            sel_idx = 0
-
-            if saved_dev:
-                for i, d in enumerate(devices):
-                    if d["name"] == saved_dev:
-                        sel_idx = i
-                        break
+            saved_id = str(app.settings.get("device_id") or "")
+            # Fork: match the stable device_id first; display names change under
+            # the user (WirePlumber renames, profile switches). Settings written
+            # before device_id existed match by name once and get the id backfilled.
+            sel_idx, matched_by = _match_saved_device(devices, saved_id, saved_dev)
+            if matched_by == "name" and not saved_id and devices[sel_idx].get("device_id"):
+                app.settings["device_id"] = str(devices[sel_idx]["device_id"])
+                app.save_settings()
 
             # USB Rawlink has no "Default" placeholder — enable with ≥1 device.
             min_count = 1 if _driver_is_usb_rawlink_family(driver_name) else 2
@@ -1464,6 +1467,23 @@ def _pipewire_device_needs_pro_audio(device_id):
     return True
 
 
+def _match_saved_device(devices, saved_id, saved_name):
+    """Fork: locate the saved output device, stable device_id first, display name second.
+
+    Returns ``(index, matched_by)`` with ``matched_by`` in {"id", "name", None};
+    index 0 (the first entry) when nothing matches.
+    """
+    if saved_id:
+        for i, d in enumerate(devices):
+            if str(d.get("device_id") or "") == saved_id:
+                return i, "id"
+    if saved_name:
+        for i, d in enumerate(devices):
+            if d.get("name") == saved_name:
+                return i, "name"
+    return 0, None
+
+
 def _normalize_pipewire_device_id(device_id):
     dev = str(device_id or "").strip()
     if not dev.startswith("pwcardprofile:"):
@@ -1523,6 +1543,7 @@ def on_device_changed(app, dd, p):
     device_info = app.current_device_list[idx]
     previous_name = str(getattr(app, "current_device_name", "") or "")
     previous_saved = str(app.settings.get("device", "") or "")
+    previous_saved_id = str(app.settings.get("device_id", "") or "")
     previous_idx = None
     for i, info in enumerate(list(getattr(app, "current_device_list", []) or [])):
         if str(info.get("name", "") or "") == previous_name:
@@ -1548,6 +1569,7 @@ def on_device_changed(app, dd, p):
                     app.ignore_device_change = False
             if previous_saved:
                 app.settings["device"] = previous_saved
+                app.settings["device_id"] = previous_saved_id
             app.current_device_name = previous_name or getattr(app, "current_device_name", "Default")
             app.update_tech_label(app.player.stream_info)
             if hasattr(app, "show_output_notice"):
@@ -1566,6 +1588,7 @@ def on_device_changed(app, dd, p):
         app.current_device_name = target_name
         app.update_tech_label(app.player.stream_info)
         app.settings["device"] = target_name
+        app.settings["device_id"] = str(original_device_id or "")
         app.save_settings()
         if hasattr(app, "_update_dsp_ui_state"):
             app._update_dsp_ui_state()

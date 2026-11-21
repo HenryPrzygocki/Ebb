@@ -26,6 +26,7 @@ class SettingsSchema:
     settings_version: int = CURRENT_SETTINGS_VERSION
     driver: str = "Auto (Default)"
     device: str = "Default Output"
+    device_id: str = ""
     bit_perfect: bool = False
     exclusive_lock: bool = False
     latency_profile: str = "Standard (100ms)"
@@ -97,6 +98,7 @@ DEFAULT_SETTINGS = {
     "settings_version": CURRENT_SETTINGS_VERSION,
     "driver": "Auto (Default)",
     "device": "Default Output",
+    "device_id": "",
     "bit_perfect": False,
     "exclusive_lock": False,
     "latency_profile": "Standard (100ms)",
@@ -170,6 +172,7 @@ _VALIDATION_RULES = {
     "settings_version": (int, 0, None, CURRENT_SETTINGS_VERSION),
     "driver": (str, None, None, "Auto (Default)"),
     "device": (str, None, None, "Default Output"),
+    "device_id": (str, None, None, ""),
     "bit_perfect": (bool, None, None, False),
     "exclusive_lock": (bool, None, None, False),
     "latency_profile": (str, None, None, "Standard (100ms)"),
@@ -334,6 +337,7 @@ def normalize_settings(raw: Optional[dict[str, Any]]) -> dict[str, Any]:
     normalized = dict(DEFAULT_SETTINGS)
     normalized["driver"] = _as_str(raw.get("driver"), DEFAULT_SETTINGS["driver"])
     normalized["device"] = _as_str(raw.get("device"), DEFAULT_SETTINGS["device"])
+    normalized["device_id"] = _as_str(raw.get("device_id"), DEFAULT_SETTINGS["device_id"])
     normalized["bit_perfect"] = _as_bool(raw.get("bit_perfect"), DEFAULT_SETTINGS["bit_perfect"])
     normalized["exclusive_lock"] = _as_bool(raw.get("exclusive_lock"), DEFAULT_SETTINGS["exclusive_lock"])
     normalized["latency_profile"] = _as_str(raw.get("latency_profile"), DEFAULT_SETTINGS["latency_profile"])
