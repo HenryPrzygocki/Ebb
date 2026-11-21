@@ -19,6 +19,7 @@ from actions.lyrics_playback_actions import (
 from core.executor import submit_daemon
 from utils.helpers import download_to_cache
 from ui import config as ui_config
+from ui import context_menu
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +93,7 @@ def _build_now_playing_track_row(track, idx):
     """Build a standard track list row for the now-playing queue/album panels."""
     row = Gtk.ListBoxRow(css_classes=["track-row", "now-playing-track-row"])
     row.track_id = getattr(track, "id", None)
+    context_menu.tag(row, track, "track")
 
     box = Gtk.Box(spacing=10, margin_top=8, margin_bottom=8, margin_start=10, margin_end=10)
 

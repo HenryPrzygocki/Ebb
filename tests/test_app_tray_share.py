@@ -35,20 +35,20 @@ class _Window:
         return self._display
 
 
-def test_share_from_tray_copies_repo_url(monkeypatch):
+def test_tray_copies_the_playing_tracks_tidal_link(monkeypatch):
     display = _Display()
-    app = SimpleNamespace(win=_Window(display))
+    app = SimpleNamespace(win=_Window(display), playing_track=SimpleNamespace(id=123))
 
     monkeypatch.setattr(app_tray.GLib, "idle_add", lambda func: func())
 
-    app_tray._share_from_tray(app)
+    app_tray._copy_track_link_from_tray(app)
 
-    assert display.clipboard.value == "https://github.com/yelanxin/hiresTI"
+    assert display.clipboard.value == "https://tidal.com/browse/track/123"
 
 
-def test_copy_share_url_to_clipboard_returns_true_when_copied():
+def test_tray_copy_does_nothing_when_nothing_is_playing():
     display = _Display()
-    app = SimpleNamespace(win=_Window(display))
+    app = SimpleNamespace(win=_Window(display), playing_track=None)
 
-    assert app_tray._copy_share_url_to_clipboard(app) is True
-    assert display.clipboard.value == "https://github.com/yelanxin/hiresTI"
+    assert app_tray._copy_current_track_link(app) is False
+    assert display.clipboard.value is None

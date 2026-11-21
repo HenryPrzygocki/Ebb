@@ -137,38 +137,55 @@ def _optimistically_add_liked_track(self, track):
         self.render_liked_songs_dashboard(updated)
 
 
-def on_track_row_fav_clicked(self, btn):
-    track_id = getattr(btn, "_track_fav_id", None)
-    track_obj = getattr(btn, "_track_fav_track", None)
-    if not track_id or not getattr(self.backend, "user", None):
-        return
+def set_track_favorite(self, track, is_add, on_done=None, track_id=None):
+    """Like or unlike `track` in a worker, then refresh every heart and the Liked Songs cache.
 
-    is_currently_active = "active" in btn.get_css_classes()
-    is_add = not is_currently_active
-    btn.set_sensitive(False)
+    `on_done(ok)` runs on the GTK thread afterwards. Returns False if nothing was sent.
+    """
+    track_id = str(track_id or getattr(track, "id", "") or "").strip()
+    if not track_id or not getattr(self.backend, "user", None):
+        return False
 
     def do():
         ok = self.backend.toggle_track_favorite(track_id, is_add)
 
         def apply():
-            if getattr(btn, "_track_fav_id", None) != track_id:
-                return False
             if ok:
-                self._update_fav_icon(btn, is_add)
                 if str(getattr(getattr(self, "playing_track", None), "id", "")) == track_id:
                     self.refresh_current_track_favorite_state()
                 self.refresh_visible_track_fav_buttons()
                 if is_add:
-                    _optimistically_add_liked_track(self, track_obj)
+                    _optimistically_add_liked_track(self, track)
                 else:
                     _optimistically_remove_liked_track(self, track_id)
                 self.refresh_liked_songs_dashboard(force=True)
-            btn.set_sensitive(True)
+            if on_done is not None:
+                on_done(ok)
             return False
 
         GLib.idle_add(apply)
 
     submit_daemon(do)
+    return True
+
+
+def on_track_row_fav_clicked(self, btn):
+    track_id = getattr(btn, "_track_fav_id", None)
+    track_obj = getattr(btn, "_track_fav_track", None)
+    if not track_id or not getattr(self.backend, "user", None):
+        return
+    is_add = "active" not in btn.get_css_classes()
+
+    def done(ok):
+        # The row may have been rebuilt for another track meanwhile.
+        if getattr(btn, "_track_fav_id", None) != track_id:
+            return
+        if ok:
+            self._update_fav_icon(btn, is_add)
+        btn.set_sensitive(True)
+
+    btn.set_sensitive(False)
+    set_track_favorite(self, track_obj, is_add, on_done=done, track_id=track_id)
 
 
 def refresh_visible_track_fav_buttons(self):

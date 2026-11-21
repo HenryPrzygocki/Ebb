@@ -16,6 +16,7 @@ from gi.repository import Gtk, GLib, Pango, Gdk, GObject, GdkPixbuf
 import utils.helpers as utils
 from _rust.viz import RustVizCore
 from ui import config as ui_config
+from ui import context_menu
 from ui.track_table import LAYOUT, build_tracks_header, append_header_action_spacers
 from core.errors import classify_exception, user_message
 
@@ -249,6 +250,7 @@ def _build_feed_item_button(app, item_data, on_click):
     btn.set_size_request(card_width, -1)
     btn.set_child(v)
     btn.connect("clicked", lambda _b, d=item_data: on_click(d))
+    context_menu.tag(btn, item_data.get("obj"), item_data.get("type"))
     return btn
 
 
@@ -330,6 +332,7 @@ def _build_my_albums_style_button(app, album, on_click):
     btn = Gtk.Button(css_classes=["flat", "history-card-btn", "home-feed-btn"])
     btn.set_child(card)
     btn.connect("clicked", lambda _btn, a=album: on_click(a))
+    context_menu.tag(btn, album, "album")
     return btn
 
 
@@ -748,6 +751,7 @@ def _build_queue_track_row(app, track, i, current_idx, compact):
     row = Gtk.ListBoxRow(css_classes=["track-row"])
     row.queue_track_index = i
     row.track_id = getattr(track, "id", None)
+    context_menu.tag(row, track, "track")
 
     row_margin_y = 1 if compact else LAYOUT["row_margin_y"]
     col_gap      = 5 if compact else LAYOUT["col_gap"]
@@ -1430,6 +1434,7 @@ def render_search_tracks_page(app):
         lb_row = Gtk.ListBoxRow()
         lb_row.add_css_class("track-row")
         lb_row.search_track_index = abs_idx
+        context_menu.tag(lb_row, t, "track")
         lb_row.set_child(row_box)
         app.res_trk_list.append(lb_row)
 
@@ -1870,6 +1875,7 @@ def populate_tracks(app, tracks):
     for i, t in enumerate(tracks):
         row = Gtk.ListBoxRow()
         row.track_id = t.id
+        context_menu.tag(row, t, "track")
         row.add_css_class("track-row")
         box = Gtk.Box(
             spacing=LAYOUT["col_gap"],
@@ -2153,6 +2159,7 @@ def _build_mix_tile(app, mix, on_click):
     btn = Gtk.Button(css_classes=["flat", "history-card-btn", "home-feed-btn"])
     btn.set_child(card)
     btn.connect("clicked", lambda _b, m=mix: on_click(m))
+    context_menu.tag(btn, mix, "mix")
     return btn
 
 
@@ -3327,6 +3334,7 @@ def render_artist_detail(app, artist, render_token=None):
             btn = Gtk.Button(css_classes=["flat", "history-card-btn", "home-feed-btn"])
             btn.set_child(v)
             btn.connect("clicked", lambda _b, a=sim_art: app.on_artist_clicked(a))
+            context_menu.tag(btn, sim_art, "artist")
             return btn
 
         def apply():
@@ -3852,6 +3860,7 @@ def render_history_dashboard(app):
             btn = Gtk.Button(css_classes=["flat", "history-card-btn", "home-feed-btn"])
             btn.set_child(card)
             btn.connect("clicked", lambda _b, a=alb: app.on_history_album_clicked(a))
+            context_menu.tag(btn, alb, "album")
             child = Gtk.FlowBoxChild()
             child.set_child(btn)
             flow_recent.append(child)
@@ -6504,6 +6513,7 @@ def render_liked_songs_dashboard(app, tracks=None):
             row = Gtk.ListBoxRow(css_classes=["track-row"])
             row.liked_track_index = abs_i
             row.track_id = getattr(t, "id", None)
+            context_menu.tag(row, t, "track")
             box = Gtk.Box(
                 spacing=LAYOUT["col_gap"],
                 margin_top=LAYOUT["row_margin_y"],
@@ -6905,6 +6915,7 @@ def render_playlists_home(app):
                 open_btn = Gtk.Button(css_classes=["flat", "history-card-btn", "home-feed-btn"])
                 open_btn.set_child(card)
                 open_btn.connect("clicked", lambda _b, pl=p: app.on_remote_playlist_card_clicked(pl))
+                context_menu.tag(open_btn, p, "playlist")
                 child = Gtk.FlowBoxChild()
                 child.set_child(open_btn)
                 flow.append(child)
@@ -7085,6 +7096,7 @@ def render_playlist_detail(app, playlist_id):
         row = Gtk.ListBoxRow(css_classes=["track-row"])
         row.playlist_track_index = i
         row.track_id = getattr(t, "id", None)
+        context_menu.tag(row, t, "track")
         box = Gtk.Box(
             spacing=LAYOUT["col_gap"],
             margin_top=LAYOUT["row_margin_y"],

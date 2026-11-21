@@ -1,9 +1,12 @@
 """Queue-related handlers extracted from app_handlers."""
 
 import logging
+import random
 from threading import Thread
 
 from gi.repository import GLib, Gtk
+
+from ui import context_menu
 
 logger = logging.getLogger(__name__)
 
@@ -138,6 +141,7 @@ def _build_mini_queue_row(app, track, i, current_idx):
     row = Gtk.ListBoxRow(css_classes=["track-row"])
     row.queue_track_index = i
     row.track_id = getattr(track, "id", None)
+    context_menu.tag(row, track, "track")
 
     box = Gtk.Box(spacing=6, margin_top=2, margin_bottom=2)
 
@@ -376,10 +380,11 @@ def _show_play_next_notice(self, tracks, played_now=False):
     notice(text, "ok", 2400)
 
 
-def on_play_next_track_clicked(self, track):
-    if track is None:
+def play_tracks_next(self, tracks):
+    """Insert `tracks` after the current track, or start them if nothing is playing."""
+    items = [track for track in list(tracks or []) if track is not None]
+    if not items:
         return
-    items = [track]
     if getattr(self, "playing_track", None) is None:
         _play_tracks_now(self, items)
         _show_play_next_notice(self, items, played_now=True)
@@ -388,10 +393,11 @@ def on_play_next_track_clicked(self, track):
     _show_play_next_notice(self, items, played_now=False)
 
 
-def on_add_track_to_queue_clicked(self, track):
-    if track is None:
+def add_tracks_to_queue(self, tracks):
+    """Append `tracks` to the queue, or start them if nothing is playing."""
+    items = [track for track in list(tracks or []) if track is not None]
+    if not items:
         return
-    items = [track]
     if getattr(self, "playing_track", None) is None:
         _play_tracks_now(self, items)
         _show_add_to_queue_notice(self, items, played_now=True)
@@ -399,6 +405,38 @@ def on_add_track_to_queue_clicked(self, track):
     base_queue = list(self._get_active_queue() if hasattr(self, "_get_active_queue") else [])
     _insert_queue_at(self, items, len(base_queue), event_reason="queue_appended")
     _show_add_to_queue_notice(self, items, played_now=False)
+
+
+def play_tracks_now(self, tracks, shuffle=False, source=None):
+    """Replace the queue with `tracks` and play them (context-menu Play/Shuffle).
+
+    Unlike _play_tracks_now, this leaves current_track_list (the list on screen) alone.
+    """
+    items = [track for track in list(tracks or []) if track is not None]
+    if not items:
+        return False
+    if shuffle:
+        random.shuffle(items)
+    if source is not None:
+        self.playback_source = source
+    if hasattr(self, "_set_play_queue"):
+        self._set_play_queue(items)
+    else:
+        self.play_queue = list(items)
+    self.play_track(0)
+    return True
+
+
+def on_play_next_track_clicked(self, track):
+    if track is None:
+        return
+    play_tracks_next(self, [track])
+
+
+def on_add_track_to_queue_clicked(self, track):
+    if track is None:
+        return
+    add_tracks_to_queue(self, [track])
 
 
 def _notify_track_radio_unavailable(self, track_name):
@@ -446,28 +484,11 @@ def _show_add_to_queue_notice(self, tracks, played_now=False):
 
 
 def on_play_next_current_tracks_clicked(self, _btn=None):
-    tracks = _get_current_track_view_tracks(self)
-    if not tracks:
-        return
-    if getattr(self, "playing_track", None) is None:
-        _play_tracks_now(self, tracks)
-        _show_play_next_notice(self, tracks, played_now=True)
-        return
-    _insert_queue_next(self, tracks)
-    _show_play_next_notice(self, tracks, played_now=False)
+    play_tracks_next(self, _get_current_track_view_tracks(self))
 
 
 def on_add_current_tracks_to_queue_clicked(self, _btn=None):
-    tracks = _get_current_track_view_tracks(self)
-    if not tracks:
-        return
-    if getattr(self, "playing_track", None) is None:
-        _play_tracks_now(self, tracks)
-        _show_add_to_queue_notice(self, tracks, played_now=True)
-        return
-    base_queue = list(self._get_active_queue() if hasattr(self, "_get_active_queue") else [])
-    _insert_queue_at(self, tracks, len(base_queue), event_reason="queue_appended")
-    _show_add_to_queue_notice(self, tracks, played_now=False)
+    add_tracks_to_queue(self, _get_current_track_view_tracks(self))
 
 
 def on_queue_remove_track_clicked(self, track_index):

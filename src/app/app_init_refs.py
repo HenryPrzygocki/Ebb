@@ -110,7 +110,7 @@ def _init_widget_refs(self):
     self.events_btn = None
     self.search_content_box = None
     self.search_suggest_popover = None
-    self.global_share_popover = None
+    self._context_popover = None
     self.tools_btn = None
     self.tools_pop = None
     self.tools_update_badge = None
@@ -318,7 +318,7 @@ def _init_runtime_refs(self):
     self._search_press_start_y = 0.0
     self._search_press_in_header = False
     self._search_header_dragging = False
-    self._global_share_gesture = None
+    self._context_menu_gesture = None
     self.now_playing_album_tracks = []
     self.now_playing_album_id = ""
     self._now_playing_album_request_id = 0

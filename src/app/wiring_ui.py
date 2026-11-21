@@ -7,8 +7,8 @@ def bind_tray(TidalApp, seen=None):
     from app.app_tray import (
         _get_tray_icon_path,
         _show_from_tray,
-        _copy_share_url_to_clipboard,
-        _share_from_tray,
+        _copy_current_track_link,
+        _copy_track_link_from_tray,
         _quit_from_tray,
         _init_tray_icon,
         _stop_tray_icon,
@@ -18,8 +18,8 @@ def bind_tray(TidalApp, seen=None):
     bind_map(TidalApp, [
         ("_get_tray_icon_path", _get_tray_icon_path),
         ("_show_from_tray", _show_from_tray),
-        ("_copy_share_url_to_clipboard", _copy_share_url_to_clipboard),
-        ("_share_from_tray", _share_from_tray),
+        ("_copy_current_track_link", _copy_current_track_link),
+        ("_copy_track_link_from_tray", _copy_track_link_from_tray),
         ("_quit_from_tray", _quit_from_tray),
         ("_init_tray_icon", _init_tray_icon),
         ("_stop_tray_icon", _stop_tray_icon),
@@ -78,6 +78,8 @@ def bind_album(TidalApp, seen=None):
         on_header_artist_clicked,
         on_player_artist_clicked,
         on_player_album_clicked,
+        go_to_artist_of,
+        go_to_album_of,
         create_album_flow,
         _update_list_ui,
         _get_tidal_image_url,
@@ -97,6 +99,8 @@ def bind_album(TidalApp, seen=None):
         ("on_header_artist_clicked", on_header_artist_clicked),
         ("on_player_artist_clicked", on_player_artist_clicked),
         ("on_player_album_clicked", on_player_album_clicked),
+        ("go_to_artist_of", go_to_artist_of),
+        ("go_to_album_of", go_to_album_of),
         ("create_album_flow", create_album_flow),
         ("_update_list_ui", _update_list_ui),
         ("_get_tidal_image_url", _get_tidal_image_url),
@@ -112,6 +116,7 @@ def bind_favorites(TidalApp, seen=None):
         on_track_row_fav_clicked,
         refresh_visible_track_fav_buttons,
         on_track_fav_clicked,
+        set_track_favorite,
     )
 
     bind_map(TidalApp, [
@@ -122,6 +127,7 @@ def bind_favorites(TidalApp, seen=None):
         ("on_track_row_fav_clicked", on_track_row_fav_clicked),
         ("refresh_visible_track_fav_buttons", refresh_visible_track_fav_buttons),
         ("on_track_fav_clicked", on_track_fav_clicked),
+        ("set_track_favorite", set_track_favorite),
     ], seen=seen)
 
 

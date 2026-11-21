@@ -18,6 +18,7 @@ from background_viz import BackgroundVisualizer
 from visualizer import HybridVisualizer as _HybridVisualizer
 from dr_meter import LevelMonitor
 from ui import config as ui_config
+from ui import context_menu
 
 logger = logging.getLogger(__name__)
 _SEARCH_HEADER_DRAG_THRESHOLD_PX = 6.0
@@ -59,81 +60,6 @@ def _sidebar_nav_sections():
             ],
         ),
     ]
-
-
-def _build_global_share_popover(app, parent):
-    pop = Gtk.Popover()
-    pop.set_parent(parent)
-    pop.set_has_arrow(False)
-    pop.set_autohide(False)
-    pop.add_css_class("playlist-more-menu")
-
-    box = Gtk.Box(
-        orientation=Gtk.Orientation.VERTICAL,
-        spacing=0,
-        margin_top=4,
-        margin_bottom=4,
-        margin_start=4,
-        margin_end=4,
-    )
-    share_btn = Gtk.Button(css_classes=["flat"])
-    share_row = Gtk.Box(spacing=8)
-    share_row.append(Gtk.Label(label="Share...", xalign=0))
-    share_btn.set_child(share_row)
-    share_btn.connect("clicked", lambda _btn: _on_global_share_clicked(app))
-    box.append(share_btn)
-    box.append(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL))
-
-    close_btn = Gtk.Button(css_classes=["flat"])
-    close_row = Gtk.Box(spacing=8)
-    close_row.append(Gtk.Label(label="Close", xalign=0))
-    close_btn.set_child(close_row)
-    close_btn.connect("clicked", lambda _btn: _on_global_close_clicked(app))
-    box.append(close_btn)
-    pop.set_child(box)
-    return pop
-
-
-def _popup_global_share_popover(app, x, y):
-    pop = getattr(app, "global_share_popover", None)
-    if pop is None:
-        return
-    rect = Gdk.Rectangle()
-    rect.x = int(x)
-    rect.y = int(y)
-    rect.width = 1
-    rect.height = 1
-    try:
-        pop.set_pointing_to(rect)
-    except Exception:
-        pass
-    pop.popup()
-
-
-def _on_global_share_clicked(app):
-    pop = getattr(app, "global_share_popover", None)
-    if pop is not None:
-        pop.popdown()
-    _suppress_search_focus(app)
-    GLib.idle_add(lambda: _clear_search_focus(app))
-    share = getattr(app, "_copy_share_url_to_clipboard", None)
-    if callable(share):
-        copied = bool(share())
-        notice = getattr(app, "show_output_notice", None)
-        if callable(notice):
-            notice("Link copied to clipboard." if copied else "Failed to copy link.", "ok" if copied else "warn", 1800)
-
-
-def _on_global_close_clicked(app):
-    pop = getattr(app, "global_share_popover", None)
-    if pop is not None:
-        pop.popdown()
-    win = getattr(app, "win", None)
-    if win is not None:
-        try:
-            win.close()
-        except Exception:
-            pass
 
 
 def _open_external_url(url: str):
@@ -370,45 +296,54 @@ def refresh_update_widgets(app):
         row_badge.set_visible(bool(available and not inflight))
 
 
-def _popover_is_visible(pop):
-    if pop is None:
-        return False
-    getter = getattr(pop, "get_visible", None)
-    if callable(getter):
-        try:
-            return bool(getter())
-        except Exception:
-            return False
-    return bool(getattr(pop, "visible", False))
-
-
 def _on_global_context_menu_pressed(app, gesture, x, y):
-    win = getattr(app, "win", None)
+    """Right-click: open the menu for the item under the pointer (fork #7).
+
+    Upstream opened one window-wide "Share… / Close" popover here, and it copied the upstream
+    repo URL. Now the click is claimed only when it lands on a tagged item, so entries and
+    labels keep GTK's own menus.
+    """
+    try:
+        surface = gesture.get_widget()
+    except Exception:
+        surface = None
+    if surface is None:
+        surface = getattr(app, "win", None)
+    if surface is None:
+        return
+    try:
+        # The gesture's coordinates are relative to its own widget, so pick on that widget.
+        # Upstream picked on the window, which is offset by CSD shadows when floating.
+        hit = surface.pick(x, y, Gtk.PickFlags.DEFAULT)
+    except Exception:
+        hit = None
     header = getattr(app, "header", None)
-    hit = None
-    if win is not None:
-        try:
-            hit = win.pick(x, y, Gtk.PickFlags.DEFAULT)
-        except Exception:
-            hit = None
-    if header is not None and hit is not None and _widget_is_descendant(hit, header):
+    if hit is None or (header is not None and _widget_is_descendant(hit, header)):
+        return
+    item = context_menu.resolve(hit)
+    rows = context_menu.actions_for(app, *item) if item else []
+    if not rows:
         return
     try:
         gesture.set_state(Gtk.EventSequenceState.CLAIMED)
     except Exception:
         pass
     _clear_search_focus(app)
-    _popup_global_share_popover(app, x, y)
+    context_menu.popup(app, surface, x, y, rows, on_closed=lambda: _after_context_menu_closed(app))
+
+
+def _after_context_menu_closed(app):
+    _suppress_search_focus(app)
+    GLib.idle_add(lambda: _clear_search_focus(app))
 
 
 def _setup_global_context_menu(app, parent):
-    app.global_share_popover = _build_global_share_popover(app, parent)
     gesture = Gtk.GestureClick()
     gesture.set_button(Gdk.BUTTON_SECONDARY)
     gesture.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
     gesture.connect("pressed", lambda gest, _n, x, y: _on_global_context_menu_pressed(app, gest, x, y))
     parent.add_controller(gesture)
-    app._global_share_gesture = gesture
+    app._context_menu_gesture = gesture
 
 
 def _close_search_suggestions(app):
@@ -612,7 +547,6 @@ def _should_track_header_drag(app, hit):
 def _on_window_pressed_for_dismiss(app, x, y, gesture=None):
     if _search_focus_is_blocked(app):
         return
-    global_share_pop = getattr(app, "global_share_popover", None)
     pop = getattr(app, "search_suggest_popover", None)
     entry = getattr(app, "search_entry", None)
     win = getattr(app, "win", None)
@@ -623,21 +557,6 @@ def _on_window_pressed_for_dismiss(app, x, y, gesture=None):
         hit = win.pick(x, y, Gtk.PickFlags.DEFAULT)
     except Exception:
         hit = None
-    if _popover_is_visible(global_share_pop):
-        if hit is not None and _widget_is_descendant(hit, global_share_pop):
-            return
-        if gesture is not None:
-            try:
-                gesture.set_state(Gtk.EventSequenceState.CLAIMED)
-            except Exception:
-                pass
-        try:
-            global_share_pop.popdown()
-        except Exception:
-            pass
-        _suppress_search_focus(app)
-        GLib.idle_add(lambda: _clear_search_focus(app))
-        return
     if pop is None or entry is None:
         return
     app._search_press_active = True
@@ -1488,6 +1407,7 @@ def build_player_bar(app, container):
     text_box.append(app.lbl_album)
 
     app.info_area.append(app.art_img)
+    context_menu.tag(app.info_area, lambda: getattr(app, "playing_track", None), "track")
     app.info_area.append(text_box)
     left_panel.set_overflow(Gtk.Overflow.HIDDEN)
     left_panel.append(app.info_area)

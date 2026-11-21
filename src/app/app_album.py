@@ -217,18 +217,18 @@ def on_header_artist_clicked(self, gest, n, x, y):
         submit_daemon(resolve_artist)
 
 
-def on_player_artist_clicked(self):
-    """Navigate to the artist of the currently playing track."""
-    track = getattr(self, "playing_track", None)
-    if track is None:
-        return
-    artist_obj = getattr(track, "artist", None)
+def go_to_artist_of(self, item):
+    """Open the artist page of a track or album, resolving a partial artist ref first."""
+    artist_obj = getattr(item, "artist", None) if item is not None else None
     if artist_obj is None:
-        return
-    artist_id = getattr(artist_obj, "id", None)
-    artist_name = str(getattr(artist_obj, "name", "") or "").strip()
+        return False
+    if isinstance(artist_obj, str):
+        artist_id, artist_name = None, artist_obj.strip()
+    else:
+        artist_id = getattr(artist_obj, "id", None)
+        artist_name = str(getattr(artist_obj, "name", "") or "").strip()
     if not artist_id and not artist_name:
-        return
+        return False
 
     def _resolve():
         resolved = self.backend.resolve_artist(artist_id=artist_id, artist_name=artist_name)
@@ -236,17 +236,15 @@ def on_player_artist_clicked(self):
             GLib.idle_add(self.on_artist_clicked, resolved)
 
     submit_daemon(_resolve)
+    return True
 
 
-def on_player_album_clicked(self):
-    """Navigate to the album of the currently playing track."""
-    track = getattr(self, "playing_track", None)
-    if track is None:
-        return
-    album_obj = getattr(track, "album", None)
+def go_to_album_of(self, track):
+    """Open the album page of a track, re-fetched so the page gets full album data."""
+    album_obj = getattr(track, "album", None) if track is not None else None
     album_id = getattr(album_obj, "id", None) if album_obj is not None else None
     if not album_id:
-        return
+        return False
 
     def _resolve():
         try:
@@ -256,6 +254,17 @@ def on_player_album_clicked(self):
         GLib.idle_add(self.show_album_details, alb)
 
     submit_daemon(_resolve)
+    return True
+
+
+def on_player_artist_clicked(self):
+    """Navigate to the artist of the currently playing track."""
+    go_to_artist_of(self, getattr(self, "playing_track", None))
+
+
+def on_player_album_clicked(self):
+    """Navigate to the album of the currently playing track."""
+    go_to_album_of(self, getattr(self, "playing_track", None))
 
 
 def create_album_flow(self):

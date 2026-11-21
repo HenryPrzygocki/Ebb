@@ -8,7 +8,7 @@ import os
 import gi
 
 gi.require_version("Gdk", "4.0")
-from gi.repository import GLib, Gdk
+from gi.repository import GLib
 
 try:
     import pystray
@@ -20,7 +20,6 @@ except Exception:
 logger = logging.getLogger(__name__)
 
 _SRC_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_SHARE_URL = "https://github.com/yelanxin/hiresTI"
 
 
 def _get_tray_icon_path(self):
@@ -51,30 +50,20 @@ def _quit_from_tray(self, _icon=None, _item=None):
     GLib.idle_add(_quit)
 
 
-def _copy_share_url_to_clipboard(self):
-    display = None
-    if getattr(self, "win", None) is not None:
-        try:
-            display = self.win.get_display()
-        except Exception:
-            display = None
-    if display is None:
-        display = Gdk.Display.get_default()
-    if display is None:
-        logger.warning("Cannot copy share URL: no display available.")
+def _copy_current_track_link(self):
+    """Copy the playing track's TIDAL link (fork #7: upstream copied its own repo URL)."""
+    from ui import context_menu
+
+    track = getattr(self, "playing_track", None)
+    if context_menu.tidal_url("track", track) is None:
+        logger.info("Copy track link: nothing is playing.")
         return False
-    try:
-        display.get_clipboard().set(_SHARE_URL)
-        logger.info("Copied share URL to clipboard.")
-        return True
-    except Exception as e:
-        logger.warning("Failed to copy share URL: %s", e)
-        return False
+    return context_menu.copy_link(self, "track", track)
 
 
-def _share_from_tray(self, _icon=None, _item=None):
+def _copy_track_link_from_tray(self, _icon=None, _item=None):
     def _copy():
-        _copy_share_url_to_clipboard(self)
+        _copy_current_track_link(self)
         return False
 
     GLib.idle_add(_copy)
@@ -94,7 +83,7 @@ def _init_tray_icon(self):
         image = Image.open(icon_path)
         menu = pystray.Menu(
             pystray.MenuItem("Show", self._show_from_tray, default=True),
-            pystray.MenuItem("Share", self._share_from_tray),
+            pystray.MenuItem("Copy Track Link", self._copy_track_link_from_tray),
             pystray.MenuItem("Quit", self._quit_from_tray),
         )
         self._tray_icon = pystray.Icon("hiresti", image, "HiresTI", menu)
