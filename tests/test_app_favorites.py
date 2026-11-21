@@ -36,6 +36,9 @@ class _Button:
     def get_css_classes(self):
         return list(self.classes)
 
+    def set_tooltip_text(self, value):
+        self.tooltip = value
+
 
 def test_refresh_current_track_favorite_state_updates_main_and_now_playing_buttons(monkeypatch):
     main_btn = _Button()
@@ -157,3 +160,11 @@ def test_on_track_row_fav_clicked_optimistically_adds_liked_track(monkeypatch):
     assert [getattr(t, "id", None) for t in app.liked_tracks_data] == ["track-3", "track-1"]
     assert rendered == [["track-3", "track-1"]]
     assert refreshes == [True]
+
+
+def test_heart_tooltip_says_what_a_click_will_do():
+    btn = _Button()
+    app_favorites._update_fav_icon(None, btn, True)
+    assert btn.tooltip == "Remove from Favorites"
+    app_favorites._update_fav_icon(None, btn, False)
+    assert btn.tooltip == "Add to Favorites"

@@ -120,3 +120,23 @@ def test_plain_arrows_and_letters_are_not_captured():
     assert _press(app, Gdk.KEY_Right) is False
     assert _press(app, Gdk.KEY_q) is False
     assert app.calls == []
+
+
+def test_escape_in_a_text_field_reaches_the_field_then_drops_focus(monkeypatch):
+    idle = []
+    monkeypatch.setattr(ab.GLib, "idle_add", lambda fn, *a: idle.append((fn, a)))
+    focus = {"w": _Text(parent=_Node())}
+    app = _app(None)
+    app.win = SimpleNamespace(get_focus=lambda: focus["w"], set_focus=lambda w: focus.__setitem__("w", w))
+    assert _press(app, Gdk.KEY_Escape) is False  # the entry still clears itself
+    assert len(idle) == 1
+    fn, args = idle[0]
+    fn(*args)
+    assert focus["w"] is None
+    assert _press(app, Gdk.KEY_space) is True and app.calls == ["play_pause"]
+
+
+def test_escape_outside_text_fields_is_left_to_the_panels():
+    app = _app(_Row())
+    assert _press(app, Gdk.KEY_Escape) is False
+    assert app.calls == []

@@ -1526,9 +1526,20 @@ def _ensure_play_shuffle_btns(app):
             secondary_box.remove(app._album_actions_menu_btn)
         secondary_box.append(app._album_actions_menu_btn)
 
-    for btn in (app._album_play_btn, app._album_shuffle_btn, app._album_actions_menu_btn):
+    for btn in (app._album_play_btn, app._album_shuffle_btn):
         if btn is not None:
             btn.set_visible(True)
+    # Fork: on your own playlists the playlist "More" menu carries Play Next / Add to Queue,
+    # so the header shows one overflow button instead of two.
+    pl_more = getattr(app, "remote_playlist_more_btn", None)
+    menu_btn = app._album_actions_menu_btn
+    if pl_more is None:
+        menu_btn.set_visible(True)
+    else:
+        if not getattr(menu_btn, "_fork_synced_with_pl_more", False):
+            pl_more.connect("notify::visible", lambda w, _p: menu_btn.set_visible(not w.get_visible()))
+            menu_btn._fork_synced_with_pl_more = True
+        menu_btn.set_visible(not pl_more.get_visible())
 
 
 def _artist_context_values(candidate):

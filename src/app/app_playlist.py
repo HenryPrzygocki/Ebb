@@ -311,10 +311,10 @@ def on_remote_playlist_card_clicked(self, playlist_obj):
     def _apply_loaded_tracks():
         total = _get_total_tracks()
         loaded = len(state["tracks"])
-        if total > 0:
-            self.header_meta.set_text(f"{loaded}/{total} Tracks")
-        else:
-            self.header_meta.set_text(f"{loaded} Tracks")
+        # Fork: the playlist's size, not "20/30" (that only meant "20 loaded so far";
+        # the rest loads on scroll or when played).
+        count = total if total > 0 else loaded
+        self.header_meta.set_text(f"{count} Track" if count == 1 else f"{count} Tracks")
         self.load_album_tracks(list(state["tracks"]))
 
     def _get_track_scroller():

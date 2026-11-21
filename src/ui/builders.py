@@ -1447,14 +1447,17 @@ def build_player_bar(app, container):
 
     btn_prev = Gtk.Button(icon_name="media-skip-backward-symbolic", css_classes=["flat", "transport-btn"])
     btn_prev.connect("clicked", app.on_prev_track)
+    btn_prev.set_tooltip_text("Previous Track (Ctrl+←)")
     ctrls.append(btn_prev)
 
     app.play_btn = Gtk.Button(icon_name="media-playback-start-symbolic", css_classes=["pill", "transport-main-btn"])
     app.play_btn.connect("clicked", app.on_play_pause)
+    app.play_btn.set_tooltip_text("Play / Pause (Space)")
     ctrls.append(app.play_btn)
 
     btn_next = Gtk.Button(icon_name="media-skip-forward-symbolic", css_classes=["flat", "transport-btn"])
     btn_next.connect("clicked", lambda b: app.on_next_track())
+    btn_next.set_tooltip_text("Next Track (Ctrl+→)")
     ctrls.append(btn_next)
     center_box.append(ctrls)
 
@@ -1526,6 +1529,7 @@ def build_player_bar(app, container):
     app.vol_pop = app._build_volume_popover()
     app.vol_pop.set_parent(app.vol_btn)
     app.vol_btn.connect("clicked", lambda b: app.vol_pop.popup())
+    app.vol_btn.set_tooltip_text("Volume")
     app.vol_box.append(app.vol_btn)
 
     right_panel.append(Gtk.Box(hexpand=True))

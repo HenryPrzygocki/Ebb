@@ -1611,6 +1611,8 @@ flowboxchild { background-color: transparent; padding: 0; margin: 0; }
 }
 .album-header-bg {
     opacity: 0.45;
+    /* fork: a soft colour wash instead of a sharp, cropped cover or mosaic */
+    filter: blur(28px);
 }
 .album-header-bg-dim {
     background: linear-gradient(
@@ -1761,14 +1763,15 @@ flowboxchild { background-color: transparent; padding: 0; margin: 0; }
     min-height: 28px;
     padding: 0 12px;
     border-radius: 999px;
-    background-color: alpha(@accent_bg_color, 0.20);
-    border-color: alpha(@accent_bg_color, 0.58);
+    /* fork: accent_fg_color is for text on a *solid* accent; on a 20% tint it was dark on dark */
+    background-color: @accent_bg_color;
+    border-color: @accent_bg_color;
     color: @accent_fg_color;
 }
 
 .liked-action-btn-primary:hover {
-    background-color: alpha(@accent_bg_color, 0.28);
-    border-color: alpha(@accent_bg_color, 0.72);
+    background-color: mix(@accent_bg_color, white, 0.12);
+    border-color: mix(@accent_bg_color, white, 0.12);
 }
 
 .liked-artist-filter-scroll,
@@ -1928,6 +1931,22 @@ flowboxchild { background-color: transparent; padding: 0; margin: 0; }
 /* fork: artist line under the title when the artist column doesn't fit */
 .track-title-cell .track-subtitle { font-size: 0.86em; margin-top: 1px; }
 .tab-strip-scroll, .tab-strip-scroll viewport { background: none; }
+
+/* fork: secondary row actions recede until the row is hovered or focused */
+.track-row .history-scroll-btn,
+.track-row .track-row-overflow-btn,
+.track-row .playlist-tool-btn {
+  opacity: 0.4;
+  transition: opacity 120ms ease-out;
+}
+.track-row:hover .history-scroll-btn,
+.track-row:hover .track-row-overflow-btn,
+.track-row:hover .playlist-tool-btn,
+.track-row:focus-within .history-scroll-btn,
+.track-row:focus-within .track-row-overflow-btn,
+.track-row:focus-within .playlist-tool-btn {
+  opacity: 1;
+}
 """
 
 

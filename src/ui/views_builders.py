@@ -234,6 +234,7 @@ def build_tracks_view(app):
     info.append(app.header_meta)
 
     app.fav_btn = Gtk.Button(css_classes=["flat", "album-fav-btn"], icon_name="hiresti-favorite-outline-symbolic", valign=Gtk.Align.CENTER)
+    app.fav_btn.set_tooltip_text("Add to Favorites")
     app.fav_btn.connect("clicked", app.on_fav_clicked)
     app.add_playlist_btn = Gtk.Button(icon_name="list-add-symbolic", css_classes=["flat", "circular", "history-scroll-btn"], valign=Gtk.Align.CENTER)
     app.add_playlist_btn.set_tooltip_text("Add Album Tracks to Playlist")
@@ -260,6 +261,19 @@ def build_tracks_view(app):
         margin_end=4,
         css_classes=["playlist-more-menu"],
     )
+    # Fork: the album "More actions" items live here on playlist pages (one overflow button, not two).
+    for _icon, _label, _handler in (
+        ("media-skip-forward-symbolic", "Play Next", "on_play_next_current_tracks_clicked"),
+        ("view-list-symbolic", "Add to Queue", "on_add_current_tracks_to_queue_clicked"),
+    ):
+        _btn = Gtk.Button(css_classes=["flat"])
+        _row = Gtk.Box(spacing=8)
+        _row.append(Gtk.Image.new_from_icon_name(_icon))
+        _row.append(Gtk.Label(label=_label, xalign=0))
+        _btn.set_child(_row)
+        _btn.connect("clicked", lambda _b, h=_handler: (app.remote_playlist_more_pop.popdown(), getattr(app, h)()))
+        more_box.append(_btn)
+    more_box.append(Gtk.Separator())
     # Edit Playlist
     edit_menu_btn = Gtk.Button(css_classes=["flat"])
     edit_menu_row = Gtk.Box(spacing=8)
@@ -458,6 +472,23 @@ def build_settings_page(app):
     app.remember_window_size_switch.connect("state-set", app.on_remember_window_size_toggled)
     row_window_size.append(app.remember_window_size_switch)
     group_cfg.append(row_window_size)
+    # Fork: make the keyboard shortcuts discoverable.
+    row_keys = Gtk.Box(spacing=12, margin_start=12, margin_end=12, margin_top=8, margin_bottom=8)
+    keys_info = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, valign=Gtk.Align.CENTER, hexpand=True)
+    keys_info.append(Gtk.Label(label="Keyboard Shortcuts", xalign=0, css_classes=["settings-label"]))
+    keys_info.append(
+        Gtk.Label(
+            label="Space plays and pauses from anywhere except text fields. Ctrl+? lists every shortcut.",
+            xalign=0,
+            wrap=True,
+            css_classes=["dim-label"],
+        )
+    )
+    row_keys.append(keys_info)
+    keys_btn = Gtk.Button(label="Show", valign=Gtk.Align.CENTER)
+    keys_btn.connect("clicked", lambda _b: app.show_shortcuts_dialog())
+    row_keys.append(keys_btn)
+    group_cfg.append(row_keys)
     settings_vbox.append(group_cfg)
 
     settings_vbox.append(Gtk.Label(label="Streaming", xalign=0, css_classes=["section-title"], margin_top=10))
@@ -493,7 +524,7 @@ def build_settings_page(app):
         "• <b>PipeWire mode:</b> shared output through the PipeWire graph. Convenient "
         "for sharing the device with other apps, but PipeWire resamples to its own "
         "session rate, so this path is not bit-perfect.\n\n"
-        "• <b>ALSA（auto）/ALSA（mmap） + Exclusive mode:</b> bypasses the system mixer and is treated as "
+        "• <b>ALSA (auto)/ALSA (mmap) + Exclusive mode:</b> bypasses the system mixer and is treated as "
         "true bit-perfect playback.\n\n"
         "• <b>USB Rawlink v2:</b> bypasses the kernel USB audio driver and lets hiresTI "
         "talk directly to a compatible external USB DAC. With Bit-Perfect Mode on, "
@@ -528,7 +559,7 @@ def build_settings_page(app):
     rt_info.append(Gtk.Label(label="Realtime Audio Priority", xalign=0, css_classes=["settings-label"]))
     rt_info.append(
         Gtk.Label(
-            label="ALSA（mmap） writer thread only. Off disables SCHED_FIFO",
+            label="ALSA (mmap) writer thread only. Off disables SCHED_FIFO",
             xalign=0,
             css_classes=["dim-label"],
         )
@@ -599,8 +630,8 @@ def build_settings_page(app):
     drv_pop_content = Gtk.Label(wrap=True, max_width_chars=44, xalign=0)
     drv_pop_content.set_markup(
         "<b>Audio Driver Modes</b>\n\n"
-        "• <b>ALSA（auto）:</b> Recommended for most setups. hiresTI chooses the most compatible ALSA path for your device automatically.\n\n"
-        "• <b>ALSA（mmap）:</b> A zero-copy ALSA path with a more direct handoff to the device. Best for users who want a leaner playback path or prefer MMAP on their hardware.\n\n"
+        "• <b>ALSA (auto):</b> Recommended for most setups. hiresTI chooses the most compatible ALSA path for your device automatically.\n\n"
+        "• <b>ALSA (mmap):</b> A zero-copy ALSA path with a more direct handoff to the device. Best for users who want a leaner playback path or prefer MMAP on their hardware.\n\n"
         "• <b>PipeWire:</b> Routes through the PipeWire shared graph (ALSA→PipeWire bridge). Shared with other apps and resampled to PipeWire's session rate — convenient, but not bit-perfect.\n\n"
         "• <b>USB Rawlink v2:</b> Bypasses the kernel USB audio driver and lets hiresTI talk directly to the USB device for playback. Best for users who want the most direct player-to-DAC path on a compatible external USB DAC."
     )
@@ -611,7 +642,7 @@ def build_settings_page(app):
     drv_title_box.append(drv_help_btn)
     drv_info.append(drv_title_box)
     drv_desc = Gtk.Label(
-        label="ALSA（auto） for most setups. ALSA（mmap） for zero-copy tuning. USB Rawlink v2 for direct USB playback.",
+        label="ALSA (auto) for most setups. ALSA (mmap) for zero-copy tuning. USB Rawlink v2 for direct USB playback.",
         xalign=0,
         css_classes=["dim-label"],
     )
@@ -634,6 +665,7 @@ def build_settings_page(app):
             if drv in ("ALSA（auto）", "ALSA（mmap）", "USB Rawlink v2")
         ]
     app.driver_dd = Gtk.DropDown(model=Gtk.StringList.new(drivers))
+    _show_ascii_parentheses(app.driver_dd)
     app.driver_dd.connect("notify::selected-item", app.on_driver_changed)
     row_drv.append(app.driver_dd)
     group_out.append(row_drv)
@@ -643,7 +675,7 @@ def build_settings_page(app):
     depth_info.append(Gtk.Label(label="Output Bit Depth", xalign=0, css_classes=["settings-label"]))
     depth_info.append(
         Gtk.Label(
-            label="ALSA（auto） / ALSA（mmap） only. Not applicable for USB Rawlink v2 (bit depth is fixed by the device).",
+            label="ALSA (auto) / ALSA (mmap) only. Not applicable for USB Rawlink v2 (bit depth is fixed by the device).",
             xalign=0,
             css_classes=["dim-label"],
         )
@@ -981,11 +1013,26 @@ def build_settings_page(app):
     app.right_stack.add_named(settings_scroll, "settings")
 
 
+def _show_ascii_parentheses(dropdown):
+    """Fork: show "ALSA (auto)" while the model keeps upstream's ids ("ALSA（auto）"), which
+    settings and driver checks compare against."""
+    factory = Gtk.SignalListItemFactory()
+    factory.connect("setup", lambda _f, item: item.set_child(Gtk.Label(xalign=0)))
+    factory.connect(
+        "bind",
+        lambda _f, item: item.get_child().set_label(
+            item.get_item().get_string().replace("（", " (").replace("）", ")")
+        ),
+    )
+    dropdown.set_factory(factory)
+
+
 def _wrap_settings_descriptions(root):
     """Fork: descriptions wrap instead of setting the settings page's minimum width.
 
     Only plain one-line labels (no ellipsizing, not already wrapping) that sit beside
-    controls in a settings row; headings and status lines are left alone.
+    controls in a settings row; headings and status lines are left alone. Dropdowns
+    centre vertically instead of stretching to a tall row's height.
     """
     todo = [root]
     while todo:
@@ -1002,6 +1049,8 @@ def _wrap_settings_descriptions(root):
         ):
             widget.set_wrap(True)
             widget.set_wrap_mode(Pango.WrapMode.WORD_CHAR)
+        elif isinstance(widget, Gtk.DropDown) and widget.get_valign() == Gtk.Align.FILL:
+            widget.set_valign(Gtk.Align.CENTER)
 
 
 def build_search_view(app):

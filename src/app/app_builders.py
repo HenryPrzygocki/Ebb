@@ -3404,6 +3404,17 @@ def on_global_key_pressed(self, controller, keyval, keycode, state):
         else:
             self.on_prev_track()
         return True
+    if keyval == Gdk.KEY_Escape and not mods and _focus_in_text_input(self):
+        # The field still gets Esc (search entries clear themselves); then focus leaves it, so
+        # Space is play/pause again instead of typing into a field you've finished with.
+        GLib.idle_add(_leave_text_input, self)
+        return False
+    return False
+
+
+def _leave_text_input(self):
+    if _focus_in_text_input(self):
+        self.win.set_focus(None)
     return False
 
 
@@ -3423,9 +3434,43 @@ def _install_global_keys(self):
     return controller
 
 
+# Fork: one list for the shortcuts window; keep it in step with the key handlers here.
+_SHORTCUT_SECTIONS = (
+    ("Playback", (
+        ("Play / Pause", "space"),
+        ("Next track", "<Control>Right"),
+        ("Previous track (restarts after 3 s)", "<Control>Left"),
+    )),
+    ("Panels", (
+        ("Search", "<Control>f"),
+        ("Queue", "q"),
+        ("Now Playing", "w"),
+        ("Playback workspace", "Tab"),
+        ("Close the open panel", "Escape"),
+    )),
+    ("General", (
+        ("Keyboard shortcuts", "<Control>question"),
+    )),
+)
+
+
+def show_shortcuts_dialog(self, *_args):
+    from gi.repository import Adw
+
+    dialog = Adw.ShortcutsDialog()
+    for title, items in _SHORTCUT_SECTIONS:
+        section = Adw.ShortcutsSection(title=title)
+        for label, accel in items:
+            section.add(Adw.ShortcutsItem(title=label, accelerator=accel))
+        dialog.add(section)
+    dialog.present(self.win)
+
 def on_key_pressed(self, controller, keyval, keycode, state):
     typing = _focus_in_text_input(self)
 
+    if (state & Gdk.ModifierType.CONTROL_MASK) and keyval == Gdk.KEY_question:
+        self.show_shortcuts_dialog()
+        return True
     if (state & Gdk.ModifierType.CONTROL_MASK) and keyval == Gdk.KEY_f:
         reveal = getattr(self, "toggle_sidebar_overlay", None)
         if callable(reveal):
@@ -3460,6 +3505,10 @@ def on_key_pressed(self, controller, keyval, keycode, state):
             return True
         if getattr(self, "queue_revealer", None) is not None and self.queue_revealer.get_reveal_child():
             self.close_queue_drawer()
+            return True
+        # Fork: Esc also folds the bottom playback workspace (Tab / the ^ handle open it).
+        if getattr(self, "viz_revealer", None) is not None and self.viz_revealer.get_reveal_child():
+            self._set_visualizer_expanded(False)
             return True
 
     if keyval == Gdk.KEY_Tab and not typing:

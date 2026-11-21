@@ -29,6 +29,7 @@ def _update_fav_icon(self, btn, is_active):
     else:
         btn.set_icon_name("hiresti-favorite-outline-symbolic")
         btn.remove_css_class("active")
+    btn.set_tooltip_text("Remove from Favorites" if is_active else "Add to Favorites")  # fork
 
 
 def refresh_current_track_favorite_state(self):
