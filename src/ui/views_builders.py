@@ -26,11 +26,10 @@ def build_grid_view(app):
     app.grid_title_label = Gtk.Label(label="Home", xalign=0, css_classes=["section-title"])
     app.grid_subtitle_label = Gtk.Label(
         label="Fresh picks and playlists tailored to your listening",
-        xalign=1.0,
+        xalign=0.0,
         ellipsize=3,
-        max_width_chars=56,
         hexpand=True,
-        halign=Gtk.Align.END,
+        halign=Gtk.Align.FILL,
         css_classes=["home-subtitle", "dim-label"],
     )
     app.artist_fav_btn = Gtk.Button(
@@ -40,10 +39,12 @@ def build_grid_view(app):
     )
     app.artist_fav_btn.connect("clicked", app.on_artist_fav_clicked)
     title_row.append(app.grid_title_label)
-    title_row.append(Gtk.Box(hexpand=True))
-    title_row.append(app.grid_subtitle_label)
     title_row.append(app.artist_fav_btn)
+    title_row.append(Gtk.Box(hexpand=True))
     title_box.append(title_row)
+    # Fork: subtitle under the title, not floating at the far right edge (it also kept the
+    # header from shrinking on narrow windows).
+    title_box.append(app.grid_subtitle_label)
     grid_vbox.append(title_box)
 
     app.login_prompt_box = Gtk.Box(
@@ -406,7 +407,7 @@ def build_tracks_view(app):
     app.similar_albums_flow = Gtk.FlowBox(
         homogeneous=True,
         valign=Gtk.Align.START,
-        min_children_per_line=4,
+        min_children_per_line=1,
         max_children_per_line=10,
         column_spacing=16,
         row_spacing=16,
@@ -813,7 +814,7 @@ def build_settings_page(app):
     row_remote_allow.append(allow_info)
     row_remote_allow.append(Gtk.Box(hexpand=True))
     app.remote_api_allowlist_entry = Gtk.Entry(placeholder_text="192.168.1.0/24, 192.168.1.50/32")
-    app.remote_api_allowlist_entry.set_width_chars(28)
+    app.remote_api_allowlist_entry.set_width_chars(16)
     row_remote_allow.append(app.remote_api_allowlist_entry)
     group_remote.append(row_remote_allow)
 
@@ -864,7 +865,7 @@ def build_settings_page(app):
     row_remote_key.append(key_info)
     key_controls = Gtk.Box(spacing=8, hexpand=True, halign=Gtk.Align.END)
     app.remote_api_key_entry = Gtk.Entry(editable=False, hexpand=True)
-    app.remote_api_key_entry.set_width_chars(32)
+    app.remote_api_key_entry.set_width_chars(14)
     key_controls.append(app.remote_api_key_entry)
     app.remote_api_copy_btn = Gtk.Button(label="Copy", css_classes=["flat"])
     app.remote_api_copy_btn.connect("clicked", app.on_remote_api_copy_key_clicked)
@@ -976,7 +977,31 @@ def build_settings_page(app):
     app.events_btn.connect("clicked", app.show_diag_events)
     if hasattr(app, "_refresh_remote_api_settings_ui"):
         app._refresh_remote_api_settings_ui()
+    _wrap_settings_descriptions(settings_vbox)
     app.right_stack.add_named(settings_scroll, "settings")
+
+
+def _wrap_settings_descriptions(root):
+    """Fork: descriptions wrap instead of setting the settings page's minimum width.
+
+    Only plain one-line labels (no ellipsizing, not already wrapping) that sit beside
+    controls in a settings row; headings and status lines are left alone.
+    """
+    todo = [root]
+    while todo:
+        widget = todo.pop()
+        child = widget.get_first_child()
+        while child is not None:
+            todo.append(child)
+            child = child.get_next_sibling()
+        if (
+            isinstance(widget, Gtk.Label)
+            and widget.has_css_class("dim-label")
+            and not widget.get_wrap()
+            and widget.get_ellipsize() == Pango.EllipsizeMode.NONE
+        ):
+            widget.set_wrap(True)
+            widget.set_wrap_mode(Pango.WrapMode.WORD_CHAR)
 
 
 def build_search_view(app):
@@ -1044,11 +1069,13 @@ def build_search_view(app):
     trk_head.append(Gtk.Label(label="Tracks", xalign=0, hexpand=True, css_classes=["home-section-title"]))
     app.search_tracks_page_label = Gtk.Label(label="Page 1/1", css_classes=["dim-label"], valign=Gtk.Align.CENTER)
     trk_head.append(app.search_tracks_page_label)
-    app.search_prev_page_btn = Gtk.Button(label="Prev", css_classes=["flat"])
+    app.search_prev_page_btn = Gtk.Button(icon_name="go-previous-symbolic", css_classes=["flat"])
+    app.search_prev_page_btn.set_tooltip_text("Previous page")
     app.search_prev_page_btn.set_sensitive(False)
     app.search_prev_page_btn.connect("clicked", app.on_search_tracks_prev_page)
     trk_head.append(app.search_prev_page_btn)
-    app.search_next_page_btn = Gtk.Button(label="Next", css_classes=["flat"])
+    app.search_next_page_btn = Gtk.Button(icon_name="go-next-symbolic", css_classes=["flat"])
+    app.search_next_page_btn.set_tooltip_text("Next page")
     app.search_next_page_btn.set_sensitive(False)
     app.search_next_page_btn.connect("clicked", app.on_search_tracks_next_page)
     trk_head.append(app.search_next_page_btn)

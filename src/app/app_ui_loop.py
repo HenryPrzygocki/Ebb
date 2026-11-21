@@ -116,7 +116,7 @@ def _update_progress_thumb_position(self):
 
 
 def _restore_paned_position_after_layout(self):
-    if self.paned is None:
+    if self.paned is None or getattr(self, "_sidebar_collapsed", False):
         return False
     win_w = (self.win.get_width() if self.win else 0) or ui_config.WINDOW_WIDTH
     sidebar_px = int(max(120, win_w * float(ui_config.SIDEBAR_RATIO)))
@@ -242,7 +242,8 @@ def update_layout_proportions(self, w, p):
 
 
 def on_paned_position_changed(self, _paned, _param):
-    if self.paned is None:
+    # Fork: while the sidebar is collapsed the paned has no start child; don't save that.
+    if self.paned is None or getattr(self, "_sidebar_collapsed", False):
         return
     pos = self.paned.get_position()
     if not isinstance(pos, int) or pos <= 0:

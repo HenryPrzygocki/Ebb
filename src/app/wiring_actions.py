@@ -57,7 +57,16 @@ def bind_action_delegates(TidalApp, seen=None):
         show_album_details,
     )
     from actions.ui_navigation import on_artist_clicked, on_back_clicked, on_nav_selected
-    from ui.builders import build_body, build_header
+    from ui.builders import (
+        apply_layout_tier,
+        apply_main_min_size,
+        build_body,
+        build_header,
+        hide_sidebar_overlay,
+        install_adaptive_layout,
+        reconcile_layout_tier,
+        toggle_sidebar_overlay,
+    )
     from ui.views_builders import build_grid_view, build_settings_page, build_tracks_view
 
     bind_map(TidalApp, [
@@ -96,6 +105,12 @@ def bind_action_delegates(TidalApp, seen=None):
         ("on_device_changed", on_device_changed),
         ("_refresh_output_status_loop", update_output_status_ui),
         ("_build_header", build_header),
+        ("_install_adaptive_layout", install_adaptive_layout),
+        ("_apply_layout_tier", apply_layout_tier),
+        ("_reconcile_layout_tier", reconcile_layout_tier),
+        ("_apply_main_min_size", apply_main_min_size),
+        ("toggle_sidebar_overlay", toggle_sidebar_overlay),
+        ("_hide_sidebar_overlay", hide_sidebar_overlay),
         ("_build_tracks_view", build_tracks_view),
         ("_build_settings_page", build_settings_page),
         ("_build_body", build_body),

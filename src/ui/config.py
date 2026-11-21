@@ -1916,6 +1916,18 @@ flowboxchild { background-color: transparent; padding: 0; margin: 0; }
     font-weight: 300;
 }
 
+
+/* fork: the collapsed sidebar floats over the content on narrow windows */
+.sidebar-floating {
+  background-color: @window_bg_color;
+  border-right: 1px solid alpha(currentColor, 0.08);
+  box-shadow: 0 0 24px alpha(black, 0.45);
+}
+.sidebar-backdrop { background-color: alpha(black, 0.35); }
+
+/* fork: artist line under the title when the artist column doesn't fit */
+.track-title-cell .track-subtitle { font-size: 0.86em; margin-top: 1px; }
+.tab-strip-scroll, .tab-strip-scroll viewport { background: none; }
 """
 
 

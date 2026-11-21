@@ -3427,6 +3427,9 @@ def on_key_pressed(self, controller, keyval, keycode, state):
     typing = _focus_in_text_input(self)
 
     if (state & Gdk.ModifierType.CONTROL_MASK) and keyval == Gdk.KEY_f:
+        reveal = getattr(self, "toggle_sidebar_overlay", None)
+        if callable(reveal):
+            reveal(True)  # no-op unless the sidebar is collapsed
         self.search_entry.grab_focus()
         return True
 
@@ -3449,6 +3452,9 @@ def on_key_pressed(self, controller, keyval, keycode, state):
             return True
 
     if keyval == Gdk.KEY_Escape:
+        hide_sidebar = getattr(self, "_hide_sidebar_overlay", None)
+        if callable(hide_sidebar) and hide_sidebar():
+            return True
         if getattr(self, "now_playing_revealer", None) is not None and self.now_playing_revealer.get_reveal_child():
             self.hide_now_playing_overlay()
             return True
@@ -3546,13 +3552,15 @@ def toggle_mini_mode(self, btn):
         self.win.remove_css_class("mini-mode")
         self.win.set_decorated(True)
         self.win.set_resizable(True)
-        self.win.set_size_request(-1, -1)
+        self._apply_main_min_size()
         self.win.set_default_size(self.saved_width, self.saved_height)
         # Use saved_width directly — win.get_width() still returns the mini size
         # at this point because the window resize is asynchronous.
         sidebar_px = int(max(120, self.saved_width * float(ui_config.SIDEBAR_RATIO)))
         self.paned.set_position(sidebar_px)
         _reset_search_focus_after_layout_change(self, duration_ms=320)
+        # Mini mode overrode the bar's widgets; put back the current width tier's layout.
+        self._reconcile_layout_tier(force=True)
 
 
 def _build_user_popover(self):

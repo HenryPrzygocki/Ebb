@@ -158,6 +158,9 @@ def _restore_artists_page_state(app):
 def on_nav_selected(app, box, row):
     if not row or not str(getattr(row, "nav_id", "") or "").strip():
         return
+    hide_sidebar = getattr(app, "_hide_sidebar_overlay", None)
+    if callable(hide_sidebar):
+        hide_sidebar()  # fork: picking a page closes the floating sidebar on narrow windows
 
     _cancel_artist_albums_view(app)
     _restore_collection_content_margins(app)

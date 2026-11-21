@@ -411,6 +411,7 @@ def do_activate(self):
     key_controller.connect("key-pressed", self.on_key_pressed)
     self.win.add_controller(key_controller)
     self._install_global_keys()
+    self._install_adaptive_layout()
     _startup_mark("key-controller")
 
     self.win.present()

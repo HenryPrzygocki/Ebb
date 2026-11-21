@@ -18,6 +18,7 @@ from _rust.viz import RustVizCore
 from ui import config as ui_config
 from ui import context_menu
 from ui.track_table import LAYOUT, build_tracks_header, append_header_action_spacers
+from ui.track_table import adapt_track_row, track_columns  # fork: adaptive columns
 from core.errors import classify_exception, user_message
 
 logger = logging.getLogger(__name__)
@@ -803,6 +804,7 @@ def _build_queue_track_row(app, track, i, current_idx, compact):
         alb.set_max_width_chars(16)
         alb.set_margin_end(LAYOUT["cell_margin_end"])
         box.append(alb)
+        adapt_track_row(app, title_lbl, artist, alb)
 
         dur = int(getattr(track, "duration", 0) or 0)
         if dur > 0:
@@ -1415,6 +1417,7 @@ def render_search_tracks_page(app):
         lbl_alb.set_max_width_chars(16)
         lbl_alb.set_margin_end(LAYOUT["cell_margin_end"])
         row_box.append(lbl_alb)
+        adapt_track_row(app, lbl_title, lbl_art, lbl_alb)
 
         dur_sec = getattr(t, "duration", 0)
         if dur_sec:
@@ -1848,6 +1851,20 @@ def _build_track_row_overflow_menu(app, track):
     return menu_btn
 
 
+def _scrolling_tabs(switcher):
+    """Fork: a tab strip that scrolls sideways when the page is narrower than its tabs."""
+    scroller = Gtk.ScrolledWindow(
+        hscrollbar_policy=Gtk.PolicyType.AUTOMATIC,
+        vscrollbar_policy=Gtk.PolicyType.NEVER,
+        propagate_natural_width=True,
+        propagate_natural_height=True,
+        halign=Gtk.Align.START,
+        css_classes=["tab-strip-scroll"],
+    )
+    scroller.set_child(switcher)
+    return scroller
+
+
 def populate_tracks(app, tracks):
     app.current_track_list = tracks
     if app.playing_track_id:
@@ -1872,6 +1889,14 @@ def populate_tracks(app, tracks):
             selected_ids -= stale
             app.track_list_selected_track_ids = selected_ids
 
+    # Fork: on an album's own page every row's album cell repeats the page title.
+    _cur = getattr(app, "current_album", None)
+    album_page = (
+        _cur is not None
+        and type(_cur).__name__ == "Album"
+        and getattr(app, "current_remote_playlist", None) is None
+        and not getattr(app, "current_playlist_id", None)
+    )
     for i, t in enumerate(tracks):
         row = Gtk.ListBoxRow()
         row.track_id = t.id
@@ -1928,6 +1953,7 @@ def populate_tracks(app, tracks):
         lbl_alb.set_max_width_chars(16)
         lbl_alb.set_margin_end(LAYOUT["cell_margin_end"])
         box.append(lbl_alb)
+        adapt_track_row(app, lbl_title, lbl_art, lbl_alb, album_hidden=album_page)
 
         dur_sec = getattr(t, "duration", 0)
         if dur_sec:
@@ -3035,7 +3061,7 @@ def render_artist_detail(app, artist, render_token=None):
     albums_flow = Gtk.FlowBox(
         homogeneous=True,
         valign=Gtk.Align.START,
-        min_children_per_line=4,
+        min_children_per_line=1,
         max_children_per_line=10,
         selection_mode=Gtk.SelectionMode.NONE,
         column_spacing=16,
@@ -3062,7 +3088,7 @@ def render_artist_detail(app, artist, render_token=None):
     eps_flow = Gtk.FlowBox(
         homogeneous=True,
         valign=Gtk.Align.START,
-        min_children_per_line=4,
+        min_children_per_line=1,
         max_children_per_line=10,
         selection_mode=Gtk.SelectionMode.NONE,
         column_spacing=16,
@@ -3551,7 +3577,7 @@ def batch_load_home(app, sections):
 
         flow = Gtk.FlowBox(
             homogeneous=False,
-            min_children_per_line=2,
+            min_children_per_line=1,
             max_children_per_line=16,
             column_spacing=16,
             row_spacing=16,
@@ -3606,7 +3632,7 @@ def render_history_dashboard(app):
     history_stack.set_vhomogeneous(False)
     history_switcher = Gtk.StackSwitcher(stack=history_stack)
     history_switcher.set_halign(Gtk.Align.START)
-    tabs_box.append(history_switcher)
+    tabs_box.append(_scrolling_tabs(history_switcher))
     tabs_box.append(history_stack)
 
     # --- Tab 1: Top 100 (shell + header) ---
@@ -3890,7 +3916,7 @@ def render_top_dashboard(app, prefer_cache=True):
             top_stack.set_vhomogeneous(False)
             top_switcher = Gtk.StackSwitcher(stack=top_stack)
             top_switcher.set_halign(Gtk.Align.START)
-            tabs_box.append(top_switcher)
+            tabs_box.append(_scrolling_tabs(top_switcher))
             tabs_box.append(top_stack)
 
             def _open_item(item_data):
@@ -4174,7 +4200,7 @@ def render_top_dashboard(app, prefer_cache=True):
                 else:
                     flow = Gtk.FlowBox(
                         homogeneous=True,
-                        min_children_per_line=2,
+                        min_children_per_line=1,
                         max_children_per_line=16,
                         column_spacing=16,
                         row_spacing=16,
@@ -4261,7 +4287,7 @@ def render_new_dashboard(app, prefer_cache=True):
             new_stack.set_vhomogeneous(False)
             new_switcher = Gtk.StackSwitcher(stack=new_stack)
             new_switcher.set_halign(Gtk.Align.START)
-            tabs_box.append(new_switcher)
+            tabs_box.append(_scrolling_tabs(new_switcher))
             tabs_box.append(new_stack)
 
             def _open_item(item_data):
@@ -4532,7 +4558,7 @@ def render_new_dashboard(app, prefer_cache=True):
                 else:
                     flow = Gtk.FlowBox(
                         homogeneous=True,
-                        min_children_per_line=2,
+                        min_children_per_line=1,
                         max_children_per_line=16,
                         column_spacing=16,
                         row_spacing=16,
@@ -4619,7 +4645,7 @@ def render_hires_dashboard(app, prefer_cache=True):
             hires_stack.set_vhomogeneous(False)
             hires_switcher = Gtk.StackSwitcher(stack=hires_stack)
             hires_switcher.set_halign(Gtk.Align.START)
-            tabs_box.append(hires_switcher)
+            tabs_box.append(_scrolling_tabs(hires_switcher))
             tabs_box.append(hires_stack)
 
             def _open_item(item_data):
@@ -4689,7 +4715,7 @@ def render_hires_dashboard(app, prefer_cache=True):
                 tab_items, tab_page_box = _tab_data[tab_name]
                 flow = Gtk.FlowBox(
                     homogeneous=True,
-                    min_children_per_line=2,
+                    min_children_per_line=1,
                     max_children_per_line=16,
                     column_spacing=16,
                     row_spacing=16,
@@ -4796,7 +4822,7 @@ def render_decades_dashboard(app, prefer_cache=True):
         """Progressively append items into a FlowBox inside cat_box."""
         flow = Gtk.FlowBox(
             homogeneous=True,
-            min_children_per_line=2,
+            min_children_per_line=1,
             max_children_per_line=16,
             column_spacing=16,
             row_spacing=16,
@@ -4860,7 +4886,7 @@ def render_decades_dashboard(app, prefer_cache=True):
         decades_stack.set_hhomogeneous(False)
         decades_switcher = Gtk.StackSwitcher(stack=decades_stack)
         decades_switcher.set_halign(Gtk.Align.START)
-        tabs_box.append(decades_switcher)
+        tabs_box.append(_scrolling_tabs(decades_switcher))
         tabs_box.append(decades_stack)
 
         # placeholder boxes keyed by label
@@ -5062,7 +5088,7 @@ def _render_tabbed_page_dashboard(app, cfg, prefer_cache=True):
     def _populate_category(cat_box, items, more_path=None):
         flow = Gtk.FlowBox(
             homogeneous=True,
-            min_children_per_line=2,
+            min_children_per_line=1,
             max_children_per_line=16,
             column_spacing=16,
             row_spacing=16,
@@ -5722,7 +5748,7 @@ def render_collection_dashboard(app, favorite_tracks=None, favorite_albums=None)
         scroller.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
         flow = Gtk.FlowBox(
             homogeneous=True,
-            min_children_per_line=4,
+            min_children_per_line=1,
             max_children_per_line=10,
             column_spacing=16,
             row_spacing=16,
@@ -5841,6 +5867,7 @@ def render_queue_dashboard(app):
     app.collection_content_box.append(table_box)
 
     tracks_head, _head_btns = build_tracks_header(
+        app=app,
         on_sort_title=lambda _b: None,
         on_sort_artist=lambda _b: None,
         on_sort_album=lambda _b: None,
@@ -5931,6 +5958,7 @@ def render_uploads_dashboard(app, tracks=None):
         hint = Gtk.Label(
             label="No uploads yet. Upload your own music from the TIDAL app or web player and it will show up here.",
             xalign=0,
+            wrap=True,
             css_classes=["dim-label"],
             margin_start=8,
             margin_top=8,
@@ -5942,6 +5970,7 @@ def render_uploads_dashboard(app, tracks=None):
     app.collection_content_box.append(table_box)
 
     tracks_head, _head_btns = build_tracks_header(
+        app=app,
         on_sort_title=lambda _b: None,
         on_sort_artist=lambda _b: None,
         on_sort_album=lambda _b: None,
@@ -6005,6 +6034,7 @@ def render_uploads_dashboard(app, tracks=None):
         album_lbl.set_max_width_chars(16)
         album_lbl.set_margin_end(LAYOUT["cell_margin_end"])
         box.append(album_lbl)
+        adapt_track_row(app, title_lbl, artist_lbl, album_lbl)
 
         ready = _upload_ready(t)
         if ready:
@@ -6324,6 +6354,7 @@ def render_liked_songs_dashboard(app, tracks=None):
     app.collection_content_box.append(table_box)
 
     tracks_head, head_btns = build_tracks_header(
+        app=app,
         on_sort_title=lambda _b: None,
         on_sort_artist=lambda _b: None,
         on_sort_album=lambda _b: None,
@@ -6552,6 +6583,7 @@ def render_liked_songs_dashboard(app, tracks=None):
             album_lbl.set_max_width_chars(16)
             album_lbl.set_margin_end(LAYOUT["cell_margin_end"])
             box.append(album_lbl)
+            adapt_track_row(app, title_lbl, artist_lbl, album_lbl)
 
             dur = int(getattr(t, "duration", 0) or 0)
             m, s = divmod(max(0, dur), 60)
@@ -7064,6 +7096,7 @@ def render_playlist_detail(app, playlist_id):
     edit_mode = bool(getattr(app, "playlist_edit_mode", False))
 
     tracks_head, head_btns = build_tracks_header(
+        app=app,
         on_sort_title=lambda _b: app.on_playlist_sort_clicked("title"),
         on_sort_artist=lambda _b: app.on_playlist_sort_clicked("artist"),
         on_sort_album=lambda _b: app.on_playlist_sort_clicked("album"),
@@ -7131,6 +7164,7 @@ def render_playlist_detail(app, playlist_id):
         alb.set_max_width_chars(16)
         alb.set_margin_end(LAYOUT["cell_margin_end"])
         box.append(alb)
+        adapt_track_row(app, title_lbl, artist, alb)
         dur = int(getattr(t, "duration", 0) or 0)
         if dur > 0:
             m, s = divmod(dur, 60)

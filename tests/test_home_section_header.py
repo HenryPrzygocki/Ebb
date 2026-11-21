@@ -197,6 +197,9 @@ def test_render_hires_dashboard_omits_redundant_hires_tab(monkeypatch):
             self.visible_child_name = ""
             self.titled_children = []
 
+        def set_child(self, child):
+            self.append(child)
+
         def append(self, child):
             self.children.append(child)
 
@@ -251,6 +254,8 @@ def test_render_hires_dashboard_omits_redundant_hires_tab(monkeypatch):
         Box=_FakeWidget,
         Stack=_FakeWidget,
         StackSwitcher=_FakeWidget,
+        ScrolledWindow=_FakeWidget,
+        PolicyType=SimpleNamespace(AUTOMATIC="automatic", NEVER="never"),
         Label=_FakeWidget,
         FlowBox=_FakeWidget,
         FlowBoxChild=_FakeFlowBoxChild,
@@ -299,6 +304,9 @@ def test_render_decades_dashboard_uses_decade_labels_for_tabs(monkeypatch):
             self.visible_child_name = ""
             self.titled_children = []
             self._parent = None
+
+        def set_child(self, child):
+            self.append(child)
 
         def append(self, child):
             if hasattr(child, "_parent"):
@@ -379,6 +387,8 @@ def test_render_decades_dashboard_uses_decade_labels_for_tabs(monkeypatch):
         Box=_FakeWidget,
         Stack=_FakeWidget,
         StackSwitcher=_FakeWidget,
+        ScrolledWindow=_FakeWidget,
+        PolicyType=SimpleNamespace(AUTOMATIC="automatic", NEVER="never"),
         Label=_FakeWidget,
         FlowBox=_FakeWidget,
         FlowBoxChild=_FakeFlowBoxChild,

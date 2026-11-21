@@ -1,7 +1,7 @@
 import gi
 
 gi.require_version("Gtk", "4.0")
-from gi.repository import Gtk
+from gi.repository import GObject, Gtk
 
 
 LAYOUT = {
@@ -42,6 +42,7 @@ def build_tracks_header(
     artist_text="Artist",
     album_text="Album",
     time_text="Time",
+    app=None,
 ):
     head = Gtk.Box(
         spacing=LAYOUT["col_gap"],
@@ -68,6 +69,9 @@ def build_tracks_header(
     head.append(artist_head)
     head.append(album_head)
     head.append(dur_head)
+    if app is not None:
+        bind_track_column(app, artist_head, "artist-column")
+        bind_track_column(app, album_head, "album-column")
     return head, {"title": title_head, "artist": artist_head, "album": album_head, "time": dur_head}
 
 
@@ -136,3 +140,61 @@ def _build_header_action_spacer(kind):
 def append_header_action_spacers(head, kinds):
     for kind in list(kinds or []):
         head.append(_build_header_action_spacer(kind))
+
+
+# ---------------------------------------------------------------- fork: adaptive columns
+class TrackColumns(GObject.Object):
+    """Which optional track-table columns fit the content width.
+
+    Adw.Breakpoint setters on the content area flip these (ui.builders); every row binds its
+    labels' "visible" to them, so a resize updates thousands of rows without a Python loop.
+    With artist-column off, the artist shows under the title instead of in its own column.
+    """
+
+    artist_column = GObject.Property(type=bool, default=True)
+    album_column = GObject.Property(type=bool, default=True)
+
+
+def track_columns(app):
+    cols = getattr(app, "_track_columns", None)
+    if cols is None:
+        cols = TrackColumns()
+        app._track_columns = cols
+    return cols
+
+
+def bind_track_column(app, widget, prop, invert=False):
+    flags = GObject.BindingFlags.SYNC_CREATE
+    if invert:
+        flags |= GObject.BindingFlags.INVERT_BOOLEAN
+    track_columns(app).bind_property(prop, widget, "visible", flags)
+    return widget
+
+
+def adapt_track_row(app, title_widget, artist_widget, album_widget, album_hidden=False):
+    """Bind a built row's artist/album cells to the column state and give the title an artist line.
+
+    album_hidden: the page itself is one album, so the album cell would only repeat its title.
+    """
+    bind_track_column(app, artist_widget, "artist-column")
+    if album_hidden:
+        album_widget.set_visible(False)
+    else:
+        bind_track_column(app, album_widget, "album-column")
+    parent = title_widget.get_parent()
+    if parent is None:
+        return
+    prev = title_widget.get_prev_sibling()
+    cell = Gtk.Box(
+        orientation=Gtk.Orientation.VERTICAL,
+        hexpand=True,
+        valign=Gtk.Align.CENTER,
+        css_classes=["track-title-cell"],
+    )
+    parent.remove(title_widget)
+    cell.append(title_widget)
+    artist_text = artist_widget.get_label() if isinstance(artist_widget, Gtk.Label) else ""
+    sub = Gtk.Label(label=artist_text or "", xalign=0, ellipsize=3, css_classes=["dim-label", "track-subtitle"])
+    bind_track_column(app, sub, "artist-column", invert=True)
+    cell.append(sub)
+    parent.insert_child_after(cell, prev)

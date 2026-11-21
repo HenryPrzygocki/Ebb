@@ -714,7 +714,13 @@ def build_header(app, container):
 
     app.back_btn = Gtk.Button(icon_name="go-previous-symbolic", sensitive=False)
     app.back_btn.connect("clicked", app.on_back_clicked)
+    app.back_btn.set_tooltip_text("Back")
     app.header.pack_start(app.back_btn)
+    # Fork: only shown when the window is too narrow to dock the sidebar.
+    app.sidebar_toggle_btn = Gtk.Button(icon_name="sidebar-show-symbolic", visible=False)
+    app.sidebar_toggle_btn.set_tooltip_text("Browse and Search (Ctrl+F)")
+    app.sidebar_toggle_btn.connect("clicked", lambda _b: toggle_sidebar_overlay(app))
+    app.header.pack_start(app.sidebar_toggle_btn)
 
     app.search_entry = Gtk.Entry(
         placeholder_text="Search...",
@@ -728,6 +734,7 @@ def build_header(app, container):
     app.search_suggest_popover = _build_search_suggestions_popover(app)
 
     app.search_entry.connect("activate", lambda _entry: _close_search_suggestions(app))
+    app.search_entry.connect("activate", lambda _entry: hide_sidebar_overlay(app))
     app.search_entry.connect("changed", lambda entry: _on_search_entry_changed_for_suggestions(app, entry))
 
     focus_controller = Gtk.EventControllerFocus()
@@ -1249,8 +1256,16 @@ def build_body(app, container):
     app.paned.set_start_child(app.sidebar_box)
     app.paned.set_shrink_start_child(False)
     _body_mark("sidebar")
-    app.right_stack = Gtk.Stack(transition_type=Gtk.StackTransitionType.SLIDE_LEFT_RIGHT)
-    app.paned.set_end_child(app.right_stack)
+    # Fork: non-homogeneous, so a hidden page's width never props the window open.
+    app.right_stack = Gtk.Stack(
+        transition_type=Gtk.StackTransitionType.SLIDE_LEFT_RIGHT,
+        hhomogeneous=False,
+        vhomogeneous=False,
+    )
+    # Fork: the content area has its own width breakpoints (track columns, album hero);
+    # see install_adaptive_layout.
+    app.content_bin = Adw.BreakpointBin(child=app.right_stack, width_request=360, height_request=240)
+    app.paned.set_end_child(app.content_bin)
     _body_mark("right-stack")
 
     app._build_grid_view()
@@ -1370,7 +1385,7 @@ def build_player_bar(app, container):
     app.lbl_title = Gtk.Label(xalign=0, css_classes=["player-title"], ellipsize=3)
     app.lbl_title.set_single_line_mode(True)
     app.lbl_title.set_width_chars(-1)
-    app.lbl_title.set_max_width_chars(20)
+    app.lbl_title.set_max_width_chars(32)
     app.lbl_title.set_hexpand(False)
     app.lbl_title.set_halign(Gtk.Align.START)
     app.track_fav_btn = Gtk.Button(css_classes=["flat", "circular", "player-heart-btn"], icon_name="hiresti-favorite-outline-symbolic", valign=Gtk.Align.START)
@@ -1384,8 +1399,8 @@ def build_player_bar(app, container):
     app.lbl_artist.set_halign(Gtk.Align.START)
     _artist_lbl = Gtk.Label(xalign=0, css_classes=["player-artist"], ellipsize=3)
     _artist_lbl.set_single_line_mode(True)
-    _artist_lbl.set_width_chars(20)
-    _artist_lbl.set_max_width_chars(20)
+    _artist_lbl.set_width_chars(6)
+    _artist_lbl.set_max_width_chars(32)
     app.lbl_artist.set_child(_artist_lbl)
     app.lbl_artist._inner_label = _artist_lbl
     app.lbl_artist.connect("clicked", lambda _b: app.on_player_artist_clicked())
@@ -1394,8 +1409,8 @@ def build_player_bar(app, container):
     app.lbl_album.set_halign(Gtk.Align.START)
     _album_lbl = Gtk.Label(xalign=0, css_classes=["player-album"], ellipsize=3)
     _album_lbl.set_single_line_mode(True)
-    _album_lbl.set_width_chars(20)
-    _album_lbl.set_max_width_chars(20)
+    _album_lbl.set_width_chars(6)
+    _album_lbl.set_max_width_chars(32)
     app.lbl_album.set_child(_album_lbl)
     app.lbl_album._inner_label = _album_lbl
     app.lbl_album.connect("clicked", lambda _b: app.on_player_album_clicked())
@@ -1464,6 +1479,7 @@ def build_player_bar(app, container):
     app.timeline_box.append(app.lbl_total_time)
     # Fixed, centred width instead of filling the whole centre panel — the
     # bar stretched edge-to-edge on wide windows and read as too long.
+    # Fork: the width is per window tier (apply_layout_tier); 560 is the "full" tier.
     app.timeline_box.set_size_request(560, -1)
     app.timeline_box.set_hexpand(False)
     app.timeline_box.set_halign(Gtk.Align.CENTER)
@@ -1517,41 +1533,202 @@ def build_player_bar(app, container):
     app.player_right_panel = right_panel
     app.bottom_bar.set_end_widget(right_panel)
 
-    # Adaptive play bar: hide side panels when the bar is too narrow.
+    # Fork: width tiers come from window breakpoints (apply_layout_tier); upstream's
+    # notify::width handler never fired (GTK4 widgets have no width property).
     app._player_bar_layout_tier = "full"
 
-    def _on_player_bar_width_changed(*_args):
-        if getattr(app, "is_mini_mode", False):
-            return
-        w = app.bottom_bar.get_width()
-        if w <= 0:
-            return
-        prev = app._player_bar_layout_tier
-        if w < 700:
-            tier = "compact"
-        elif w < 920:
-            tier = "medium"
-        else:
-            tier = "full"
-        if tier == prev:
-            return
-        app._player_bar_layout_tier = tier
-        if tier == "compact":
-            app.info_area.set_visible(False)
-            app.vol_box.set_visible(False)
-            app.timeline_box.set_visible(True)
-            app.tech_box.set_visible(False)
-        elif tier == "medium":
-            app.info_area.set_visible(True)
-            app.vol_box.set_visible(False)
-            app.timeline_box.set_visible(True)
-            app.tech_box.set_visible(True)
-        else:
-            app.info_area.set_visible(True)
-            app.vol_box.set_visible(True)
-            app.timeline_box.set_visible(True)
-            app.tech_box.set_visible(True)
-
-    app.bottom_bar.connect("notify::width", _on_player_bar_width_changed)
-
     # Start/end use content width to avoid large dead space on wide windows.
+
+
+# ---------------------------------------------------------------- adaptive layout (fork)
+# Upstream pinned the window at >= 1034 px: the player bar is a Gtk.CenterBox, whose minimum is
+# the sum of its parts, and its timeline had a fixed 560 px size request. The bar's own width
+# tiers listened to notify::width, which GTK4 widgets don't have, so they never ran. Window
+# breakpoints now pick a tier; each tier's minimum content width fits the narrowest window in
+# it, so the app tiles in a half-width (or narrower) niri column.
+#           timeline  side ctrls  quality row  album  cover  text  sidebar collapsed
+_LAYOUT_TIERS = {
+    "full": (560, True, True, True, 80, 120, False),
+    "wide": (400, True, True, True, 80, 120, False),
+    "medium": (240, True, True, True, 64, 110, False),
+    "narrow": (220, False, False, True, 64, 110, True),
+    "tiny": (150, False, False, False, 56, 90, True),
+}
+_TIER_CONDITIONS = (
+    ("wide", "max-width: 1079px and min-width: 900px"),
+    ("medium", "max-width: 899px and min-width: 761px"),
+    ("narrow", "max-width: 760px and min-width: 601px"),
+    ("tiny", "max-width: 600px"),
+)
+MAIN_MIN_SIZE = (420, 480)
+
+
+def apply_main_min_size(app):
+    """Explicit minimum size: windows with breakpoints don't derive one from their content."""
+    win = getattr(app, "win", None)
+    if win is not None:
+        win.set_size_request(*MAIN_MIN_SIZE)
+
+
+def apply_layout_tier(app, tier):
+    """Size the player bar and the sidebar for a window-width tier (see _LAYOUT_TIERS)."""
+    spec = _LAYOUT_TIERS.get(tier)
+    if spec is None:
+        tier, spec = "full", _LAYOUT_TIERS["full"]
+    timeline, side, tech, album, cover, text, collapse = spec
+    app._layout_tier = tier
+    app._player_bar_layout_tier = tier
+    if not getattr(app, "is_mini_mode", False):  # mini mode owns the bar while it's active
+        if getattr(app, "timeline_box", None) is not None:
+            app.timeline_box.set_size_request(timeline, -1)
+        for name, show in (("vol_box", side), ("tech_box", tech), ("lbl_album", album)):
+            widget = getattr(app, name, None)
+            if widget is not None:
+                widget.set_visible(show)
+        if getattr(app, "art_img", None) is not None:
+            app.art_img.set_size_request(cover, cover)
+        if getattr(app, "player_text_box", None) is not None:
+            app.player_text_box.set_size_request(text, -1)
+    _set_sidebar_collapsed(app, collapse)
+
+
+def reconcile_layout_tier(app, force=False):
+    """Apply the tier of the window's current breakpoint ("full" when none applies)."""
+    win = getattr(app, "win", None)
+    current = win.get_current_breakpoint() if win is not None and hasattr(win, "get_current_breakpoint") else None
+    tier = "full"
+    for name, bp in (getattr(app, "_layout_breakpoints", None) or {}).items():
+        if bp is current:
+            tier = name
+    if force or tier != getattr(app, "_layout_tier", None):
+        apply_layout_tier(app, tier)
+    return False
+
+
+def install_adaptive_layout(app):
+    win = getattr(app, "win", None)
+    if win is None or not hasattr(win, "add_breakpoint"):
+        return
+    apply_main_min_size(app)
+    app._layout_breakpoints = {}
+    for name, condition in _TIER_CONDITIONS:
+        bp = Adw.Breakpoint.new(Adw.BreakpointCondition.parse(condition))
+        win.add_breakpoint(bp)
+        app._layout_breakpoints[name] = bp
+    win.connect("notify::current-breakpoint", lambda *_a: reconcile_layout_tier(app))
+    reconcile_layout_tier(app, force=True)
+    _install_content_breakpoints(app)
+
+
+def _install_content_breakpoints(app):
+    """Content-width breakpoints (independent of the sidebar): which track columns fit, album hero size.
+
+    Content width   Track table                         Album / playlist hero
+    >= 960          title | artist | album | time       full
+    820 - 959       title over artist | album | time    full
+    680 - 819       title over artist | time            full
+    580 - 679       title over artist | time            tighter margins
+    < 580           title over artist | time            action icons below Play/Shuffle
+
+    The cover keeps its size request: the scrolled page sizes the hero to its *minimum* height,
+    so a smaller request there lets the drawn cover overflow onto the track list.
+    """
+    content_bin = getattr(app, "content_bin", None)
+    if content_bin is None:
+        return
+    from ui.track_table import track_columns
+
+    cols = track_columns(app)
+    no_artist = [(cols, "artist-column", False)]
+    no_album = no_artist + [(cols, "album-column", False)]
+    tight = []
+    if getattr(app, "album_header_box", None) is not None:
+        tight += [(app.album_header_box, "margin-start", 16), (app.album_header_box, "margin-end", 16)]
+    small = list(tight)
+    primary = getattr(app, "album_primary_actions_box", None)
+    actions_row = primary.get_parent() if primary is not None else None
+    if actions_row is not None and getattr(app, "album_action_btns_box", None) is not None:
+        small += [
+            (actions_row, "orientation", Gtk.Orientation.VERTICAL),
+            (app.album_action_btns_box, "halign", Gtk.Align.START),
+        ]
+    # Several conditions can match at once; AdwBreakpointBin applies the last matching one.
+    for condition, setters in (
+        ("max-width: 959px", no_artist),
+        ("max-width: 819px", no_album),
+        ("max-width: 679px", no_album + tight),
+        ("max-width: 579px", no_album + small),
+    ):
+        bp = Adw.Breakpoint.new(Adw.BreakpointCondition.parse(condition))
+        for obj, prop, value in setters:
+            bp.add_setter(obj, prop, value)
+        content_bin.add_breakpoint(bp)
+
+
+def _sidebar_backdrop(app):
+    backdrop = getattr(app, "_sidebar_backdrop", None)
+    if backdrop is None:
+        backdrop = Gtk.Box(css_classes=["sidebar-backdrop"], hexpand=True, vexpand=True, visible=False)
+        click = Gtk.GestureClick()
+        click.connect("released", lambda *_a: hide_sidebar_overlay(app))
+        backdrop.add_controller(click)
+        app._sidebar_backdrop = backdrop
+    return backdrop
+
+
+def _set_sidebar_collapsed(app, collapsed):
+    """Narrow windows: move the sidebar out of the paned into a floating overlay (hidden)."""
+    collapsed = bool(collapsed)
+    if collapsed == bool(getattr(app, "_sidebar_collapsed", False)):
+        return
+    sidebar = getattr(app, "sidebar_box", None)
+    paned = getattr(app, "paned", None)
+    overlay = getattr(app, "body_overlay", None)
+    if sidebar is None or paned is None or overlay is None:
+        return
+    backdrop = _sidebar_backdrop(app)
+    if collapsed:
+        app._sidebar_collapsed = True
+        paned.set_start_child(None)
+        sidebar.add_css_class("sidebar-floating")
+        sidebar.set_halign(Gtk.Align.START)
+        sidebar.set_size_request(280, -1)
+        sidebar.set_visible(False)
+        backdrop.set_visible(False)
+        overlay.add_overlay(backdrop)
+        overlay.add_overlay(sidebar)
+    else:
+        overlay.remove_overlay(sidebar)
+        overlay.remove_overlay(backdrop)
+        sidebar.remove_css_class("sidebar-floating")
+        sidebar.set_halign(Gtk.Align.FILL)
+        sidebar.set_size_request(-1, -1)
+        sidebar.set_visible(True)
+        paned.set_start_child(sidebar)
+        paned.set_shrink_start_child(False)
+        app._sidebar_collapsed = False
+        restore = getattr(app, "_restore_paned_position_after_layout", None)
+        if callable(restore):
+            GLib.idle_add(restore)
+    toggle = getattr(app, "sidebar_toggle_btn", None)
+    if toggle is not None:
+        toggle.set_visible(collapsed)
+
+
+def toggle_sidebar_overlay(app, show=None):
+    """Show/hide the floating sidebar. No-op (returns False) while the sidebar is docked."""
+    if not getattr(app, "_sidebar_collapsed", False):
+        return False
+    sidebar = app.sidebar_box
+    if show is None:
+        show = not sidebar.get_visible()
+    sidebar.set_visible(bool(show))
+    _sidebar_backdrop(app).set_visible(bool(show))
+    return True
+
+
+def hide_sidebar_overlay(app):
+    """Close the floating sidebar if it's open; True when it was."""
+    if getattr(app, "_sidebar_collapsed", False) and app.sidebar_box.get_visible():
+        return toggle_sidebar_overlay(app, False)
+    return False
