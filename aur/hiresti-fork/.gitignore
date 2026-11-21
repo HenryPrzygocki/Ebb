@@ -1,0 +1,5 @@
+src/
+pkg/
+hiresTI/
+*.pkg.tar.*
+*.log

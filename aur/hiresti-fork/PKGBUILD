@@ -1,0 +1,136 @@
+# Private fork of yelanxin/hiresTI: upstream + local fixes (see `git log v1.9.12..main`).
+# Not for the AUR. Builds the committed `main` branch of the local checkout.
+#
+#   cd ~/Repository/hiresTI/aur/hiresti-fork && makepkg -f
+#   sudo pacman -U hiresti-fork-*.pkg.tar.zst     # replaces the AUR `hiresti`
+pkgname=hiresti-fork
+_appname=hiresti  # the launcher hardcodes /usr/share/hiresti; never use ${pkgname} for paths
+pkgver=1.9.12.r4.g0f58ff7
+pkgrel=1
+pkgdesc="High-Res TIDAL player for Linux (private fork with local fixes)"
+arch=('x86_64')
+url="https://github.com/yelanxin/hiresTI"
+license=('GPL-3.0-or-later')
+# Same as upstream: ring's cc-built objects break under -flto (undefined ring_core_* symbols).
+options=('!lto')
+depends=(
+  'alsa-lib'
+  'gst-plugin-pipewire'
+  'gst-plugins-bad'
+  'gst-plugins-good'
+  'gst-plugins-ugly'
+  'gst-python'
+  'gstreamer'
+  'gtk4'
+  'libadwaita'
+  'libpulse'  # also provides pactl, used by the PipeWire sink watch
+  'pipewire'
+  'python'
+  'python-cairo'
+  'python-dateutil'
+  'python-gobject'
+  'python-isodate'
+  'python-mpegdash'
+  'python-opengl'
+  'python-pyaes'
+  'python-requests'
+  'python-six'
+  'python-tidalapi'
+  'python-typing_extensions'
+  'python-setproctitle'
+  'libusb'
+  'mesa'
+  'libglvnd'
+  'webkitgtk-6.0'
+  'polkit'
+  'acl'
+)
+makedepends=(
+  'cargo'
+  'clang'
+  'git'
+  'pkgconf'
+  'rust'
+)
+optdepends=(
+  'python-pillow: tray icon image loading'
+  'python-pystray: system tray integration'
+  'python-qrcode: QR-code login flow'
+)
+provides=("hiresti=${pkgver%%.r*}")
+conflicts=(
+  'hiresti'
+  'hiresti-bin'
+  'hiresti-git'
+)
+source=("hiresTI::git+file://${HOME}/Repository/hiresTI#branch=main")
+sha256sums=('SKIP')
+
+pkgver() {
+  cd hiresTI
+  git describe --long --tags --abbrev=7 | sed 's/^v//;s/\([^-]*-g\)/r\1/;s/-/./g'
+}
+
+build() {
+  cd hiresTI
+
+  cargo build --manifest-path src_rust/rust_audio_core/Cargo.toml --release
+  cargo build --manifest-path src_rust/rust_viz_core/Cargo.toml --release
+  cargo build --manifest-path src_rust/rust_launcher/Cargo.toml --release
+}
+
+package() {
+  cd hiresTI
+
+  local app_dir="${pkgdir}/usr/share/${_appname}"
+
+  install -d "${app_dir}"
+  install -d "${pkgdir}/usr/share/applications"
+  install -d "${pkgdir}/usr/share/icons/hicolor"
+  install -d "${pkgdir}/usr/share/metainfo"
+  install -d "${pkgdir}/usr/lib/udev/rules.d"
+
+  cp -a src/. "${app_dir}/"
+  cp -a icons "${app_dir}/"
+  # icons/source/ is an unused 7.3 MB copy of the old bloated SVG; nothing loads it.
+  rm -rf "${app_dir}/icons/source"
+
+  install -Dm644 version.txt "${app_dir}/version.txt"
+  install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+
+  install -Dm755 src_rust/rust_audio_core/target/release/librust_audio_core.so \
+    "${app_dir}/src_rust/rust_audio_core/target/release/librust_audio_core.so"
+  install -Dm755 src_rust/rust_viz_core/target/release/libviz_core.so \
+    "${app_dir}/src_rust/rust_viz_core/target/release/libviz_core.so"
+  install -Dm755 src_rust/rust_launcher/target/release/hiresti \
+    "${pkgdir}/usr/bin/hiresti"
+
+  cp -a icons/hicolor/. "${pkgdir}/usr/share/icons/hicolor/"
+  install -Dm644 icons/hicolor/128x128/apps/hiresti.png \
+    "${pkgdir}/usr/share/icons/hicolor/128x128/apps/com.hiresti.player.png"
+  install -Dm644 icons/hicolor/scalable/apps/hiresti.svg \
+    "${pkgdir}/usr/share/icons/hicolor/scalable/apps/com.hiresti.player.svg"
+
+  # USB Rawlink access, as upstream's deb/rpm ship it (the AUR PKGBUILD never did, so
+  # Rawlink depended on the in-app pkexec "Fix USB Permissions" writing into /etc).
+  # Numbered before 73-seat-late.rules, where systemd turns TAG+="uaccess" into ACLs.
+  cat > "${pkgdir}/usr/lib/udev/rules.d/70-hiresti-usb-audio.rules" <<'EOF'
+# HiresTI USB Rawlink - grant logged-in user access to USB audio devices
+SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ENV{ID_USB_INTERFACES}=="*:01????:*", TAG+="uaccess"
+EOF
+
+  cat > "${pkgdir}/usr/share/applications/com.hiresti.player.desktop" <<'EOF'
+[Desktop Entry]
+Name=HiresTI
+Comment=High-Res TIDAL player for Linux
+Exec=hiresti
+Icon=hiresti
+Terminal=false
+Type=Application
+Categories=AudioVideo;Audio;Player;Music;
+StartupWMClass=HiresTI
+EOF
+
+  install -Dm644 flatpak/com.hiresti.player.metainfo.xml \
+    "${pkgdir}/usr/share/metainfo/com.hiresti.player.metainfo.xml"
+}
