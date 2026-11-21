@@ -1610,7 +1610,7 @@ flowboxchild { background-color: transparent; padding: 0; margin: 0; }
     background-color: rgba(0, 0, 0, 0.92);
 }
 .album-header-bg {
-    opacity: 0.45;
+    opacity: 0.6;
     /* fork: a soft colour wash instead of a sharp, cropped cover or mosaic */
     filter: blur(28px);
 }
@@ -1947,6 +1947,11 @@ flowboxchild { background-color: transparent; padding: 0; margin: 0; }
 .track-row:focus-within .playlist-tool-btn {
   opacity: 1;
 }
+
+/* fork: empty states */
+.player-title.player-idle { opacity: 0.45; font-weight: 600; }
+.playback-art { background-color: alpha(currentColor, 0.06); border-radius: 8px; }
+.track-list-placeholder label { font-size: 1.05em; }
 """
 
 

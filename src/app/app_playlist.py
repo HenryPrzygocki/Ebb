@@ -5,6 +5,7 @@ Contains playlist creation, editing and management methods.
 import logging
 from gi.repository import Gtk, GLib
 from core.executor import submit_daemon
+from ui.track_table import clear_track_rows  # fork
 
 logger = logging.getLogger(__name__)
 
@@ -251,6 +252,9 @@ def on_remote_playlist_card_clicked(self, playlist_obj):
     self.header_artist.set_text(creator_name)
     self.header_artist.set_tooltip_text(creator_name)
     self.header_meta.set_text("")
+    if getattr(self, "track_list_placeholder_label", None) is not None:  # fork: empty-list state
+        self.track_list_placeholder_label.set_text("Loading tracks…")
+        self.track_list_placeholder_retry.set_visible(False)
     if hasattr(self, "similar_albums_box"):
         self.similar_albums_box.set_visible(False)
     if self.fav_btn is not None:
@@ -272,8 +276,7 @@ def on_remote_playlist_card_clicked(self, playlist_obj):
     if hasattr(self, "album_header_bg") and self.album_header_bg is not None:
         _load_album_header_bg(self, lambda: self.backend.get_artwork_url(playlist_obj, 640))
 
-    while c := self.track_list.get_first_child():
-        self.track_list.remove(c)
+    clear_track_rows(self.track_list)  # fork: keeps the empty-list placeholder
 
     # Clean up previous lazy-load hook (if any).
     try:

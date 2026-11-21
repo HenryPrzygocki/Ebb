@@ -18,7 +18,7 @@ from _rust.viz import RustVizCore
 from ui import config as ui_config
 from ui import context_menu
 from ui.track_table import LAYOUT, build_tracks_header, append_header_action_spacers
-from ui.track_table import adapt_track_row, track_columns  # fork: adaptive columns
+from ui.track_table import adapt_track_row, clear_track_rows, track_columns  # fork
 from core.errors import classify_exception, user_message
 
 logger = logging.getLogger(__name__)
@@ -1712,6 +1712,7 @@ def _load_album_header_bg(app, url_provider):
 
 
 def show_album_details(app, alb):
+    _set_track_list_placeholder(app, "Loading tracks…")
     # Invalidate any in-flight playlist page-load callbacks so they don't
     # overwrite the track list we're about to populate with album tracks.
     app._remote_pl_render_token = int(getattr(app, "_remote_pl_render_token", 0) or 0) + 1
@@ -1786,8 +1787,7 @@ def show_album_details(app, alb):
 
     _ensure_play_shuffle_btns(app)
 
-    while c := app.track_list.get_first_child():
-        app.track_list.remove(c)
+    clear_track_rows(app.track_list)  # fork: keeps the empty-list placeholder
     app.album_sort_field = None
     app.album_sort_asc = True
     if hasattr(app, "_update_album_sort_headers"):
@@ -1876,6 +1876,44 @@ def _scrolling_tabs(switcher):
     return scroller
 
 
+def _set_track_list_placeholder(app, text, can_retry=False):
+    label = getattr(app, "track_list_placeholder_label", None)
+    if label is None:
+        return
+    label.set_text(text)
+    retry = getattr(app, "track_list_placeholder_retry", None)
+    if retry is not None:
+        retry.set_visible(bool(can_retry))
+
+
+def _update_track_list_placeholder(app, tracks):
+    """Fork: the album/playlist list was blank when loading failed (get_tracks returns [])."""
+    if tracks:
+        _set_track_list_placeholder(app, "")
+        return
+    pl = getattr(app, "current_remote_playlist", None)
+    cur = getattr(app, "current_album", None)
+    if pl is not None:
+        if int(getattr(pl, "num_tracks", 0) or 0) > 0:
+            _set_track_list_placeholder(app, "Couldn't load this playlist's tracks.", True)
+        else:
+            _set_track_list_placeholder(app, "This playlist is empty.")
+    elif cur is not None and "Mix" in type(cur).__name__:
+        _set_track_list_placeholder(app, "Couldn't load this mix.", True)
+    else:
+        _set_track_list_placeholder(
+            app, "Couldn't load this album's tracks. It may not be available in your region.", True
+        )
+
+
+def retry_track_view(app):
+    pl = getattr(app, "current_remote_playlist", None)
+    if pl is not None:
+        app.on_remote_playlist_card_clicked(pl)
+    elif getattr(app, "current_album", None) is not None:
+        app.show_album_details(app.current_album)
+
+
 def populate_tracks(app, tracks):
     app.current_track_list = tracks
     if app.playing_track_id:
@@ -1887,8 +1925,7 @@ def populate_tracks(app, tracks):
         if found_idx != -1:
             app.current_index = found_idx
 
-    while c := app.track_list.get_first_child():
-        app.track_list.remove(c)
+    clear_track_rows(app.track_list)  # fork: keeps the empty-list placeholder
 
     select_mode = bool(getattr(app, "track_list_select_mode", False))
     selected_ids = getattr(app, "track_list_selected_track_ids", None) or set()
@@ -1908,6 +1945,7 @@ def populate_tracks(app, tracks):
         and getattr(app, "current_remote_playlist", None) is None
         and not getattr(app, "current_playlist_id", None)
     )
+    _update_track_list_placeholder(app, tracks)
     for i, t in enumerate(tracks):
         row = Gtk.ListBoxRow()
         row.track_id = t.id

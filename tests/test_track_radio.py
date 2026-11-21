@@ -102,7 +102,7 @@ def test_show_album_details_selects_mixes_sidebar_for_mix(monkeypatch):
         remote_playlist_edit_btn=None,
         remote_playlist_visibility_btn=None,
         remote_playlist_more_btn=None,
-        track_list=SimpleNamespace(get_first_child=lambda: None),
+        track_list=SimpleNamespace(get_first_child=lambda: None, get_row_at_index=lambda _i: None),
         album_sort_field=None,
         album_sort_asc=True,
         _update_fav_icon=lambda *_args: None,

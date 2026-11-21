@@ -54,6 +54,7 @@ def bind_action_delegates(TidalApp, seen=None):
         render_search_tracks_page,
         render_new_dashboard,
         render_top_dashboard,
+        retry_track_view,
         show_album_details,
     )
     from actions.ui_navigation import on_artist_clicked, on_back_clicked, on_nav_selected
@@ -105,6 +106,7 @@ def bind_action_delegates(TidalApp, seen=None):
         ("on_device_changed", on_device_changed),
         ("_refresh_output_status_loop", update_output_status_ui),
         ("_build_header", build_header),
+        ("retry_track_view", retry_track_view),
         ("_install_adaptive_layout", install_adaptive_layout),
         ("_apply_layout_tier", apply_layout_tier),
         ("_reconcile_layout_tier", reconcile_layout_tier),

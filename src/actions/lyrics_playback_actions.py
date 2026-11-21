@@ -354,6 +354,7 @@ def play_track(app, index, from_history=False):
         artist = getattr(track.artist, "name", "Unknown Artist")
         album = getattr(track.album, "name", "Unknown Album")
         app.lbl_title.set_label(title)
+        app.lbl_title.remove_css_class("player-idle")  # fork
         app.lbl_artist._inner_label.set_label(artist)
         app.lbl_album._inner_label.set_label(album)
         app.lbl_title.set_tooltip_text(title)

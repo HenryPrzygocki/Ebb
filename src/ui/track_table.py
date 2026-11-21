@@ -198,3 +198,10 @@ def adapt_track_row(app, title_widget, artist_widget, album_widget, album_hidden
     bind_track_column(app, sub, "artist-column", invert=True)
     cell.append(sub)
     parent.insert_child_after(cell, prev)
+
+
+def clear_track_rows(listbox):
+    """Fork: remove the rows only. A ListBox's placeholder is a child widget too, so walking
+    get_first_child() (or calling remove_all()) also removes and drops the placeholder."""
+    while (row := listbox.get_row_at_index(0)) is not None:
+        listbox.remove(row)

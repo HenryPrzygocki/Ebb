@@ -193,6 +193,8 @@ def build_tracks_view(app):
     app.album_header_bg.add_css_class("album-header-bg")
     app.album_header_bg.set_can_target(False)
     app.album_header_overlay.add_overlay(app.album_header_bg)
+    # Fork: the background is blurred (CSS); clip it so the blur doesn't glow past the hero.
+    app.album_header_overlay.set_overflow(Gtk.Overflow.HIDDEN)
 
     album_header_dim = Gtk.Box(
         css_classes=["album-header-bg-dim"], hexpand=True, vexpand=True,
@@ -373,6 +375,21 @@ def build_tracks_view(app):
     app.track_list = Gtk.ListBox(css_classes=["tracks-list"], margin_start=0, margin_end=0, margin_bottom=32)
     app.track_list_base_margin_bottom = 32
     app.track_list.connect("row-activated", app.on_track_selected)
+    # Fork: an empty list says why (still loading, failed load, empty playlist) with a retry.
+    placeholder = Gtk.Box(
+        orientation=Gtk.Orientation.VERTICAL, spacing=12, margin_top=32, margin_bottom=32,
+        halign=Gtk.Align.CENTER, css_classes=["track-list-placeholder"],
+    )
+    app.track_list_placeholder_label = Gtk.Label(
+        wrap=True, justify=Gtk.Justification.CENTER, max_width_chars=48, css_classes=["dim-label"],
+    )
+    app.track_list_placeholder_retry = Gtk.Button(
+        label="Try Again", halign=Gtk.Align.CENTER, visible=False, css_classes=["pill"],
+    )
+    app.track_list_placeholder_retry.connect("clicked", lambda _b: app.retry_track_view())
+    placeholder.append(app.track_list_placeholder_label)
+    placeholder.append(app.track_list_placeholder_retry)
+    app.track_list.set_placeholder(placeholder)
     trk_body.append(app.track_list)
 
     app.track_list_select_revealer = Gtk.Revealer(

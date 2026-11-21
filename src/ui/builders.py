@@ -1383,6 +1383,9 @@ def build_player_bar(app, container):
     text_box.set_size_request(120, -1)
     title_row = Gtk.Box(spacing=2, valign=Gtk.Align.CENTER, hexpand=False)
     app.lbl_title = Gtk.Label(xalign=0, css_classes=["player-title"], ellipsize=3)
+    # Fork: say so when nothing is playing instead of leaving a blank hole (cleared in play_track).
+    app.lbl_title.set_label("Nothing playing")
+    app.lbl_title.add_css_class("player-idle")
     app.lbl_title.set_single_line_mode(True)
     app.lbl_title.set_width_chars(-1)
     app.lbl_title.set_max_width_chars(32)
