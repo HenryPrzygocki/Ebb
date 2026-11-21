@@ -1,4 +1,4 @@
-from threading import Thread
+from threading import Lock, Thread
 from types import SimpleNamespace
 import logging
 import os
@@ -13,6 +13,7 @@ gi.require_version('Gtk', '4.0')
 from gi.repository import Gtk, GLib, Gdk
 
 from core.executor import submit_daemon
+from actions.pipewire_sink_watch import PipeWireSinkWatch
 
 logger = logging.getLogger(__name__)
 
@@ -472,7 +473,14 @@ def _refresh_devices_for_current_driver_ui_only(app, reason="hotplug-watch", pre
             if hasattr(app, "_update_dsp_ui_state"):
                 app._update_dsp_ui_state()
             logger.info("Output device list refreshed (%s): %d devices", reason, len(devices))
-            if reason == "hotplug-watch" and added and hasattr(app, "show_output_notice"):
+            # Fork: for PipeWire with a saved sink, the sink watch owns "device came
+            # back" (follows the node name, re-attaches); don't race it by name here.
+            if (
+                reason == "hotplug-watch"
+                and added
+                and hasattr(app, "show_output_notice")
+                and not _pw_sink_watch_owns(app, driver_name)
+            ):
                 remembered_name = str(getattr(app, "_last_disconnected_device_name", "") or "")
                 remembered_driver = str(getattr(app, "_last_disconnected_driver", "") or "")
                 if remembered_name and remembered_driver == driver_name and remembered_name in added:
@@ -1230,6 +1238,78 @@ def on_recover_output_clicked(app, _btn=None):
     update_output_status_ui(app)
 
 
+# --- Fork: PipeWire sink watch ------------------------------------------------
+_PW_SINK_WATCH_LOCK = Lock()
+
+
+def _pipewire_preferred_sink(app):
+    """Node name of the user's saved PipeWire sink; None for the default sink or another driver."""
+    settings = getattr(app, "settings", None) or {}
+    if str(settings.get("driver") or "") != "PipeWire":
+        return None
+    node = str(settings.get("device_id") or "").strip()
+    if not node or node == "pipewire" or node.startswith(("pipewire:", "pwcardprofile:")):
+        return None
+    return node
+
+
+def _pw_sink_watch_owns(app, driver_name):
+    """True when the sink watch, not the name-based hotplug path, handles 'device came back'."""
+    return (
+        driver_name == "PipeWire"
+        and getattr(app, "_pw_sink_watch", None) is not None
+        and _pipewire_preferred_sink(app) is not None
+    )
+
+
+def _reattach_pipewire_sink(app, node):
+    """Re-apply the PipeWire output to the saved sink after its node was (re)created.
+
+    Same action as re-picking the device by hand, which is what recovers a stream
+    left attached to a dead node after a USB reset. GTK main thread only.
+    """
+    player = getattr(app, "player", None)
+    driver_dd = getattr(app, "driver_dd", None)
+    drv_item = driver_dd.get_selected_item() if driver_dd is not None else None
+    if player is None or drv_item is None or drv_item.get_string() != "PipeWire":
+        return
+    if node != _pipewire_preferred_sink(app):
+        return  # the user picked something else while the event was in flight
+    if str(getattr(player, "output_state", "") or "") == "switching":
+        return
+    name = next(
+        (d.get("name") for d in (getattr(app, "current_device_list", None) or []) if d.get("device_id") == node),
+        None,
+    ) or str(app.settings.get("device") or node)
+    logger.info("PipeWire sink watch: re-attaching output to %s (%s)", name, node)
+    if not player.set_output("PipeWire", node):
+        logger.warning("PipeWire sink watch: re-attach to %s failed", node)
+        update_output_status_ui(app)
+        return
+    app._last_disconnected_device_name = ""
+    app._last_disconnected_driver = ""
+    _stop_output_hotplug_watch(app)
+    _refresh_devices_for_current_driver_ui_only(app, reason="pipewire-sink-watch", prefer_device_id=node)
+    if hasattr(app, "_apply_viz_sync_offset_for_device"):
+        app._apply_viz_sync_offset_for_device("PipeWire", device_id=node, device_name=name)
+    update_output_status_ui(app)
+    if hasattr(app, "show_output_notice"):
+        app.show_output_notice(f"Output re-attached: {name}", "ok", 2600)
+
+
+def ensure_pipewire_sink_watch(app):
+    """Start the PipeWire sink watch once per app. Idempotent; safe from any thread."""
+    with _PW_SINK_WATCH_LOCK:
+        if getattr(app, "_pw_sink_watch", None) is not None:
+            return
+        watch = PipeWireSinkWatch(
+            preferred_sink=lambda: _pipewire_preferred_sink(app),
+            on_sink_returned=lambda node: _reattach_pipewire_sink(app, node),
+        )
+        app._pw_sink_watch = watch
+    watch.start()
+
+
 def on_latency_changed(app, dd, p):
     selected = dd.get_selected_item()
     if not selected:
@@ -1443,6 +1523,9 @@ def on_driver_changed(app, dd, p):
                     )
                 if ok:
                     _schedule_output_refresh_after_usb_release(app, previous_driver_name, driver_name)
+                if ok and driver_name == "PipeWire":
+                    # Fork: follow the saved sink across USB resets / PipeWire restarts.
+                    ensure_pipewire_sink_watch(app)
                 if hasattr(app, "_update_dsp_ui_state"):
                     GLib.idle_add(lambda: (app._update_dsp_ui_state(), False)[1])
                 GLib.idle_add(lambda: update_output_status_ui(app) or False)
