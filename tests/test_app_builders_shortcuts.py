@@ -114,9 +114,16 @@ def test_w_toggles_now_playing_when_search_is_not_focused():
     assert calls == ["toggle"]
 
 
-def test_w_does_not_intercept_search_typing_when_now_playing_is_closed():
+def test_w_does_not_intercept_search_typing_when_now_playing_is_closed(monkeypatch):
+    class _Text:
+        def get_parent(self):
+            return None
+
+    # Fork: focus is read from the window (GTK4 entries focus an inner Gtk.Text child).
+    monkeypatch.setattr(app_builders, "_TEXT_INPUT_TYPES", (_Text,))
     calls = []
     app = SimpleNamespace(
+        win=SimpleNamespace(get_focus=lambda: _Text()),
         search_entry=_Entry(focused=True),
         now_playing_revealer=_Revealer(reveal=False),
         toggle_now_playing_overlay=lambda *_args: calls.append("toggle"),

@@ -3359,19 +3359,72 @@ def _sync_hw_volume_ch_slider_positions(self):
         self._hw_vol_ch_programmatic = False
 
 
-def on_key_pressed(self, controller, keyval, keycode, state):
-    if keyval == Gdk.KEY_space:
-        if not self.search_entry.has_focus():
-            self.on_play_pause(self.play_btn)
+# Widgets that keep Space and Ctrl+arrows for editing text.
+_TEXT_INPUT_TYPES = (Gtk.Editable, Gtk.TextView)
+_SPACE_KEYS = (Gdk.KEY_space, Gdk.KEY_KP_Space)
+_SHORTCUT_MODS = Gdk.ModifierType.CONTROL_MASK | Gdk.ModifierType.ALT_MASK | Gdk.ModifierType.SUPER_MASK
+
+
+def _focus_in_text_input(self):
+    """Whether keyboard focus is in a text field (search, a rename entry in a popover, ...).
+
+    GTK4 entries put focus on an internal Gtk.Text child, so `search_entry.has_focus()` is
+    False even while typing in it; walk up from the real focus widget instead.
+    """
+    win = getattr(self, "win", None)
+    widget = win.get_focus() if win is not None else None
+    while widget is not None:
+        if isinstance(widget, _TEXT_INPUT_TYPES):
             return True
+        widget = widget.get_parent()
+    return False
 
-    if (state & Gdk.ModifierType.CONTROL_MASK) and keyval == Gdk.KEY_Right:
-        self.on_next_track()
-        return True
 
-    if (state & Gdk.ModifierType.CONTROL_MASK) and keyval == Gdk.KEY_Left:
-        self.on_prev_track()
+def on_global_key_pressed(self, controller, keyval, keycode, state):
+    """Capture-phase shortcuts: these run before the focused widget sees the key.
+
+    Fork: upstream handled Space in the bubble phase, after the focused widget. A focused track
+    row activates on Space, so Space restarted the song instead of pausing it, and a focused
+    button or album tile swallowed it. Focused album grids likewise ate Ctrl+Left/Right.
+    """
+    mods = state & _SHORTCUT_MODS
+    if keyval in _SPACE_KEYS and not mods:
+        if _focus_in_text_input(self):
+            return False
+        # Ignore key repeat: holding Space would otherwise toggle playback ~30 times a second.
+        if not getattr(self, "_space_held", False):
+            self._space_held = True
+            self.on_play_pause(self.play_btn)
         return True
+    if mods == Gdk.ModifierType.CONTROL_MASK and keyval in (Gdk.KEY_Left, Gdk.KEY_Right):
+        if _focus_in_text_input(self):
+            return False  # word jumps
+        if keyval == Gdk.KEY_Right:
+            self.on_next_track()
+        else:
+            self.on_prev_track()
+        return True
+    return False
+
+
+def on_global_key_released(self, controller, keyval, keycode, state):
+    if keyval in _SPACE_KEYS:
+        self._space_held = False
+
+
+def _install_global_keys(self):
+    controller = Gtk.EventControllerKey(propagation_phase=Gtk.PropagationPhase.CAPTURE)
+    controller.connect("key-pressed", lambda c, kv, kc, st: on_global_key_pressed(self, c, kv, kc, st))
+    controller.connect("key-released", lambda c, kv, kc, st: on_global_key_released(self, c, kv, kc, st))
+    self.win.add_controller(controller)
+    # The release is lost if the window loses focus mid-press; don't stay "held" forever.
+    self.win.connect("notify::is-active", lambda *_a: setattr(self, "_space_held", False))
+    self._global_key_controller = controller
+    return controller
+
+
+def on_key_pressed(self, controller, keyval, keycode, state):
+    typing = _focus_in_text_input(self)
 
     if (state & Gdk.ModifierType.CONTROL_MASK) and keyval == Gdk.KEY_f:
         self.search_entry.grab_focus()
@@ -3382,7 +3435,7 @@ def on_key_pressed(self, controller, keyval, keycode, state):
             getattr(self, "queue_revealer", None) is not None
             and self.queue_revealer.get_reveal_child()
         )
-        if queue_open or not self.search_entry.has_focus():
+        if queue_open or not typing:
             self.toggle_queue_drawer()
             return True
 
@@ -3391,7 +3444,7 @@ def on_key_pressed(self, controller, keyval, keycode, state):
             getattr(self, "now_playing_revealer", None) is not None
             and self.now_playing_revealer.get_reveal_child()
         )
-        if now_playing_open or not self.search_entry.has_focus():
+        if now_playing_open or not typing:
             self.toggle_now_playing_overlay()
             return True
 
@@ -3403,7 +3456,7 @@ def on_key_pressed(self, controller, keyval, keycode, state):
             self.close_queue_drawer()
             return True
 
-    if keyval == Gdk.KEY_Tab and not self.search_entry.has_focus():
+    if keyval == Gdk.KEY_Tab and not typing:
         self.toggle_visualizer(self.viz_btn)
         return True
 
