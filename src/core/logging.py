@@ -79,7 +79,13 @@ def setup_logging() -> None:
     console.setFormatter(formatter)
     root.addHandler(console)
 
-    log_file = os.getenv("HIRESTI_LOG_FILE")
+    # Fork: default to a rotating file under $XDG_STATE_HOME/hiresti. Desktop
+    # launches send stdout/stderr to /dev/null, so without a file a device drop
+    # or playback stall leaves no trace at all. HIRESTI_LOG_FILE="" disables it.
+    log_file = os.environ.get("HIRESTI_LOG_FILE")
+    if log_file is None:
+        state_home = os.environ.get("XDG_STATE_HOME") or os.path.join(os.path.expanduser("~"), ".local", "state")
+        log_file = os.path.join(state_home, "hiresti", "hiresti.log")
     if log_file:
         path = Path(log_file).expanduser()
         path.parent.mkdir(parents=True, exist_ok=True)
