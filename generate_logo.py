@@ -1,3 +1,4 @@
+import io
 import os
 import sys
 import base64
@@ -7,6 +8,12 @@ from PIL import Image
 OUTPUT_DIR = "icons/hicolor"
 # Linux 标准图标尺寸
 SIZES = [16, 24, 32, 48, 64, 128, 256, 512]
+# Max edge of the raster embedded in the "scalable" SVG. Icon loaders (Qt's
+# QSvgIconEngine especially) re-parse the whole SVG on the GUI thread for every
+# size they render. Embedding the full-resolution source (2048 px, i.e. 7.3 MB of
+# base64) froze Qt-based shells such as DMS/Quickshell for seconds each time
+# HiresTI gained focus. 256 px covers every icon slot.
+SVG_EMBED_MAX = 256
 # =======================================
 
 def generate_pngs(img, base_dir):
@@ -29,14 +36,14 @@ def generate_svg(source_path, base_dir):
     svg_dir = os.path.join(base_dir, "scalable", "apps")
     os.makedirs(svg_dir, exist_ok=True)
     
-    # 读取图片并转为 Base64
-    with open(source_path, "rb") as f:
-        img_data = f.read()
-        b64_data = base64.b64encode(img_data).decode("utf-8")
-        
-    # 获取原始尺寸
+    # 读取图片, 缩小到 SVG_EMBED_MAX 后转为 Base64 (see SVG_EMBED_MAX above)
     with Image.open(source_path) as img:
+        img = img.convert("RGBA")
+        img.thumbnail((SVG_EMBED_MAX, SVG_EMBED_MAX), Image.Resampling.LANCZOS)
         w, h = img.size
+        buf = io.BytesIO()
+        img.save(buf, "PNG", optimize=True)
+    b64_data = base64.b64encode(buf.getvalue()).decode("utf-8")
 
     # 构建 SVG 内容 (嵌入位图，保留金属质感)
     svg_content = f"""<?xml version="1.0" encoding="UTF-8" standalone="no"?>
