@@ -1680,6 +1680,7 @@ flowboxchild { background-color: transparent; padding: 0; margin: 0; }
 /* fork #25: queue rows waiting in Up Next */
 .track-row.queue-up-next { box-shadow: inset 3px 0 alpha(@accent_color, 0.85); }
 .queue-up-next-pill { font-size: 10px; font-weight: 700; padding: 1px 7px; border-radius: 999px; color: @accent_color; background-color: alpha(@accent_bg_color, 0.16); }
+.queue-up-next-caption { font-size: 10px; font-weight: 700; color: @accent_color; }
 .ebb-step-badge { min-width: 26px; min-height: 26px; border-radius: 999px; font-weight: 700; font-size: 12px; color: @accent_color; background-color: alpha(@accent_bg_color, 0.16); }
 .settings-container { padding: 40px; }
 .settings-group { background-color: alpha(currentColor, 0.05); border-radius: 12px; padding: 6px; margin-bottom: 24px; }

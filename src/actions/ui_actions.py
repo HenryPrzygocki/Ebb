@@ -818,8 +818,12 @@ def _build_queue_track_row(app, track, i, current_idx, compact):
             box.append(Gtk.Box(width_request=LAYOUT["time_width"]))
 
     if up_next.mark_row(app, row, track):  # fork #25
-        box.append(Gtk.Label(label="Up Next", valign=Gtk.Align.CENTER, css_classes=["queue-up-next-pill"],
-                             tooltip_text=up_next.ROW_TOOLTIP))
+        if compact:  # under the title: the narrow drawer has no width to spare for a pill
+            info.append(Gtk.Label(label="Up Next", xalign=0, css_classes=["queue-up-next-caption"],
+                                  tooltip_text=up_next.ROW_TOOLTIP))
+        else:
+            box.append(Gtk.Label(label="Up Next", valign=Gtk.Align.CENTER, css_classes=["queue-up-next-pill"],
+                                 tooltip_text=up_next.ROW_TOOLTIP))
 
     fav_btn = app.create_track_fav_button(track)
     if compact:

@@ -284,7 +284,7 @@ def test_artist_menu_follows_and_plays_the_artist_radio(monkeypatch):
     assert _labels(rows) == ["Play Artist Radio", "\u2014", "Unfollow", "\u2014", "Copy TIDAL Link"]
     _run(rows, "Play Artist Radio")
     name, args, kwargs = app.calls[-1]
-    assert (name, args, kwargs["source"]) == ("play_now", (radio,), {"type": "radio", "name": "Band Radio"})
+    assert (name, args, kwargs["source"]) == ("play_now", (radio,), {"type": "artist radio", "name": "Band", "obj": artist})
     _run(rows, "Unfollow")
     assert toggled == [("toggle_artist_favorite", 9, False)] and app.notices[-1] == ("Unfollowed Band", "ok")
     assert hearts == []  # no artist page open

@@ -1913,7 +1913,7 @@ def _on_playback_source_clicked(self, _btn=None):
             self.render_playlist_detail(pl_id)
             return
 
-    if src_type == "artist":
+    if src_type in ("artist", "artist radio"):  # fork #24: artist radio from a menu
         artist_obj = src.get("obj")
         if artist_obj is not None:
             self.on_artist_clicked(artist_obj)

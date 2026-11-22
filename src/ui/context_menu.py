@@ -356,7 +356,8 @@ def _artist_rows(app, obj):
 
         def finish(tracks):
             if tracks:
-                play_now(tracks, source={"type": "radio", "name": f"{name} Radio"})
+                # "Playing from artist radio · <name>"; clicking it opens the artist.
+                play_now(tracks, source={"type": "artist radio", "name": name, "obj": obj})
             else:
                 _notice(app, f"TIDAL has no radio for {name}", "warn", 2600)
             return False
