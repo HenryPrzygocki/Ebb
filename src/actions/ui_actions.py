@@ -1868,11 +1868,14 @@ def _build_track_row_overflow_menu(app, track):
         css_classes=["flat", "circular", "history-scroll-btn", "track-row-overflow-btn"],
     )
     menu_btn.set_tooltip_text("More")
-    menu_btn.set_popover(_build_overflow_popover([
-        ("Play Next", lambda tr=track: app.on_play_next_track_clicked(tr)),
-        ("Add to Queue", lambda tr=track: app.on_add_track_to_queue_clicked(tr)),
-        ("Go to Track Radio", lambda tr=track: app.on_go_to_track_radio_clicked(tr)),
-    ]))
+
+    def _fill(btn):
+        # Fork: the same menu as right-click, built at open time so Favourite is current.
+        # Upstream's ⋮ held only Play Next, Add to Queue and Track Radio.
+        rows = context_menu.actions_for(app, "track", track, origin=btn)
+        btn.set_popover(context_menu.build_popover(rows) if rows else None)
+
+    menu_btn.set_create_popup_func(_fill)
     return menu_btn
 
 
@@ -2038,6 +2041,8 @@ def populate_tracks(app, tracks):
                 rm_btn.set_tooltip_text("Remove from Playlist")
                 rm_btn.connect("clicked", lambda _b, tr=t: app.on_remove_single_track_from_remote_playlist(tr))
                 box.append(rm_btn)
+                setattr(row, context_menu.ROW_REMOVE_ATTR,  # fork: the menu offers it too
+                        lambda tr=t: app.on_remove_single_track_from_remote_playlist(tr))
             else:
                 add_btn = Gtk.Button(icon_name="list-add-symbolic", css_classes=["flat", "circular", "history-scroll-btn"])
                 add_btn.set_tooltip_text("Add to Playlist")
@@ -7251,6 +7256,8 @@ def render_playlist_detail(app, playlist_id):
             rm_btn.set_tooltip_text("Remove from Playlist")
             rm_btn.connect("clicked", lambda _b, pid=p.get("id"), idx=i: app.on_playlist_remove_track_clicked(pid, idx))
             box.append(rm_btn)
+            setattr(row, context_menu.ROW_REMOVE_ATTR,  # fork: the menu offers it too
+                    lambda pid=p.get("id"), idx=i: app.on_playlist_remove_track_clicked(pid, idx))
         else:
             # Match album-row footprint: reserve a hidden add-to-playlist slot, then the overflow menu.
             ghost_btn = Gtk.Button(icon_name="list-add-symbolic", css_classes=["flat", "circular", "history-scroll-btn", "ghost-row-btn"])

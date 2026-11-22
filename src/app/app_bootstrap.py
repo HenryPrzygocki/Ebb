@@ -205,6 +205,9 @@ def _run_post_activate_tasks(app):
 
 def do_activate(self):
     activate_t0 = time.monotonic()
+    from ui import keynav  # fork: one Tab stop per card, before any grid is filled
+
+    keynav.install()
 
     def _startup_mark(stage):
         logger.info(

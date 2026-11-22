@@ -316,7 +316,6 @@ def bind_builders(TidalApp, seen=None):
         _on_dsp_resampler_rate_changed,
         _on_dsp_resampler_quality_changed,
         _lock_volume_controls,
-        _build_help_popover,
         _show_simple_dialog,
     )
 
@@ -386,6 +385,5 @@ def bind_builders(TidalApp, seen=None):
         ("_on_dsp_resampler_rate_changed", _on_dsp_resampler_rate_changed),
         ("_on_dsp_resampler_quality_changed", _on_dsp_resampler_quality_changed),
         ("_lock_volume_controls", _lock_volume_controls),
-        ("_build_help_popover", _build_help_popover),
         ("_show_simple_dialog", _show_simple_dialog),
     ], seen=seen)

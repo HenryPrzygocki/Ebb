@@ -140,3 +140,68 @@ def test_escape_outside_text_fields_is_left_to_the_panels():
     app = _app(_Row())
     assert _press(app, Gdk.KEY_Escape) is False
     assert app.calls == []
+
+
+# --- bubble-phase panel keys (on_key_pressed) ---
+
+class _Revealer:
+    def __init__(self, open_=False):
+        self.open = open_
+
+    def get_reveal_child(self):
+        return self.open
+
+
+def _panel_app(focus, workspace_open=False):
+    calls = []
+    app = SimpleNamespace(
+        calls=calls,
+        win=SimpleNamespace(get_focus=lambda: focus),
+        viz_btn=object(),
+        viz_revealer=_Revealer(workspace_open),
+        queue_revealer=_Revealer(True),
+        now_playing_revealer=_Revealer(True),
+        settings={"viz_expanded": workspace_open},
+    )
+    app.toggle_queue_drawer = lambda *_a: calls.append("queue")
+    app.toggle_now_playing_overlay = lambda *_a: calls.append("now-playing")
+    app.toggle_visualizer = lambda _btn: calls.append("workspace")
+    app._set_visualizer_expanded = lambda on: calls.append(f"expanded={on}")
+    app.schedule_save_settings = lambda: calls.append("save")
+    app._quit_from_tray = lambda: calls.append("quit")
+    return app
+
+
+def _key(app, keyval, state=0):
+    return ab.on_key_pressed(app, None, keyval, 0, state)
+
+
+def test_e_toggles_the_workspace_and_tab_is_left_to_focus_navigation():
+    app = _panel_app(_Row())
+    assert _key(app, Gdk.KEY_e) is True
+    assert _key(app, Gdk.KEY_Tab) is False
+    assert _key(app, Gdk.KEY_ISO_Left_Tab, SHIFT) is False
+    assert app.calls == ["workspace"]
+
+
+def test_panel_letters_are_typed_into_a_text_field_even_with_their_panel_open():
+    app = _panel_app(_Text())
+    for keyval in (Gdk.KEY_q, Gdk.KEY_w, Gdk.KEY_e):
+        assert _key(app, keyval) is False
+    assert app.calls == []
+
+
+def test_ctrl_q_quits_and_ctrl_w_does_not_toggle_a_panel():
+    app = _panel_app(_Row())
+    assert _key(app, Gdk.KEY_q, CTRL) is True
+    assert _key(app, Gdk.KEY_w, CTRL) is False
+    assert app.calls == ["quit"]
+
+
+def test_escape_folds_the_workspace_and_remembers_it():
+    app = _panel_app(None, workspace_open=True)
+    app.queue_revealer.open = app.now_playing_revealer.open = False
+    app.hide_now_playing_overlay = app.close_queue_drawer = lambda: app.calls.append("wrong panel")
+    assert _key(app, Gdk.KEY_Escape) is True
+    assert app.calls == ["expanded=False", "save"]
+    assert app.settings["viz_expanded"] is False

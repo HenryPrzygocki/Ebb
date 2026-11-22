@@ -11,6 +11,7 @@ from gi.repository import Gtk, Gdk, GLib, GObject, Pango
 from core.settings import read_json, write_json
 from core.executor import submit_daemon
 from ui import config as ui_config
+from ui import context_menu, keynav  # fork
 
 logger = logging.getLogger(__name__)
 
@@ -3362,6 +3363,7 @@ def _sync_hw_volume_ch_slider_positions(self):
 # Widgets that keep Space and Ctrl+arrows for editing text.
 _TEXT_INPUT_TYPES = (Gtk.Editable, Gtk.TextView)
 _SPACE_KEYS = (Gdk.KEY_space, Gdk.KEY_KP_Space)
+_TAB_KEYS = (Gdk.KEY_Tab, Gdk.KEY_ISO_Left_Tab, Gdk.KEY_KP_Tab)
 _SHORTCUT_MODS = Gdk.ModifierType.CONTROL_MASK | Gdk.ModifierType.ALT_MASK | Gdk.ModifierType.SUPER_MASK
 
 
@@ -3409,6 +3411,10 @@ def on_global_key_pressed(self, controller, keyval, keycode, state):
         # Space is play/pause again instead of typing into a field you've finished with.
         GLib.idle_add(_leave_text_input, self)
         return False
+    if keyval in _TAB_KEYS and not mods:
+        # Fork: one Tab stop per track list / sidebar instead of one per row (ui/keynav.py).
+        return keynav.on_tab(getattr(self, "win", None), backward=keyval == Gdk.KEY_ISO_Left_Tab
+                             or bool(state & Gdk.ModifierType.SHIFT_MASK))
     return False
 
 
@@ -3445,11 +3451,13 @@ _SHORTCUT_SECTIONS = (
         ("Search", "<Control>f"),
         ("Queue", "q"),
         ("Now Playing", "w"),
-        ("Playback workspace", "Tab"),
+        ("Lyrics, visualizer & DSP", "e"),
         ("Close the open panel", "Escape"),
     )),
     ("General", (
+        ("Move between controls (Enter activates)", "Tab"),
         ("Keyboard shortcuts", "<Control>question"),
+        ("Quit (closing the window keeps playing in the tray)", "<Control>q"),
     )),
 )
 
@@ -3467,34 +3475,44 @@ def show_shortcuts_dialog(self, *_args):
 
 def on_key_pressed(self, controller, keyval, keycode, state):
     typing = _focus_in_text_input(self)
+    ctrl = bool(state & Gdk.ModifierType.CONTROL_MASK)
+    # Fork: the panel letters are plain keys, outside text fields only. Upstream also let Q/W
+    # close an open panel from inside a text field, which ate the letter (typing "queen" into
+    # search with the queue open closed the queue), and fired on Ctrl+Q / Ctrl+W too.
+    letter = not typing and not (state & _SHORTCUT_MODS)
 
-    if (state & Gdk.ModifierType.CONTROL_MASK) and keyval == Gdk.KEY_question:
+    if ctrl and keyval == Gdk.KEY_question:
         self.show_shortcuts_dialog()
         return True
-    if (state & Gdk.ModifierType.CONTROL_MASK) and keyval == Gdk.KEY_f:
+    if ctrl and keyval == Gdk.KEY_f:
         reveal = getattr(self, "toggle_sidebar_overlay", None)
         if callable(reveal):
             reveal(True)  # no-op unless the sidebar is collapsed
         self.search_entry.grab_focus()
         return True
-
-    if keyval == Gdk.KEY_q or keyval == Gdk.KEY_Q:
-        queue_open = bool(
-            getattr(self, "queue_revealer", None) is not None
-            and self.queue_revealer.get_reveal_child()
-        )
-        if queue_open or not typing:
-            self.toggle_queue_drawer()
+    # Fork: closing the window only hides it to the tray; Ctrl+Q really quits (GNOME convention).
+    if ctrl and keyval in (Gdk.KEY_q, Gdk.KEY_Q):
+        self._quit_from_tray()
+        return True
+    # Fork #24: the keyboard twin of right-click. Text fields handle these keys themselves first.
+    shift = bool(state & Gdk.ModifierType.SHIFT_MASK)
+    if (keyval == Gdk.KEY_Menu and not ctrl) or (keyval == Gdk.KEY_F10 and shift and not ctrl):
+        if context_menu.open_for_focus(self):
             return True
 
-    if keyval == Gdk.KEY_w or keyval == Gdk.KEY_W:
-        now_playing_open = bool(
-            getattr(self, "now_playing_revealer", None) is not None
-            and self.now_playing_revealer.get_reveal_child()
-        )
-        if now_playing_open or not typing:
-            self.toggle_now_playing_overlay()
-            return True
+    if letter and keyval in (Gdk.KEY_q, Gdk.KEY_Q):
+        self.toggle_queue_drawer()
+        return True
+
+    if letter and keyval in (Gdk.KEY_w, Gdk.KEY_W):
+        self.toggle_now_playing_overlay()
+        return True
+
+    # Fork: E (beside Q and W) toggles the bottom workspace. It used to be Tab, which took Tab
+    # away from GTK's focus navigation.
+    if letter and keyval in (Gdk.KEY_e, Gdk.KEY_E):
+        self.toggle_visualizer(self.viz_btn)
+        return True
 
     if keyval == Gdk.KEY_Escape:
         hide_sidebar = getattr(self, "_hide_sidebar_overlay", None)
@@ -3506,14 +3524,12 @@ def on_key_pressed(self, controller, keyval, keycode, state):
         if getattr(self, "queue_revealer", None) is not None and self.queue_revealer.get_reveal_child():
             self.close_queue_drawer()
             return True
-        # Fork: Esc also folds the bottom playback workspace (Tab / the ^ handle open it).
+        # Fork: Esc also folds the bottom playback workspace (E / the ^ handle open it).
         if getattr(self, "viz_revealer", None) is not None and self.viz_revealer.get_reveal_child():
             self._set_visualizer_expanded(False)
+            self.settings["viz_expanded"] = False  # else it reopens on the next start
+            self.schedule_save_settings()
             return True
-
-    if keyval == Gdk.KEY_Tab and not typing:
-        self.toggle_visualizer(self.viz_btn)
-        return True
 
     return False
 
@@ -3699,57 +3715,6 @@ def _lock_volume_controls(self, locked):
             pop.popdown()
     if hasattr(self, "_update_dsp_ui_state"):
         self._update_dsp_ui_state()
-
-
-def _build_help_popover(self):
-    pop = Gtk.Popover()
-    pop.set_has_arrow(False)
-    pop.add_css_class("shortcuts-surface")
-    vbox = Gtk.Box(
-        orientation=Gtk.Orientation.VERTICAL,
-        spacing=8,
-        margin_top=12,
-        margin_bottom=12,
-        margin_start=12,
-        margin_end=12,
-        css_classes=["shortcuts-popover"],
-    )
-    vbox.set_size_request(280, -1)
-
-    title = Gtk.Label(label="Keyboard Shortcuts", css_classes=["shortcuts-title"], halign=Gtk.Align.START)
-    vbox.append(title)
-    subtitle = Gtk.Label(
-        label="Fast controls for playback and navigation",
-        xalign=0,
-        wrap=True,
-        css_classes=["shortcuts-subtitle"],
-    )
-    vbox.append(subtitle)
-
-    shortcuts = [
-        ("Space", "Play / Pause"),
-        ("Ctrl + →", "Next Track"),
-        ("Ctrl + ←", "Previous Track"),
-        ("Ctrl + F", "Focus Search"),
-        ("Q", "Toggle Queue Drawer"),
-        ("W", "Toggle Now Playing"),
-        ("Tab", "Toggle Lyrics & Viz")
-    ]
-
-    list_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, css_classes=["shortcuts-list"])
-    for key, action in shortcuts:
-        row = Gtk.Box(spacing=12, css_classes=["shortcuts-row"])
-        action_lbl = Gtk.Label(label=action, xalign=0, hexpand=True, css_classes=["shortcuts-action"])
-        key_lbl = Gtk.Label(label=key, xalign=1, hexpand=False, css_classes=["shortcuts-keycap"])
-        key_lbl.set_attributes(Pango.AttrList.from_string("font-features 'tnum=1'"))
-        row.append(action_lbl)
-        row.append(key_lbl)
-        list_box.append(row)
-
-    vbox.append(list_box)
-    pop.set_child(vbox)
-    return pop
-
 
 
 def _show_simple_dialog(self, title, message):

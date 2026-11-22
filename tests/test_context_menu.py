@@ -279,3 +279,32 @@ def test_secondary_click_in_the_header_is_left_to_gtk(monkeypatch):
     builders._on_global_context_menu_pressed(app, gesture, 1, 1)
     assert gesture.state is None
     assert shown == []
+
+
+# ---------------------------------------------------------------- fork: row removal, keyboard
+
+class _Row(_Widget):
+    """Stands in for Gtk.ListBoxRow."""
+
+
+def test_rows_with_a_trash_button_offer_removal_last(monkeypatch):
+    monkeypatch.setattr(context_menu, "Gtk", SimpleNamespace(ListBoxRow=_Row))
+    app, t, removed = _app(), _track(), []
+    row = _Row()
+    setattr(row, context_menu.ROW_REMOVE_ATTR, lambda: removed.append(t))
+    label = _Widget(parent=_Widget(parent=row))
+    rows = context_menu.actions_for(app, "track", t, origin=label)
+    assert _labels(rows)[-3:] == ["Copy TIDAL Link", "—", "Remove from This Playlist"]
+    _run(rows, "Remove from This Playlist")
+    assert removed == [t]
+    assert _labels(context_menu.actions_for(app, "track", t, origin=row))[-1] == "Remove from This Playlist"
+
+
+def test_removal_never_leaks_from_outside_the_row(monkeypatch):
+    monkeypatch.setattr(context_menu, "Gtk", SimpleNamespace(ListBoxRow=_Row))
+    app, t = _app(), _track()
+    page = _Widget()
+    setattr(page, context_menu.ROW_REMOVE_ATTR, lambda: None)
+    label = _Widget(parent=_Row(parent=page))
+    assert "Remove from This Playlist" not in _labels(context_menu.actions_for(app, "track", t, origin=label))
+    assert "Remove from This Playlist" not in _labels(context_menu.actions_for(app, "track", t))

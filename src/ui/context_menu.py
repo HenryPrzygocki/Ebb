@@ -26,6 +26,7 @@ TIDAL_BROWSE = "https://tidal.com/browse"
 KINDS = ("track", "video", "album", "artist", "playlist", "mix")
 _KIND_ALIASES = {"userplaylist": "playlist", "mixv2": "mix"}
 _CTX_ATTR = "_hiresti_ctx"
+ROW_REMOVE_ATTR = "_hiresti_remove"  # fork: set on a track row that shows a trash button
 
 
 # ---------------------------------------------------------------- items
@@ -256,8 +257,31 @@ def _tidy(rows):
     return out
 
 
-def actions_for(app, kind, obj):
-    """Menu rows for one item: ``(label, callback)`` tuples, with ``None`` as a separator."""
+def removal_action(widget):
+    """Fork: the "remove from this playlist" callback a row's builder left on the row, if any.
+
+    Rows get one exactly where they show a trash button (your own TIDAL playlist; a local
+    playlist in edit mode), so the menu never offers removal anywhere else.
+    """
+    cur = widget
+    while cur is not None:
+        fn = getattr(cur, ROW_REMOVE_ATTR, None)
+        if callable(fn):
+            return fn
+        if isinstance(cur, Gtk.ListBoxRow):
+            return None
+        try:
+            cur = cur.get_parent()
+        except Exception:
+            return None
+    return None
+
+
+def actions_for(app, kind, obj, origin=None):
+    """Menu rows for one item: ``(label, callback)`` tuples, with ``None`` as a separator.
+
+    origin: the widget the menu is for (clicked or focused), so row-specific entries can appear.
+    """
     if obj is None or kind not in KINDS:
         return []
     if kind == "track":
@@ -268,6 +292,9 @@ def actions_for(app, kind, obj):
         rows = []
     if tidal_url(kind, obj):
         rows += [None, ("Copy TIDAL Link", lambda: copy_link(app, kind, obj))]
+    remove = removal_action(origin) if kind == "track" else None
+    if remove is not None:  # destructive, so last
+        rows += [None, ("Remove from This Playlist", remove)]
     return _tidy(rows)
 
 
@@ -351,3 +378,38 @@ def popup(app, parent, x, y, rows, on_closed=None):
     app._context_popover = pop
     pop.popup()
     return pop
+
+
+def _tagged_widget(widget):
+    cur = widget
+    while cur is not None:
+        if _tagged_item(cur) is not None:
+            return cur
+        cur = cur.get_parent()
+    return None
+
+
+def open_for_focus(app):
+    """Fork #24: Menu key / Shift+F10 opens the focused row's or card's menu, anchored on it."""
+    win = getattr(app, "win", None)
+    focus = win.get_focus() if win is not None else None
+    item = resolve(focus) if focus is not None else None
+    rows = actions_for(app, *item, origin=focus) if item else []
+    if not rows:
+        return False
+    anchor = _tagged_widget(focus) or focus
+    gesture = getattr(app, "_context_menu_gesture", None)
+    parent = gesture.get_widget() if gesture is not None else None
+    parent = parent or win
+    from gi.repository import Graphene
+
+    ok, pt = anchor.compute_point(parent, Graphene.Point().init(24.0, max(0.0, anchor.get_height() - 6.0)))
+    if not ok:
+        return False
+
+    def _refocus():
+        if focus.get_mapped():
+            focus.grab_focus()
+
+    popup(app, parent, pt.x, pt.y, rows, on_closed=lambda: GLib.idle_add(lambda: (_refocus(), False)[1]))
+    return True

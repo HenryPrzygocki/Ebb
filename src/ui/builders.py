@@ -321,7 +321,7 @@ def _on_global_context_menu_pressed(app, gesture, x, y):
     if hit is None or (header is not None and _widget_is_descendant(hit, header)):
         return
     item = context_menu.resolve(hit)
-    rows = context_menu.actions_for(app, *item) if item else []
+    rows = context_menu.actions_for(app, *item, origin=hit) if item else []
     if not rows:
         return
     try:
@@ -350,6 +350,22 @@ def _close_search_suggestions(app):
     pop = getattr(app, "search_suggest_popover", None)
     if pop is not None:
         pop.popdown()
+
+
+def _on_search_entry_key(app, keyval, state):
+    """Fork: Tab leaves the search box for the next control, closing Recent Searches, instead of
+    walking every recent-search chip first; Down enters the chips (browser address-bar style)."""
+    pop = getattr(app, "search_suggest_popover", None)
+    if pop is None or not pop.get_visible():
+        return False
+    if keyval == Gdk.KEY_Tab and not (state & Gdk.ModifierType.SHIFT_MASK):
+        _close_search_suggestions(app)
+        return False  # GTK moves focus on; the chips are gone from the chain now
+    if keyval in (Gdk.KEY_Down, Gdk.KEY_KP_Down):
+        flow = getattr(app, "search_history_flow", None)
+        first = flow.get_child_at_index(0) if flow is not None else None
+        return bool(first is not None and first.child_focus(Gtk.DirectionType.TAB_FORWARD))
+    return False
 
 
 def _clear_search_focus(app):
@@ -741,6 +757,9 @@ def build_header(app, container):
     focus_controller.connect("enter", lambda *_args: _on_search_entry_focus_enter(app))
     focus_controller.connect("leave", lambda *_args: _queue_search_suggestions_focus_check(app))
     app.search_entry.add_controller(focus_controller)
+    search_keys = Gtk.EventControllerKey(propagation_phase=Gtk.PropagationPhase.CAPTURE)  # fork
+    search_keys.connect("key-pressed", lambda _c, kv, _kc, st: _on_search_entry_key(app, kv, st))
+    app.search_entry.add_controller(search_keys)
 
     if getattr(app, "win", None) is not None:
         app.win.connect("notify::focus-widget", lambda *_args: _on_window_focus_widget_changed(app))
@@ -752,8 +771,6 @@ def build_header(app, container):
     app.login_btn.connect("clicked", app.on_login_clicked)
     app.user_popover = app._build_user_popover()
     app.user_popover.set_parent(app.login_btn)
-
-    app.help_pop = app._build_help_popover()
 
     app.mini_btn = Gtk.Button(icon_name="hiresti-mini-symbolic", css_classes=["flat"])
     app.mini_btn.set_tooltip_text("Mini Player Mode")
@@ -804,8 +821,7 @@ def build_header(app, container):
 
     def _on_shortcuts_clicked(_btn):
         app.tools_pop.popdown()
-        app.help_pop.set_parent(app.tools_btn)
-        app.help_pop.popup()
+        app.show_shortcuts_dialog()  # fork: the full list (Ctrl+?), not upstream's stale popover
 
     def _on_signal_path_clicked(_btn):
         app.tools_pop.popdown()
@@ -985,7 +1001,7 @@ def build_body(app, container):
     _body_mark("viz-fullscreen-shell")
 
     app.viz_btn = Gtk.Button(icon_name="hiresti-pan-up-symbolic", css_classes=["flat", "viz-handle-btn"])
-    app.viz_btn.set_tooltip_text("Playback Workspace")
+    app.viz_btn.set_tooltip_text("Lyrics, Visualizer and DSP (E)")
     app.viz_btn.set_size_request(50, 23)
     app.viz_btn.connect("clicked", app.toggle_visualizer)
 
