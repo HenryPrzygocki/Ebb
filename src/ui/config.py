@@ -1680,6 +1680,10 @@ flowboxchild { background-color: transparent; padding: 0; margin: 0; }
 /* fork #25: queue rows waiting in Up Next */
 .track-row.queue-up-next { box-shadow: inset 3px 0 alpha(@accent_color, 0.85); }
 .queue-up-next-pill { font-size: 10px; font-weight: 700; padding: 1px 7px; border-radius: 999px; color: @accent_color; background-color: alpha(@accent_bg_color, 0.16); }
+/* fork: a track's best quality on TIDAL (ui/track_table.quality_badge) */
+.track-quality { font-size: 10px; font-weight: 800; padding: 0 5px; border-radius: 4px; }
+.track-quality-hires { color: @warning_color; background-color: alpha(@warning_color, 0.15); }
+.track-quality-lossy { color: alpha(currentColor, 0.62); background-color: alpha(currentColor, 0.09); }
 /* fork: artist and album names in track rows are links (ui/track_table.link_label) */
 label.track-link-hot { text-decoration: underline; }
 label.dim-label.track-link-hot { opacity: 1; }

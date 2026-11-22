@@ -221,11 +221,40 @@ def link_label(label, on_activate):
     return label
 
 
+_QUALITY_BADGES = {
+    # tier: (text, css class, tooltip)
+    "hires": ("Hi-Res", "track-quality-hires", "Hi-Res: FLAC up to 24-bit/192 kHz"),
+    "lossy": ("AAC", "track-quality-lossy", "TIDAL only has this track as AAC (lossy)"),
+}
+
+
+def track_quality_tier(track):
+    """Fork: a track's best quality on TIDAL: "hires" (24-bit FLAC), "lossy" (AAC only),
+    or None for the CD-quality FLAC baseline and for tracks without quality data."""
+    tags = {str(tag).upper() for tag in (getattr(track, "media_metadata_tags", None) or [])}
+    quality = str(getattr(track, "audio_quality", "") or "").upper()
+    if "HIRES_LOSSLESS" in tags or quality == "HI_RES_LOSSLESS":
+        return "hires"
+    if quality in ("HIGH", "LOW") and "LOSSLESS" not in tags:
+        return "lossy"
+    return None
+
+
+def quality_badge(track):
+    """A small badge for track_quality_tier(track), or None."""
+    spec = _QUALITY_BADGES.get(track_quality_tier(track))
+    if spec is None:
+        return None
+    text, css, tip = spec
+    return Gtk.Label(label=text, valign=Gtk.Align.CENTER, css_classes=["track-quality", css], tooltip_text=tip)
+
+
 def adapt_track_row(app, title_widget, artist_widget, album_widget, album_hidden=False, track=None):
     """Bind a built row's artist/album cells to the column state and give the title an artist line.
 
     album_hidden: the page itself is one album, so the album cell would only repeat its title.
-    track: makes the artist and album names links to their pages (fork).
+    track: makes the artist and album names links to their pages and badges the title with
+        the track's quality (fork).
     """
     bind_track_column(app, artist_widget, "artist-column")
     if album_hidden:
@@ -250,7 +279,15 @@ def adapt_track_row(app, title_widget, artist_widget, album_widget, album_hidden
         css_classes=["track-title-cell"],
     )
     parent.remove(title_widget)
-    cell.append(title_widget)
+    badge = quality_badge(track) if track is not None else None
+    if badge is None:
+        cell.append(title_widget)
+    else:  # the title shrinks (ellipsizes) before the badge goes
+        line = Gtk.Box(spacing=6, css_classes=["track-title-line"])
+        title_widget.set_hexpand(False)
+        line.append(title_widget)
+        line.append(badge)
+        cell.append(line)
     artist_text = artist_widget.get_label() if isinstance(artist_widget, Gtk.Label) else ""
     sub = Gtk.Label(label=artist_text or "", xalign=0, ellipsize=3, css_classes=["dim-label", "track-subtitle"])
     bind_track_column(app, sub, "artist-column", invert=True)
