@@ -13,11 +13,13 @@ from ui.track_table import build_tracks_header, append_header_action_spacers
 
 def build_grid_view(app):
     grid_vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, css_classes=["home-view"])
+    # Fork: on the content's edge (collection_content_box, 20 px). The header sat at 32 px and
+    # the title 12 px further in (.section-title's margin), three left edges in a column.
     title_box = Gtk.Box(
         orientation=Gtk.Orientation.VERTICAL,
         spacing=4,
-        margin_start=32,
-        margin_end=32,
+        margin_start=20,
+        margin_end=20,
         margin_top=28,
         margin_bottom=10,
         css_classes=["home-topbar"],

@@ -1721,6 +1721,8 @@ flowboxchild { background-color: transparent; padding: 0; margin: 0; }
 .player-heart-btn:hover { color: alpha(currentColor, 0.7); background-color: alpha(currentColor, 0.05); transform: scale(1.05); }
 .player-heart-btn.active { color: #e91e63; opacity: 1; }
 .section-title { font-size: 20px; font-weight: 700; margin: 12px; }
+/* fork: a page title starts where its subtitle and the page's content do */
+.home-topbar .section-title { margin-left: 0; margin-right: 0; }
 .login-hero-card {
     background-color: alpha(currentColor, 0.045);
     border: 1px solid alpha(currentColor, 0.09);
