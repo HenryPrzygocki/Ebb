@@ -1,7 +1,7 @@
 import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
-from lyrics_manager import LyricsManager
+from services.lyrics import LyricsManager
 
 
 def test_parse_synced_lyrics():

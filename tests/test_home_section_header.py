@@ -154,6 +154,9 @@ def test_render_history_dashboard_omits_section_titles_and_count_labels(monkeypa
         def attach(self, child, *_args, **_kwargs):
             self.children.append(child)
 
+        def set_child(self, child):
+            self.children.append(child)
+
     class _FakeFlowBoxChild:
         def __init__(self):
             self.child = None
@@ -169,6 +172,8 @@ def test_render_history_dashboard_omits_section_titles_and_count_labels(monkeypa
         Grid=_FakeWidget,
         FlowBox=_FakeWidget,
         FlowBoxChild=_FakeFlowBoxChild,
+        ScrolledWindow=_FakeWidget,  # fork: the tab strip scrolls (_scrolling_tabs)
+        PolicyType=SimpleNamespace(AUTOMATIC="automatic", NEVER="never"),
         StackTransitionType=SimpleNamespace(CROSSFADE="crossfade"),
         Align=SimpleNamespace(START="start", CENTER="center", END="end", FILL="fill"),
         SelectionMode=SimpleNamespace(NONE="none"),
@@ -182,6 +187,7 @@ def test_render_history_dashboard_omits_section_titles_and_count_labels(monkeypa
         history_mgr=SimpleNamespace(
             get_albums=lambda: [SimpleNamespace(name="Album One", artist=SimpleNamespace(name="Artist"))],
             get_top_tracks=lambda limit=20: [],
+            get_recent_tracks=lambda limit=100: [],
         ),
     )
 
@@ -189,11 +195,25 @@ def test_render_history_dashboard_omits_section_titles_and_count_labels(monkeypa
 
     tabs_box = app.collection_content_box.children[0]
     history_stack = tabs_box.children[1]
-    sec_top = history_stack.children[0]
-    sec_recent = history_stack.children[1]
+    sections = history_stack.children  # Top 100, Recent Tracks, Recent Albums
+    assert len(sections) == 3
+    for section in sections:
+        classes = {c for child in section.children for c in getattr(child, "css_classes", [])}
+        assert not classes & {"home-section-title", "home-section-count"}
+    # Fork: an empty tab says what will show up there (here, both track tabs).
+    hints = [child.label for section in sections[:2] for child in section.children if "dim-label" in child.css_classes]
+    assert hints == ["Your most played tracks show up here.", "Tracks you play show up here."]
+    assert not [child for child in sections[2].children if "dim-label" in child.css_classes]
 
-    assert len(sec_top.children) == 1
-    assert len(sec_recent.children) == 1
+
+def test_render_history_dashboard_says_nothing_played_yet_instead_of_empty_tabs(monkeypatch):
+    labels = []
+    monkeypatch.setattr(ui_actions, "_clear_container", lambda _container: None)
+    monkeypatch.setattr(ui_actions.Gtk, "Label", lambda **kw: labels.append(kw.get("label")) or kw)
+    box = SimpleNamespace(appended=[], append=lambda w: box.appended.append(w))
+    empty = SimpleNamespace(get_albums=lambda: [], get_top_tracks=lambda limit=20: [], get_recent_tracks=lambda limit=100: [])
+    ui_actions.render_history_dashboard(SimpleNamespace(collection_content_box=box, history_mgr=empty))
+    assert len(box.appended) == 1 and labels[0].startswith("Nothing played yet.")
 
 
 def test_render_hires_dashboard_omits_redundant_hires_tab(monkeypatch):
@@ -437,7 +457,7 @@ def test_render_decades_dashboard_uses_decade_labels_for_tabs(monkeypatch):
     assert "Decades" not in [tab["title"] for tab in decades_stack.titled_children]
 
 
-def test_render_genres_dashboard_only_fetches_new_tab_after_selection(monkeypatch):
+def test_render_genres_dashboard_prefetches_the_next_tab_and_serves_it_from_cache(monkeypatch):
     class _RunThread:
         def __init__(self, target=None, daemon=None):
             self._target = target
@@ -623,7 +643,8 @@ def test_render_genres_dashboard_only_fetches_new_tab_after_selection(monkeypatc
 
     app = SimpleNamespace(
         collection_content_box=_FakeWidget(width=240),
-        backend=SimpleNamespace(get_genre_section=_fetch_genre),
+        # get_genres_page: read when the page opens; the cache here is fresh, so not called.
+        backend=SimpleNamespace(get_genre_section=_fetch_genre, get_genres_page=lambda: ([], [])),
         _genres_definitions=[("Blues", "pages/genre/blues"), ("Jazz", "pages/genre/jazz")],
         _genres_tab_cache={},
         _genres_cache_time=ui_actions.time.monotonic(),
@@ -632,7 +653,8 @@ def test_render_genres_dashboard_only_fetches_new_tab_after_selection(monkeypatc
 
     ui_actions.render_genres_dashboard(app)
 
-    assert fetch_calls == [("Blues", "pages/genre/blues")]
+    # Upstream pre-loads the next two tabs once a tab is shown.
+    assert fetch_calls == [("Blues", "pages/genre/blues"), ("Jazz", "pages/genre/jazz")]
 
     tabs_box = app.collection_content_box.children[0]
     genres_tabs_row = tabs_box.children[0]
@@ -662,7 +684,7 @@ def test_render_genres_dashboard_only_fetches_new_tab_after_selection(monkeypatc
     genres_stack.set_visible_child_name("Jazz")
     genres_stack.handlers["notify::visible-child-name"](genres_stack, None)
 
-    assert fetch_calls == [
+    assert fetch_calls == [  # Jazz comes from the pre-load, not a second fetch
         ("Blues", "pages/genre/blues"),
         ("Jazz", "pages/genre/jazz"),
     ]
@@ -847,6 +869,7 @@ def test_render_genres_dashboard_keeps_tracks_category_to_two_rows(monkeypatch):
 
     app = SimpleNamespace(
         collection_content_box=_FakeWidget(width=1060),
+        backend=SimpleNamespace(get_genres_page=lambda: ([], [])),  # read when the page opens
         _genres_definitions=[("Blues", "pages/genre/blues")],
         _genres_tab_cache={
             "Blues": {"title": "Blues", "categories": [{"title": "New Tracks", "items": track_items}]}

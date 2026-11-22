@@ -28,8 +28,10 @@ class _FakeSession:
         self.expiry_time = "2030-01-01T00:00:00"
         self.loaded = None
 
-    def load_oauth_session(self, token_type, access_token, refresh_token, expiry_time):
+    def load_oauth_session(self, token_type, access_token, refresh_token, expiry_time, is_pkce=False):
+        # is_pkce: the browser (PKCE) sign-in's tokens say so, and the refresh must too.
         self.loaded = (token_type, access_token, refresh_token, expiry_time)
+        self.is_pkce = is_pkce
 
     def check_login(self):
         return True
@@ -86,6 +88,7 @@ def test_recover_session_rebuilds_session_from_saved_token(tmp_path, monkeypatch
     assert isinstance(backend.session, _FakeSession)
     assert backend.user.id == "user-1"
     assert backend.session.loaded[:3] == ("Bearer", "old-access", "old-refresh")
+    assert backend.session.is_pkce is False  # a token saved without the flag: device-code login
     assert backend.session.config.quality == "LOSSLESS"
 
     with open(backend.token_file, "r", encoding="utf-8") as f:

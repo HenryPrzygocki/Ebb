@@ -484,6 +484,7 @@ def test_set_volume_uses_master_hw_channel_when_master_plus_lr_are_present():
         usb_hw_volume_range=(-2560, 0, 128),
         usb_hw_volume_channels=[0, 1, 2],
     )
+    adapter.current_driver = "USB Rawlink"  # hardware volume applies on the USB driver only
     adapter.output_error = "boom"
     adapter.bit_perfect_mode = False
 

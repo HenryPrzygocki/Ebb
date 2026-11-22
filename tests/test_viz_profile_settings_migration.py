@@ -7,7 +7,7 @@ from core.settings import CURRENT_SETTINGS_VERSION, DEFAULT_SETTINGS, normalize_
 
 
 def test_viz_profile_defaults_to_dynamic_after_gentle_insert():
-    assert CURRENT_SETTINGS_VERSION == 4
+    assert CURRENT_SETTINGS_VERSION >= 4  # later versions keep these migrations
     assert DEFAULT_SETTINGS["viz_profile"] == 2
 
 

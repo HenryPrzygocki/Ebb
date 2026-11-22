@@ -61,8 +61,9 @@ def test_linear_mode_keeps_requested_display_bar_count():
     app = _make_app(scale_idx=0, bar_count=48)
     mod._apply_viz_bars_by_count(app, 48, update_dropdown=True)
     assert app.viz.last_num_bars == 48
-    assert app.viz.last_input_bands == 128
-    assert app.last_player_bands == 128
+    # Linear analyses a fixed number of bands, whatever the bar count.
+    assert app.viz.last_input_bands == mod._LINEAR_ACTIVE_BANDS_DEFAULT
+    assert app.last_player_bands == mod._LINEAR_ACTIVE_BANDS_DEFAULT
     assert app.viz_bars_dd.selected == app.VIZ_BAR_OPTIONS.index(48)
 
 
@@ -76,9 +77,8 @@ def test_log_mode_restores_requested_bar_count():
 
 
 def test_dynamic_analysis_band_mapping_tracks_bar_count():
-    assert mod._viz_analysis_bands_for_bar_count(32) == 128
-    assert mod._viz_analysis_bands_for_bar_count(64) == 128
-    assert mod._viz_analysis_bands_for_bar_count(128) == 128
+    for bars in (32, 64, 128):  # Linear: fixed, whatever the bar count
+        assert mod._viz_analysis_bands_for_bar_count(bars) == mod._LINEAR_ACTIVE_BANDS_DEFAULT
     assert mod._viz_analysis_bands_for_bar_count(32, frequency_scale_name="Log") == 512
     assert mod._viz_analysis_bands_for_bar_count(64, frequency_scale_name="Log") == 1024
     assert mod._viz_analysis_bands_for_bar_count(128, frequency_scale_name="Log") == 2048

@@ -96,6 +96,8 @@ class _FakeRustCore:
 def _make_switch_adapter(rc, last_error=""):
     adapter = object.__new__(rust_audio.RustAudioPlayerAdapter)
     adapter._rust = _FakeRustCore(rc, last_error=last_error)
+    # An output switch also applies the driver's visualizer spectrum policy; not under test.
+    adapter._apply_driver_spectrum_policy = lambda _driver: None
     adapter.requested_driver = None
     adapter.requested_device_id = None
     adapter.current_driver = "Auto (Default)"

@@ -176,7 +176,11 @@ def test_spectrum_visualizer_tick_skips_history_work_for_normal_effect():
         requires_stereo_spectrum=lambda: False,
         _build_log_bins=lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("unexpected history build")),
         _summarize_pro_fall_bins=lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("unexpected history summarize")),
+        frequency_scale_name="Log",
     )
+    # The tick's smoothing now goes through these (Linear is slowed to match Log).
+    obj._scaled_smooth = lambda: mod.SpectrumVisualizer._scaled_smooth(obj)
+    obj._scaled_release_smooth = lambda: mod.SpectrumVisualizer._scaled_release_smooth(obj)
 
     assert mod.SpectrumVisualizer._on_animation_tick(obj) is True
     assert queued == [True]

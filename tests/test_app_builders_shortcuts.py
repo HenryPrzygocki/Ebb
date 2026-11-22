@@ -196,8 +196,9 @@ def test_lock_volume_controls_disables_slider_even_when_hw_volume_is_available()
     assert hw_calls == []
     assert app.vol_scale.sensitive_calls[-1] is False
     assert app.now_playing_vol_scale.sensitive_calls[-1] is False
-    assert app.vol_btn.sensitive_calls[-1] is False
-    assert app.now_playing_vol_btn.sensitive_calls[-1] is False
+    # Fork #19: the volume buttons stay clickable; their popover says why the volume is fixed.
+    assert app.vol_btn.sensitive_calls[-1] is True
+    assert app.now_playing_vol_btn.sensitive_calls[-1] is True
 
 
 def test_on_hw_volume_changed_syncs_ui_settings_and_mpris():
@@ -224,7 +225,10 @@ def test_on_hw_volume_changed_syncs_ui_settings_and_mpris():
     assert save_calls == [True]
 
 
-def test_on_hw_volume_changed_is_ignored_while_bit_perfect_is_enabled():
+def test_on_hw_volume_changed_follows_the_dac_while_bit_perfect_is_enabled():
+    # Hardware volume doesn't touch the PCM, so Bit-Perfect allows it
+    # (RustAudioPlayerAdapter.set_volume), and the UI follows the DAC's own changes too.
+    # Upstream used to ignore them in Bit-Perfect mode.
     sync_calls = []
     app = SimpleNamespace(
         settings={"volume": 80, "bit_perfect": True},
@@ -234,9 +238,9 @@ def test_on_hw_volume_changed_is_ignored_while_bit_perfect_is_enabled():
 
     handled = app_builders._on_hw_volume_changed(app, -1234)
 
-    assert handled is False
-    assert app.settings["volume"] == 80
-    assert sync_calls == []
+    assert handled is False  # a GLib idle callback: run once
+    assert app.settings["volume"] == 62
+    assert sync_calls == [62.5]
 
 
 def test_sync_volume_ui_state_keeps_standard_icon_when_hardware_available():
@@ -286,7 +290,30 @@ def test_hw_volume_main_slider_hidden_when_only_per_channel_controls_exist():
     assert app_builders._hw_volume_extra_channel_entries(player) == [(0, 1), (1, 2)]
 
 
-def test_rebuild_hw_volume_sliders_keeps_main_slider_for_master_plus_lr():
+class _AnyWidget:
+    """Any widget the slider rebuild creates. Real GTK widgets need a display; creating them
+    headless segfaulted this whole file."""
+
+    def __init__(self, *_args, **_kwargs):
+        self.children = []
+
+    def append(self, child):
+        self.children.append(child)
+
+    def get_first_child(self):
+        return None
+
+    def __getattr__(self, _name):
+        return lambda *_args, **_kwargs: None
+
+
+def test_rebuild_hw_volume_sliders_keeps_main_slider_for_master_plus_lr(monkeypatch):
+    monkeypatch.setattr(app_builders, "Gtk", SimpleNamespace(
+        Box=_AnyWidget, Label=_AnyWidget, ToggleButton=_AnyWidget,
+        Scale=SimpleNamespace(new_with_range=lambda *_a, **_k: _AnyWidget()),
+        Orientation=SimpleNamespace(HORIZONTAL=0, VERTICAL=1),
+        Align=SimpleNamespace(START=0, CENTER=1, END=2, FILL=3),
+    ))
     app = SimpleNamespace(
         player=SimpleNamespace(
             usb_hw_volume_channels=lambda: [0, 1, 2],

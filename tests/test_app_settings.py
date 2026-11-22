@@ -3,7 +3,7 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 import json
 
-from app_settings import DEFAULT_SETTINGS, load_settings, normalize_settings, save_settings
+from core.settings import DEFAULT_SETTINGS, load_settings, normalize_settings, save_settings
 
 
 def test_normalize_settings_coerces_and_applies_dependency():

@@ -110,9 +110,9 @@ def test_pipewire_verdict_help_mentions_system_mixer_and_volume():
 
     text = win._build_bitperfect_verdict_help_text()
 
-    assert "shared PipeWire output still goes through the system mixer" in text
-    assert "System volume changes" in text
-    assert "opens the selected hw:* device directly" in text
+    assert "PipeWire shared output still goes through the system mixer" in text
+    assert "Volume changes" in text
+    assert "hw:* device directly" not in text  # ALSA's path, not PipeWire's
 
 
 def test_alsa_verdict_help_mentions_direct_hw_without_exclusive_requirement():
@@ -120,7 +120,7 @@ def test_alsa_verdict_help_mentions_direct_hw_without_exclusive_requirement():
 
     text = win._build_bitperfect_verdict_help_text()
 
-    assert "opens the selected hw:* device directly" in text
+    assert "ALSA opens the hw:* device directly" in text
     assert "without requiring the Exclusive toggle" in text
 
 

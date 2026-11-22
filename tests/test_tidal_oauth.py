@@ -4,7 +4,7 @@ from types import SimpleNamespace
 import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
-from tidal_backend import TidalBackend
+from backend.tidal import TidalBackend
 
 
 def test_normalize_oauth_url_adds_https_for_tidal_link():
@@ -29,7 +29,7 @@ def test_start_oauth_returns_structured_context(monkeypatch):
         def login_oauth(self):
             return fake_obj, fake_future
 
-    monkeypatch.setattr("tidal_backend.tidalapi.Session", FakeSession)
+    monkeypatch.setattr("backend.tidal.tidalapi.Session", FakeSession)
 
     backend = TidalBackend()
     ctx = backend.start_oauth()
@@ -54,10 +54,10 @@ def test_invalid_ca_bundle_env_is_replaced_with_valid_path(monkeypatch):
         def login_oauth(self):
             return fake_obj, fake_future
 
-    monkeypatch.setattr("tidal_backend.tidalapi.Session", FakeSession)
-    monkeypatch.setattr("tidal_backend.os.path.isfile", lambda p: p == "/tmp/fake-ca.pem")
+    monkeypatch.setattr("backend.tidal.tidalapi.Session", FakeSession)
+    monkeypatch.setattr("backend.tidal.os.path.isfile", lambda p: p == "/tmp/fake-ca.pem")
     monkeypatch.setattr(
-        "tidal_backend.TidalBackend._default_ca_bundle_candidates",
+        "backend.tidal.TidalBackend._default_ca_bundle_candidates",
         lambda self: ["/tmp/fake-ca.pem"],
     )
     monkeypatch.setenv("REQUESTS_CA_BUNDLE", "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem")
