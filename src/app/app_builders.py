@@ -3673,6 +3673,8 @@ def on_key_pressed(self, controller, keyval, keycode, state):
 
 
 def toggle_mini_mode(self, btn):
+    from ui import mini_player
+
     if not hasattr(self, "is_mini_mode"):
         self.is_mini_mode = False
     if not hasattr(self, "saved_width"):
@@ -3704,14 +3706,8 @@ def toggle_mini_mode(self, btn):
 
         self.bottom_bar.add_css_class("mini-state")
         self.mini_controls.set_visible(True)
-        if getattr(self, "mini_queue_arrow", None) is not None:
-            self.mini_queue_arrow.set_visible(True)
 
-        if self.timeline_box is not None: self.timeline_box.set_visible(False)
         if self.vol_box is not None: self.vol_box.set_visible(False)
-        for name in ("shuffle_btn", "repeat_btn"):  # fork: the mini row fits only the transport
-            if getattr(self, name, None) is not None:
-                getattr(self, name).set_visible(False)
         if self.tech_box is not None: self.tech_box.set_visible(False)
         if getattr(self, "player_left_panel", None) is not None:
             self.player_left_panel.set_size_request(-1, -1)
@@ -3721,15 +3717,11 @@ def toggle_mini_mode(self, btn):
             self.info_area.set_size_request(-1, -1)
         if getattr(self, "player_text_box", None) is not None:
             self.player_text_box.set_size_request(-1, -1)
-        if getattr(self, "art_img", None) is not None:
-            self.art_img.set_size_request(56, 56)
-
-        self.win.set_decorated(False)
-        self.win.add_css_class("mini-mode")
-        self.win.set_resizable(False)
-        self.win.set_size_request(390, 85)
-        self.win.set_default_size(390, 85)
+        # Fork: the strip (upstream's, 390 x 85) or the cover, and the window for each: the
+        # timeline, Shuffle and Repeat, the queue arrow, decorations, size (ui/mini_player.py).
+        mini_player.enter(self)
     else:
+        mini_player.leave(self)
         self.close_mini_queue()
         self.header.set_visible(True)
         self.paned.set_visible(True)

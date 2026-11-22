@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Ebb: the mini player's strip: a small cover beside the title and artist. -->
+<svg height="16px" viewBox="0 0 16 16" width="16px" xmlns="http://www.w3.org/2000/svg">
+    <g fill="currentColor">
+        <rect x="0.5" y="4.5" width="6" height="6" rx="1"/>
+        <rect x="8" y="5" width="7.5" height="1.5" rx="0.75"/>
+        <rect x="8" y="8.5" width="5" height="1.5" rx="0.75"/>
+    </g>
+</svg>

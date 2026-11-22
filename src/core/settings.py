@@ -109,6 +109,10 @@ DEFAULT_SETTINGS = {
     # Fork: the fork's own settings (ui/glass.py, ui/card_grid.py, ui/viz_panel.py).
     "window_transparency": 0.25,
     "card_size": "medium",
+    # Fork: the mini player's layout and its cover window's size (ui/mini_player.py).
+    "mini_layout": "strip",
+    "mini_cover_width": 340,
+    "mini_cover_height": 530,
     "show_spectrum": False,
     "last_nav": "home",
     "last_view": "grid_view",
@@ -472,6 +476,14 @@ def normalize_settings(raw: Optional[dict[str, Any]]) -> dict[str, Any]:
     normalized["window_transparency"] = max(0.0, min(0.6, transparency))
     card_size = _as_str(raw.get("card_size"), DEFAULT_SETTINGS["card_size"])
     normalized["card_size"] = card_size if card_size in ("small", "medium", "large") else DEFAULT_SETTINGS["card_size"]
+    mini_layout = _as_str(raw.get("mini_layout"), DEFAULT_SETTINGS["mini_layout"])
+    normalized["mini_layout"] = mini_layout if mini_layout in ("strip", "cover") else DEFAULT_SETTINGS["mini_layout"]
+    normalized["mini_cover_width"] = _as_int(
+        raw.get("mini_cover_width"), DEFAULT_SETTINGS["mini_cover_width"], minimum=320, maximum=WINDOW_SIZE_MAX_WIDTH
+    )
+    normalized["mini_cover_height"] = _as_int(
+        raw.get("mini_cover_height"), DEFAULT_SETTINGS["mini_cover_height"], minimum=460, maximum=WINDOW_SIZE_MAX_HEIGHT
+    )
     normalized["show_spectrum"] = _as_bool(raw.get("show_spectrum"), DEFAULT_SETTINGS["show_spectrum"])
     normalized["settings_version"] = CURRENT_SETTINGS_VERSION
 

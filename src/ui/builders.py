@@ -1480,6 +1480,7 @@ def build_player_bar(app, container):
     app.player_left_panel = left_panel
     app.player_left_clamp = None
     app.player_text_box = text_box
+    app.player_title_row = title_row  # fork: ui/mini_player.py lays these out for its cover
     app.bottom_bar.set_start_widget(left_panel)
 
     center_panel = Gtk.Box()
@@ -1557,6 +1558,9 @@ def build_player_bar(app, container):
 
     center_panel.append(center_box)
     app.bottom_bar.set_center_widget(center_panel)
+    app.player_center_panel = center_panel  # fork: ui/mini_player.py
+    app.player_center_box = center_box
+    app.player_ctrls = ctrls
 
     right_panel = Gtk.Box()
     right_panel.set_hexpand(False)
@@ -1590,6 +1594,8 @@ def build_player_bar(app, container):
     right_panel.append(app.vol_box)
     app.player_right_panel = right_panel
     app.bottom_bar.set_end_widget(right_panel)
+    from ui import mini_player  # fork: the mini player's cover layout and its button (#18)
+    mini_player.build(app)
 
     # Fork: width tiers come from window breakpoints (apply_layout_tier); upstream's
     # notify::width handler never fired (GTK4 widgets have no width property).

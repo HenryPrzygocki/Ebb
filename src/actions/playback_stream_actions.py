@@ -46,6 +46,7 @@ def restart_player_with_url(app, url, pos):
 
 
 def load_cover_art(app, cover_id_or_url):
+    app._bar_cover_ref = cover_id_or_url  # fork: the mini player's cover loads it at 640 px
     url = app._get_tidal_image_url(cover_id_or_url)
     if not url:
         return
@@ -58,3 +59,6 @@ def load_cover_art(app, cover_id_or_url):
 
     if hasattr(app, "art_img"):
         utils.load_img(app.art_img, url, app.cache_dir, 80)
+    from ui import mini_player
+
+    mini_player.load_cover(app)

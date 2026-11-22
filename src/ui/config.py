@@ -45,7 +45,7 @@ button.circular {
 
 .card-bar.mini-state {
     margin: 0;
-    padding: 20px 0px 20px 20px;
+    padding: 8px 12px;  /* fork: the strip is 420 x 96 (ui/mini_player.py); 20px overflowed upstream's 85 */
     border-radius: 12px;
     border: 1px solid alpha(black, 0.3);
     background-color: @headerbar_bg_color;
@@ -938,12 +938,37 @@ window.mini-mode .card-bar.mini-state {
 window.mini-mode .mini-queue-drawer {
     background-color: @view_bg_color;
 }
-.card-bar.mini-state .player-ctrls-box { margin-top: 12px; margin-right: 20px; border-spacing: 15px; }
+.card-bar.mini-state .player-ctrls-box { margin: 0; border-spacing: 15px; }  /* fork: under the corner row */
 .card-bar.mini-state .player-ctrls-box button.flat { min-height: 28px; min-width: 28px; padding: 0; color: alpha(currentColor, 0.7); background: transparent; }
-.card-bar.mini-state .player-ctrls-box .pill { min-height: 42px; min-width: 42px; padding: 0; background-color: @accent_color; color: white; border-radius: 99px; box-shadow: 0 2px 5px alpha(black, 0.2); }
+/* fork: @accent_color is the accent for text (light in dark mode); a fill takes the bg/fg pair */
+.card-bar.mini-state .player-ctrls-box .pill { min-height: 42px; min-width: 42px; padding: 0; background-color: @accent_bg_color; color: @accent_fg_color; border-radius: 99px; box-shadow: 0 2px 5px alpha(black, 0.2); }
 .card-bar.mini-state .player-ctrls-box .pill:hover { filter: brightness(1.1); transform: scale(1.05); }
 .card-bar.mini-state .player-ctrls-box button image { -gtk-icon-size: 16px; }
 .card-bar.mini-state .player-ctrls-box .pill image { -gtk-icon-size: 20px; }
+/* fork: the mini player's cover layout (ui/mini_player.py) */
+.card-bar.mini-state.mini-cover {
+    margin: 0;
+    padding: 16px 16px 14px 16px;
+    border: none;
+    border-radius: 0;
+    background-color: @view_bg_color;
+}
+.card-bar.mini-cover .mini-cover-art { border-radius: 10px; }
+.card-bar.mini-cover .player-title { font-size: 1.15em; }
+.card-bar.mini-state.mini-cover .player-ctrls-box { margin: 2px 0 0 0; border-spacing: 12px; }
+.card-bar.mini-state.mini-cover .player-ctrls-box button.flat { min-height: 34px; min-width: 34px; }
+.card-bar.mini-state.mini-cover .player-ctrls-box button image { -gtk-icon-size: 18px; }
+.card-bar.mini-state.mini-cover .player-ctrls-box .pill { min-height: 50px; min-width: 50px; }
+.card-bar.mini-state.mini-cover .player-ctrls-box .pill image { -gtk-icon-size: 22px; }
+.card-bar.mini-state.mini-cover .player-ctrls-box .transport-mode-btn.on { background-color: alpha(@accent_bg_color, 0.18); }
+.card-bar.mini-strip .mini-cover-art { border-radius: 6px; }
+/* the strip's corner row ends on the transport's right edge */
+window.mini-mode .mini-controls { margin: 0 7px 0 0; }
+.mini-controls button.on { background-color: alpha(@accent_bg_color, 0.18); color: @accent_color; }
+/* the cover layout's corner buttons sit on the cover */
+window.mini-cover .mini-controls { margin: 2px 2px 0 0; }
+window.mini-cover .mini-controls button { background-color: alpha(black, 0.45); color: white; }
+window.mini-cover .mini-controls button:hover { background-color: alpha(black, 0.62); }
 .mini-queue-drawer {
     background-color: @headerbar_bg_color;
     border-radius: 0 0 12px 12px;

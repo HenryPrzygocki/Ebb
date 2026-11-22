@@ -9,6 +9,7 @@ from gi.repository import GLib, Gtk
 from actions import up_next  # fork #25
 from ui import context_menu
 from ui import queue_dnd  # fork #10
+from ui import mini_player  # fork: the strip size
 
 logger = logging.getLogger(__name__)
 
@@ -104,8 +105,7 @@ def close_queue_drawer(self):
 
 
 _MINI_QUEUE_HEIGHT = 500
-_MINI_BAR_HEIGHT = 85
-_MINI_WIDTH = 390
+_MINI_WIDTH, _MINI_BAR_HEIGHT = mini_player.STRIP_SIZE  # fork: was 390 x 85, which its content overflowed
 _MINI_QUEUE_HEAD = 30   # header area
 
 
@@ -117,7 +117,8 @@ def toggle_mini_queue(self, _btn=None):
         return
     opening = not revealer.get_reveal_child()
     if arrow is not None:
-        arrow.set_icon_name("pan-up-symbolic" if opening else "pan-down-symbolic")
+        # Fork: a queue button in the strip's corner row (ui/mini_player.py), lit while open.
+        (arrow.add_css_class if opening else arrow.remove_css_class)("on")
     if opening:
         self.render_mini_queue()
         self.bottom_bar.add_css_class("mini-queue-open")
@@ -146,7 +147,7 @@ def close_mini_queue(self):
         self.win.set_size_request(_MINI_WIDTH, _MINI_BAR_HEIGHT)
     arrow = getattr(self, "mini_queue_arrow", None)
     if arrow is not None:
-        arrow.set_icon_name("pan-down-symbolic")
+        arrow.remove_css_class("on")
 
 
 def _build_mini_queue_row(app, track, i, current_idx):
