@@ -334,7 +334,7 @@ def test_ctrl_up_down_change_the_volume_in_fives_and_say_so():
 def test_bit_perfect_volume_stays_put_unless_the_dac_has_hardware_volume():
     app = _volume_app(value=100.0, bit_perfect=True)
     _press(app, Gdk.KEY_Down, CTRL)
-    assert app.vol_scale.value == 100.0 and "bit-perfect" in app.calls[-1][0]
+    assert app.vol_scale.value == 100.0 and "bit-perfect" in app.calls[-1][0].lower()
     app = _volume_app(value=100.0, bit_perfect=True, hw_volume=True)
     _press(app, Gdk.KEY_Down, CTRL)
     assert app.vol_scale.value == 95
