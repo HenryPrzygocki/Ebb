@@ -66,6 +66,13 @@ def _init_paths_and_settings(self):
 
 
 def _wire_player_callbacks(self):
+    # Fork: gapless playback (actions/gapless.py).
+    if hasattr(self.player, "set_gapless_callbacks"):
+        from actions import gapless
+        self.player.set_gapless_callbacks(
+            on_about_to_finish=lambda uri: gapless.on_about_to_finish(self, uri),
+            on_advance=lambda uri: gapless.on_gapless_advance(self, uri),
+        )
     # When the USB sink becomes ready with hardware volume support,
     # re-check whether volume controls should be unlocked (bit-perfect + hw vol).
     ready_cb = getattr(self, "_on_hw_volume_ready", None)

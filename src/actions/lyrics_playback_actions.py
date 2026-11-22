@@ -312,7 +312,9 @@ def render_lyrics_list(app, lyrics_obj=None, status_msg=None):
             logger.debug("Lyrics font layout apply failed: %s", e)
 
 
-def play_track(app, index, from_history=False):
+def play_track(app, index, from_history=False, engine_advanced=False):
+    """engine_advanced: the engine already continued into this track (fork: gapless), so only
+    the bookkeeping runs: no stream resolution, load or play."""
     logger.info("play_track called. index=%s", index)
 
     queue = app._get_active_queue() if hasattr(app, "_get_active_queue") else list(getattr(app, "current_track_list", []) or [])
@@ -323,6 +325,8 @@ def play_track(app, index, from_history=False):
 
     app._play_request_id = getattr(app, "_play_request_id", 0) + 1
     request_id = app._play_request_id
+    from actions import gapless  # fork: a track change voids a handed-over next track
+    gapless.disarm(app)
     track = queue[index]
     entry = track  # the queue item itself; `track` may become its resolved track
     if isinstance(track, PlaylistQueueTrack):
@@ -407,7 +411,10 @@ def play_track(app, index, from_history=False):
             bit_depth = 0
             sample_rate = 0
             url_age = time.monotonic() - float(cached.get("fetched_at", 0) or 0) if cached else 0
-            if (cached and cached.get("quality") == quality_key and cached.get("url")
+            if engine_advanced:  # fork: gapless; the engine already plays this stream
+                url = str(getattr(app.player, "_last_loaded_uri", "") or "") or "gapless"
+                cache.pop(track.id, None)
+            elif (cached and cached.get("quality") == quality_key and cached.get("url")
                     and url_age < PREFETCH_URL_TTL_SECONDS):
                 url = cached.get("url")
                 bit_depth = int(cached.get("bit_depth", 0) or 0)
@@ -421,7 +428,7 @@ def play_track(app, index, from_history=False):
                 sample_rate = int(getattr(app.backend, "_last_stream_sample_rate", 0) or 0)
 
             local_override = os.environ.get("HIRESTI_LOCAL_URI", "").strip()
-            if local_override:
+            if local_override and not engine_advanced:
                 if not local_override.startswith("file://"):
                     local_override = "file://" + os.path.abspath(os.path.expanduser(local_override))
                 logger.warning("HIRESTI_LOCAL_URI override: %s", local_override)
@@ -451,10 +458,11 @@ def play_track(app, index, from_history=False):
                     return
                 app._stream_missing_skip_count = 0
                 prev_state = str(getattr(app.player, "output_state", "idle") or "idle")
-                if hasattr(app.player, "hint_source_format") and (bit_depth or sample_rate):
-                    app.player.hint_source_format(bit_depth, sample_rate)
-                app.player.load(url)
-                app.player.play()
+                if not engine_advanced:  # fork: a gapless advance needs no load
+                    if hasattr(app.player, "hint_source_format") and (bit_depth or sample_rate):
+                        app.player.hint_source_format(bit_depth, sample_rate)
+                    app.player.load(url)
+                    app.player.play()
                 cur_state = str(getattr(app.player, "output_state", "idle") or "idle")
                 cur_err = str(getattr(app.player, "output_error", "") or "").strip()
                 blocked = bool(getattr(app.player, "_pipewire_rate_blocked", False))

@@ -42,6 +42,11 @@ pub trait PcmProcessor: Send {
     fn drain(&mut self) -> Result<Vec<PcmSlab>, String> {
         Ok(Vec::new())
     }
+
+    /// Fork (gapless): the next track continues through this chain; its timeline (frame
+    /// positions, per-track measurements) restarts at `start_offset_s`. Signal state such as
+    /// filters is kept, so the boundary stays click-free.
+    fn restart_timeline(&mut self, _start_offset_s: f64) {}
 }
 
 #[derive(Debug, Default)]
@@ -99,6 +104,13 @@ impl PcmProcessorChain {
             drained.extend(processor.drain()?);
         }
         Ok(drained)
+    }
+
+    /// Fork (gapless): see `PcmProcessor::restart_timeline`.
+    pub fn restart_timeline(&mut self, start_offset_s: f64) {
+        for processor in &mut self.processors {
+            processor.restart_timeline(start_offset_s);
+        }
     }
 }
 
@@ -362,6 +374,11 @@ impl PcmProcessor for SpectrumPcmProcessor {
         "spectrum"
     }
 
+    fn restart_timeline(&mut self, start_offset_s: f64) {
+        self.start_offset_s = start_offset_s;
+        self.total_frames = 0;
+    }
+
     fn configure(&mut self, spec: &PcmStreamSpec) -> Result<(), String> {
         self.sample_rate = spec.sample_rate;
         self.channels = spec.channels;
@@ -448,6 +465,12 @@ impl LufsPcmProcessor {
 impl PcmProcessor for LufsPcmProcessor {
     fn name(&self) -> &'static str {
         "lufs"
+    }
+
+    fn restart_timeline(&mut self, start_offset_s: f64) {
+        // Integrated loudness and LRA are per track, as after a load.
+        self.state.reset();
+        self.state.set_start_offset(start_offset_s);
     }
 
     fn configure(&mut self, spec: &PcmStreamSpec) -> Result<(), String> {

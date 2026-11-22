@@ -270,6 +270,8 @@ pub struct Engine {
     output_buffer_us: i32,
     output_latency_us: i32,
     output_exclusive: bool,
+    /// Fork (gapless): the URI queued to continue the current track.
+    native_next_uri: Option<String>,
 }
 
 impl Engine {
@@ -1061,6 +1063,7 @@ impl Engine {
             output_buffer_us: 100_000,
             output_latency_us: 10_000,
             output_exclusive: false,
+            native_next_uri: None,
         })
     }
 
@@ -1097,6 +1100,21 @@ impl Engine {
             source.kind(),
             source.locator()
         );
+        let request = self.native_transport_request(source);
+        self.native_eos_emitted = false;
+        match self.native_transport.load(request) {
+            Ok(()) => self.emit_event(EVT_STATE, &summary),
+            Err(err) => self.emit_event(EVT_ERROR, &format!("native-transport load failed: {err}")),
+        }
+    }
+
+    /// The load request for `source` with the current output and DSP settings.
+    fn native_transport_request(
+        &mut self,
+        source: native_transport::NativeTransportSource,
+    ) -> native_transport::NativeTransportLoadRequest {
+        let is_v2_usb = driver_is_usb_rawlink_v2(&self.output_driver);
+        let is_native_alsa = driver_routes_via_native_alsa(&self.output_driver);
         let dsp_active = self.dsp_config.has_native_transport_processing();
         let unsupported = if self
             .dsp_config
@@ -1145,11 +1163,57 @@ impl Engine {
             output_target,
             dsp_config: if dsp_active { Some(self.dsp_config.clone()) } else { None },
         };
-        self.native_eos_emitted = false;
-        match self.native_transport.load(request) {
-            Ok(()) => self.emit_event(EVT_STATE, &summary),
-            Err(err) => self.emit_event(EVT_ERROR, &format!("native-transport load failed: {err}")),
+        request
+    }
+
+    /// Fork (gapless): queue `uri` to continue the current track without a gap; None drops it.
+    fn queue_native_next(&mut self, uri: Option<&str>) -> c_int {
+        let Some(uri) = uri.map(str::trim).filter(|u| !u.is_empty()) else {
+            self.native_next_uri = None;
+            return match self.native_transport.set_next(None) {
+                Ok(()) => 0,
+                Err(_) => -4,
+            };
+        };
+        if !(driver_is_usb_rawlink_v2(&self.output_driver)
+            || driver_routes_via_native_alsa(&self.output_driver))
+        {
+            return -5;
         }
+        let source = match native_transport::NativeTransportSource::from_tidal_uri(uri) {
+            Ok(source) => source,
+            Err(err) => {
+                self.emit_event(EVT_STATE, &format!("native-transport gapless skipped: {err}"));
+                return -6;
+            }
+        };
+        let request = self.native_transport_request(source);
+        match self.native_transport.set_next(Some(request)) {
+            Ok(()) => {
+                self.native_next_uri = Some(uri.to_string());
+                0
+            }
+            Err(err) => {
+                self.set_error(format!("native transport queue-next failed: {err}"));
+                -4
+            }
+        }
+    }
+
+    /// Fork (gapless): the transport moved on to the queued track. Its per-track state restarts
+    /// here, as after rac_set_uri, without touching the transport.
+    fn adopt_gapless_advance(&mut self) {
+        if let Some(uri) = self.native_next_uri.take() {
+            self.uri = uri;
+        }
+        self.reset_spectrum_timeline();
+        self.last_codec.clear();
+        self.last_bitrate = 0;
+        self.last_rate = 0;
+        self.last_depth = 0;
+        self.source_rate = 0;
+        self.source_depth = 0;
+        self.native_eos_emitted = false;
     }
 
     fn drain_native_transport_events(&mut self) {
@@ -1159,6 +1223,9 @@ impl Engine {
             }
             if evt == EVT_TAG {
                 self.absorb_native_tag_event(&msg);
+            }
+            if evt == EVT_STATE && msg.starts_with("native-transport gapless-advance") {
+                self.adopt_gapless_advance(); // fork
             }
             self.emit_event(evt, &msg);
         }
@@ -2368,6 +2435,7 @@ pub extern "C" fn rac_set_uri(ptr: *mut Engine, uri: *const c_char) -> c_int {
     };
 
     engine.uri = s.to_string();
+    engine.native_next_uri = None; // fork (gapless): a load drops the queued track
     engine.maybe_load_native_transport_for_uri(s);
     engine.reset_spectrum_timeline();
     engine.last_codec.clear();
@@ -2377,6 +2445,23 @@ pub extern "C" fn rac_set_uri(ptr: *mut Engine, uri: *const c_char) -> c_int {
     engine.source_rate = 0;
     engine.source_depth = 0;
     0
+}
+
+/// Fork (gapless): queue the track that continues the current one without a gap.
+/// A null or empty `uri` drops the queued track. Returns 0 on success.
+#[no_mangle]
+pub extern "C" fn rac_queue_next(ptr: *mut Engine, uri: *const c_char) -> c_int {
+    let Some(engine) = as_mut_engine(ptr) else {
+        return -1;
+    };
+    if uri.is_null() {
+        return engine.queue_native_next(None);
+    }
+    // SAFETY: uri is expected to be a valid nul-terminated string from the caller.
+    match unsafe { CStr::from_ptr(uri) }.to_str() {
+        Ok(s) => engine.queue_native_next(Some(s)),
+        Err(_) => -3,
+    }
 }
 
 #[no_mangle]

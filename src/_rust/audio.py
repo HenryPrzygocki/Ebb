@@ -107,6 +107,10 @@ class _RustAudioCore:
             lib.rac_set_uri.restype = ctypes.c_int
             lib.rac_set_uri.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
 
+            if hasattr(lib, "rac_queue_next"):  # fork: gapless; older builds lack it
+                lib.rac_queue_next.restype = ctypes.c_int
+                lib.rac_queue_next.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+
             lib.rac_play.restype = ctypes.c_int
             lib.rac_play.argtypes = [ctypes.c_void_p]
 
@@ -485,6 +489,15 @@ class _RustAudioCore:
     def set_uri(self, uri):
         data = str(uri or "").encode("utf-8", "ignore")
         return self._call_int("rac_set_uri", data, default_rc=-3)
+
+    def has_queue_next(self):
+        """Fork (gapless): whether this build of the core can continue into a queued track."""
+        return bool(self.available) and hasattr(getattr(self, "lib", None), "rac_queue_next")
+
+    def queue_next(self, uri):
+        """Fork (gapless): queue `uri` to follow the current track without a gap; None drops it."""
+        data = str(uri).encode("utf-8", "ignore") if uri else None
+        return self._call_int("rac_queue_next", data, default_rc=-3)
 
     def play(self):
         return self._call_int("rac_play", default_rc=-3)
@@ -1687,6 +1700,8 @@ class RustAudioPlayerAdapter:
 
     def __init__(self, on_eos_callback=None, on_tag_callback=None, on_spectrum_callback=None, on_viz_sync_offset_update=None):
         self._on_eos_callback = on_eos_callback
+        self._on_about_to_finish_callback = None  # fork: gapless (set_gapless_callbacks)
+        self._on_gapless_advance_callback = None
         self._on_tag_callback = on_tag_callback
         self._on_spectrum_callback = on_spectrum_callback
         self._rust = _RustAudioCore()
@@ -2958,6 +2973,15 @@ class RustAudioPlayerAdapter:
                         except Exception:
                             pass
                 return
+            if msg and str(msg).startswith("native-transport about-to-finish"):
+                # Fork (gapless): the track ends soon; the app may queue the next one.
+                cb = getattr(self, "_on_about_to_finish_callback", None)
+                if callable(cb):
+                    GLib.idle_add(cb, _event_uri(msg))
+                return
+            if msg and str(msg).startswith("native-transport gapless-advance"):
+                self._adopt_gapless_advance(_event_uri(msg))
+                return
             if msg and "native-transport decode-start" in msg:
                 # A new decode run has begun (fresh play or post-seek
                 # restart). From here the engine position is derived from
@@ -3530,6 +3554,41 @@ class RustAudioPlayerAdapter:
             self._release_alsa_reservation()
         finally:
             self._rust.close()
+
+    # ---- Fork: gapless playback (the app's half is actions/gapless.py) ----
+    def set_gapless_callbacks(self, on_about_to_finish=None, on_advance=None):
+        """on_about_to_finish(uri): the current track ends soon. on_advance(uri): the engine
+        moved on to the queued track by itself. Both run on the GTK main loop."""
+        self._on_about_to_finish_callback = on_about_to_finish
+        self._on_gapless_advance_callback = on_advance
+
+    def supports_gapless(self):
+        rust = getattr(self, "_rust", None)
+        return bool(rust is not None and rust.has_queue_next())
+
+    def queue_next(self, uri):
+        """Queue `uri` to continue the current track without a gap (None drops it). 0 on success."""
+        if not self.supports_gapless():
+            return -2
+        rc = self._rust.queue_next(uri)
+        text = str(uri or "")
+        logger.info("RustAdapter.queue_next: rc=%s uri=%s", rc, text[:120] + ("..." if len(text) > 120 else ""))
+        return rc
+
+    def _adopt_gapless_advance(self, uri):
+        """The engine continued into the queued track. Its per-track state restarts as in load(),
+        without touching the engine; the stream format is unchanged (the engine checks)."""
+        logger.info("RustAdapter: gapless advance to %s", str(uri or "")[:120])
+        self._last_loaded_uri = str(uri or "")
+        self._reset_rust_visual_sync_state()
+        info = dict(getattr(self, "stream_info", {}) or {})
+        info["bitrate"] = 0
+        self.stream_info = info
+        self._cached_pos_s = 0.0
+        self._cached_dur_s = 0.0
+        cb = getattr(self, "_on_gapless_advance_callback", None)
+        if callable(cb):
+            GLib.idle_add(cb, self._last_loaded_uri)
 
     def hint_source_format(self, bit_depth, sample_rate):
         """Store source format from the TIDAL API to inject on next load().
@@ -4287,6 +4346,12 @@ class RustAudioPlayerAdapter:
         else:
             logger.info("Preferred output format cleared")
         return rc == 0 or rc == -3
+
+
+def _event_uri(msg):
+    """Fork (gapless): the `uri=` field of a transport event (always the last one)."""
+    text = str(msg or "")
+    return text.split(" uri=", 1)[1].strip() if " uri=" in text else ""
 
 
 def create_audio_engine(on_eos_callback=None, on_tag_callback=None, on_spectrum_callback=None, on_viz_sync_offset_update=None):

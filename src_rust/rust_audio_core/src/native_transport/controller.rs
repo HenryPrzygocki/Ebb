@@ -74,6 +74,8 @@ pub enum NativeTransportCommand {
     /// The oneshot sender signals completion so the caller can wait.
     StopAndRelease(std::sync::mpsc::SyncSender<()>),
     Load(NativeTransportLoadRequest),
+    /// Fork (gapless): the track to continue into at end of stream (None drops it).
+    SetNext(Option<NativeTransportLoadRequest>),
     Play,
     Pause,
     Stop,
@@ -267,6 +269,11 @@ impl NativeTransportController {
 
     pub fn load(&self, request: NativeTransportLoadRequest) -> Result<(), String> {
         self.submit(NativeTransportCommand::Load(request))
+    }
+
+    /// Fork (gapless): queue the track that continues the current one without a gap.
+    pub fn set_next(&self, request: Option<NativeTransportLoadRequest>) -> Result<(), String> {
+        self.submit(NativeTransportCommand::SetNext(request))
     }
 
     pub fn play(&self) -> Result<(), String> {
@@ -554,6 +561,8 @@ fn transport_worker(
     let mut current_dsp_config: Option<crate::dsp::DspGraphConfig> = None;
     // Shared slot for hot-updating DSP config in the running decode worker.
     let dsp_config_slot: super::native_dsp::SharedDspConfig = Arc::new(Mutex::new(None));
+    // Fork (gapless): the queued next track, shared with every decode worker.
+    let gapless = super::gapless::GaplessSlot::default();
     let mut decode_worker: Option<DecodeWorkerHandle> = None;
     // Early-claimed USB device handle.  Keeps the kernel driver detached so
     // PipeWire / PulseAudio cannot reclaim the device between track switches
@@ -564,6 +573,11 @@ fn transport_worker(
     // next Load/Play or an explicit release/shutdown path runs.
     let mut parked_usb_session: Option<UsbAudioSink> = None;
     while let Ok(cmd) = rx.recv() {
+        // Fork (gapless): the worker may have moved on to the queued track; resume and seek
+        // reopen the current source, so it must be that one.
+        if let Some(advanced) = gapless.take_advanced() {
+            current_source = Some(advanced);
+        }
         match cmd {
             NativeTransportCommand::ClaimDevice {
                 device_id,
@@ -666,6 +680,7 @@ fn transport_worker(
                     &mut claimed_device,
                     &mut decode_worker,
                 );
+                gapless.clear(); // fork
                 claimed_cfg = None;
                 // hw_vol_info was populated by the pre-claim path so the UI
                 // could show volume info before playback. Once the device is
@@ -686,6 +701,7 @@ fn transport_worker(
                     &mut claimed_device,
                     &mut decode_worker,
                 );
+                gapless.clear(); // fork
                 // Release — do NOT reclaim. Clear the pre-claim cache for
                 // the same reason as ReleaseDevice above.
                 claimed_cfg = None;
@@ -719,6 +735,7 @@ fn transport_worker(
                 // → 1-2 seconds of DAC mute on the next track.
                 let reuse_session = stop_decode_worker(&mut decode_worker)
                     .or(parked_usb_session.take());
+                gapless.clear(); // fork: a new track supersedes the queued one
                 if reuse_session.is_some() {
                     eprintln!("native-transport: load — keeping old USB session for reuse");
                 } else if claimed_device.is_none() {
@@ -793,6 +810,7 @@ fn transport_worker(
                     reuse_session,
                     current_dsp_config.clone(),
                     Arc::clone(&dsp_config_slot),
+                    gapless.clone(),
                 ) {
                     Ok(worker) => {
                         decode_worker = Some(worker);
@@ -818,6 +836,10 @@ fn transport_worker(
                         }
                     }
                 }
+            }
+            NativeTransportCommand::SetNext(request) => {
+                // Fork (gapless): opened now, on a helper thread; taken at end of stream.
+                gapless.set(request);
             }
             NativeTransportCommand::Play => {
                 let generation = match snapshot.lock() {
@@ -863,6 +885,7 @@ fn transport_worker(
                             parked_usb_session.take(),
                             current_dsp_config.clone(),
                             Arc::clone(&dsp_config_slot),
+                            gapless.clone(),
                         ) {
                             Ok(worker) => {
                                 decode_worker = Some(worker);
@@ -939,6 +962,7 @@ fn transport_worker(
                     sink.set_skip_release_on_drop(true);
                     parked_usb_session = Some(sink);
                 }
+                gapless.clear(); // fork
                 let mut state = match snapshot.lock() {
                     Ok(guard) => guard,
                     Err(_) => break,
@@ -972,6 +996,14 @@ fn transport_worker(
                     if let Some(source) = current_source.clone() {
                         set_native_runtime(&runtime, None);
                         let seek_reuse_session = stop_decode_worker(&mut decode_worker);
+                        // Fork (gapless): the worker may have moved on just before it stopped.
+                        let source = match gapless.take_advanced() {
+                            Some(advanced) => {
+                                current_source = Some(advanced.clone());
+                                advanced
+                            }
+                            None => source,
+                        };
                         if seek_reuse_session.is_none() {
                             // No session to reuse — reclaim device the normal way.
                             reclaim_device(&mut claimed_device, &claimed_cfg);
@@ -1036,6 +1068,7 @@ fn transport_worker(
                             seek_reuse_session,
                             current_dsp_config.clone(),
                             Arc::clone(&dsp_config_slot),
+                            gapless.clone(),
                         ) {
                             Ok(worker) => {
                                 decode_worker = Some(worker);
@@ -1154,6 +1187,9 @@ fn transport_worker(
 
                 set_native_runtime(&runtime, None);
                 let restart_reuse_session = stop_decode_worker(&mut decode_worker);
+                if let Some(advanced) = gapless.take_advanced() {
+                    current_source = Some(advanced); // fork (gapless)
+                }
                 if restart_reuse_session.is_none() {
                     reclaim_device(&mut claimed_device, &claimed_cfg);
                 }
@@ -1207,6 +1243,7 @@ fn transport_worker(
                     restart_reuse_session,
                     current_dsp_config.clone(),
                     Arc::clone(&dsp_config_slot),
+                    gapless.clone(),
                 ) {
                     Ok(worker) => {
                         decode_worker = Some(worker);
@@ -1235,6 +1272,7 @@ fn transport_worker(
                     &mut claimed_device,
                     &mut decode_worker,
                 );
+                gapless.clear(); // fork
                 let mut state = match snapshot.lock() {
                     Ok(guard) => guard,
                     Err(_) => break,
@@ -1401,6 +1439,7 @@ fn start_direct_audio_decode_worker(
     reuse_session: Option<UsbAudioSink>,
     dsp_config: Option<crate::dsp::DspGraphConfig>,
     dsp_config_slot: super::native_dsp::SharedDspConfig,
+    gapless: super::gapless::GaplessSlot,
 ) -> Result<DecodeWorkerHandle, String> {
     let stop = Arc::new(AtomicBool::new(false));
     let stop_clone = Arc::clone(&stop);
@@ -1430,6 +1469,7 @@ fn start_direct_audio_decode_worker(
                 reuse_session,
                 dsp_config,
                 dsp_config_slot,
+                gapless,
             )
         })
         .map_err(|e| format!("native transport: failed to spawn decode worker: {e}"))?;
@@ -1461,6 +1501,7 @@ fn direct_audio_decode_worker(
     reuse_session: Option<UsbAudioSink>,
     dsp_config: Option<crate::dsp::DspGraphConfig>,
     dsp_config_slot: super::native_dsp::SharedDspConfig,
+    gapless: super::gapless::GaplessSlot,
 ) {
     queue_native_event(&events, crate::EVT_STATE, "native-transport decode-start");
     let result = decode_direct_audio_stream(
@@ -1483,6 +1524,7 @@ fn direct_audio_decode_worker(
         reuse_session,
         dsp_config,
         dsp_config_slot,
+        &gapless,
     );
     if let Ok(mut state) = snapshot.lock() {
         if state.generation != generation {
@@ -1536,7 +1578,7 @@ fn probe_loaded_source(source: &NativeTransportSource) -> Result<SourceProbeResu
     }
 }
 
-fn source_probe_hint(source: &NativeTransportSource) -> Option<&'static str> {
+pub(super) fn source_probe_hint(source: &NativeTransportSource) -> Option<&'static str> {
     match source {
         NativeTransportSource::TidalDirectMedia { url, .. } => direct_locator_probe_hint(url),
         NativeTransportSource::TidalMpd { .. } => Some("mp4"),
@@ -1585,6 +1627,7 @@ fn decode_direct_audio_stream(
     reuse_session: Option<UsbAudioSink>,
     dsp_config: Option<crate::dsp::DspGraphConfig>,
     dsp_config_slot: super::native_dsp::SharedDspConfig,
+    gapless: &super::gapless::GaplessSlot,
 ) -> Result<(), String> {
     let output_config: Option<UsbRawSinkConfig> = output_target
         .as_ref()
@@ -1603,12 +1646,12 @@ fn decode_direct_audio_stream(
         )
         .map_err(|e| format!("native transport: decode open failed: {e}"))?;
     let mut format = probe.format;
-    let track = format
+    let mut track = format
         .default_track()
         .filter(|track| track.codec_params.codec != CODEC_TYPE_NULL)
         .cloned()
         .ok_or_else(|| "native transport: no decodable audio track found".to_string())?;
-    let track_id = track.id;
+    let mut track_id = track.id;
     let mut decoder = symphonia::default::get_codecs()
         .make(&track.codec_params, &DecoderOptions::default())
         .map_err(|e| format!("native transport: decoder init failed: {e}"))?;
@@ -1681,22 +1724,7 @@ fn decode_direct_audio_stream(
 
     // Emit a TAG event so the Python UI can display tech info (codec,
     // sample rate, bit depth) in the playback bar.
-    {
-        let codec_name = codec_label(track.codec_params.codec);
-        let sr = track.codec_params.sample_rate.unwrap_or(0);
-        let bps = track.codec_params.bits_per_sample.unwrap_or(0);
-        let mut tag_parts: Vec<String> = Vec::new();
-        tag_parts.push(format!("codec={codec_name}"));
-        if sr > 0 {
-            tag_parts.push(format!("source_rate={sr}"));
-            tag_parts.push(format!("rate={sr}"));
-        }
-        if bps > 0 {
-            tag_parts.push(format!("source_depth={bps}"));
-            tag_parts.push(format!("depth={bps}"));
-        }
-        queue_native_event(events, crate::EVT_TAG, tag_parts.join(";"));
-    }
+    emit_track_tag(events, &track); // fork: shared with the gapless advance
 
     // Seek to the requested position.
     // Try Symphonia seek first (works for seekable sources like local files).
@@ -1788,7 +1816,7 @@ fn decode_direct_audio_stream(
     // First two emissions happen quickly (~0.25s apart) so the Python
     // stabilization logic (needs 2 consecutive ±40% readings) can display
     // the value within ~0.5s.  After that, emit every ~2s.
-    let stream_rate = track.codec_params.sample_rate.unwrap_or(44100) as u64;
+    let mut stream_rate = track.codec_params.sample_rate.unwrap_or(44100) as u64;
     let mut src_bytes_accum: u64 = 0;
     let mut src_samples_accum: u64 = 0;
     let mut bitrate_emissions: u32 = 0;
@@ -1806,6 +1834,14 @@ fn decode_direct_audio_stream(
     const SLOW_ITER_FLOOR_MS: u128 = 50;
     const SLOW_ITER_PKT_DUR_MULT: u128 = 2;
     let mut slow_iter_count: u64 = 0;
+    // Fork (gapless): where the decoder is in this track, to ask for the next one in time,
+    // and the downloads of tracks continued into (they stop with this worker).
+    let mut current_locator = source.locator().to_string();
+    let mut track_duration_s = super::gapless::track_duration_s(&track, mpd_probe_info.as_ref());
+    let mut track_base_s = seek_start_ms.unwrap_or(0) as f64 / 1000.0;
+    let mut track_frames: u64 = 0;
+    let mut about_to_finish_sent = false;
+    let mut adopted_stops: Vec<Arc<AtomicBool>> = Vec::new();
     let result = (|| -> Result<(), String> {
         loop {
             if stop.load(Ordering::Acquire) || !snapshot_generation_matches(snapshot, generation) {
@@ -1818,7 +1854,71 @@ fn decode_direct_audio_stream(
                 Err(SymphoniaError::IoError(err))
                     if err.kind() == std::io::ErrorKind::UnexpectedEof =>
                 {
-                    return Ok(());
+                    // Fork (gapless): continue into the queued next track, same output.
+                    let next = match gapless.take(stop, super::gapless::READY_WAIT) {
+                        None => return Ok(()),
+                        Some(Err(err)) => {
+                            eprintln!("native-transport: gapless: no next track ({err}); ending the track");
+                            return Ok(());
+                        }
+                        Some(Ok(next)) => next,
+                    };
+                    if let Some(reason) = super::gapless::incompatibility(&track, &next.track) {
+                        eprintln!("native-transport: gapless: {reason}; ending the track to reopen the output");
+                        next.stop.store(true, Ordering::Release);
+                        return Ok(());
+                    }
+                    let prev_frames = track_frames;
+                    let super::gapless::PreparedNext {
+                        request: next_request,
+                        format: next_format,
+                        decoder: next_decoder,
+                        track: next_track,
+                        mpd_info: next_mpd,
+                        stop: next_stop,
+                    } = next;
+                    format = next_format;
+                    decoder = next_decoder;
+                    track = next_track;
+                    track_id = track.id;
+                    adopted_stops.push(next_stop);
+                    current_locator = next_request.source.locator().to_string();
+                    stream_rate = track.codec_params.sample_rate.unwrap_or(44100) as u64;
+                    track_duration_s = super::gapless::track_duration_s(&track, next_mpd.as_ref());
+                    track_base_s = 0.0;
+                    track_frames = 0;
+                    about_to_finish_sent = false;
+                    seeking = false;
+                    src_bytes_accum = 0;
+                    src_samples_accum = 0;
+                    bitrate_emissions = 0;
+                    processor_chain.restart_timeline(0.0);
+                    let seek_offset_s = runtime
+                        .lock()
+                        .ok()
+                        .and_then(|slot| slot.as_ref().and_then(|info| info.feed.write_elapsed_s()))
+                        .map(|elapsed| -elapsed)
+                        .unwrap_or(0.0);
+                    super::gapless::adopt_in_snapshot(
+                        snapshot,
+                        generation,
+                        &next_request,
+                        &track,
+                        next_mpd.as_ref(),
+                        track_duration_s,
+                        seek_offset_s,
+                    );
+                    gapless.note_advanced(next_request.source.clone());
+                    eprintln!(
+                        "native-transport: gapless: continuing into {current_locator} after {prev_frames} frames"
+                    );
+                    queue_native_event(
+                        events,
+                        crate::EVT_STATE,
+                        format!("native-transport gapless-advance prev_frames={prev_frames} uri={current_locator}"),
+                    );
+                    emit_track_tag(events, &track);
+                    continue;
                 }
                 Err(err) => return Err(format!("native transport: packet read failed: {err}")),
             };
@@ -1847,6 +1947,21 @@ fn decode_direct_audio_stream(
                 .decode(&packet)
                 .map_err(|e| format!("native transport: decode failed: {e}"))?;
             let decode_ms = decode_start.elapsed().as_millis();
+            // Fork (gapless): ask for the next track shortly before this one ends.
+            track_frames = track_frames.saturating_add(decoded.frames() as u64);
+            if !about_to_finish_sent
+                && super::gapless::due(
+                    track_base_s + track_frames as f64 / stream_rate.max(1) as f64,
+                    track_duration_s,
+                )
+            {
+                about_to_finish_sent = true;
+                queue_native_event(
+                    events,
+                    crate::EVT_STATE,
+                    format!("native-transport about-to-finish uri={current_locator}"),
+                );
+            }
             src_bytes_accum += pkt_compressed_bytes;
             src_samples_accum += pkt_dur_samples;
             // First 2 emissions at ~0.25s for fast UI display, then every ~2s.
@@ -2186,11 +2301,23 @@ fn decode_direct_audio_stream(
                 if stop.load(Ordering::Acquire) {
                     return Ok(());
                 }
+            } else {
+                // Fork: no output (tests): wait for Play as the outputs do, so the next track
+                // can be queued before this one is decoded to the end.
+                while !auto_start.load(Ordering::Acquire) {
+                    if stop.load(Ordering::Acquire) {
+                        return Ok(());
+                    }
+                    thread::sleep(std::time::Duration::from_millis(2));
+                }
             }
             // Reclaim the data buffer for reuse in next iteration.
             reuse_buf = slab.data;
         }
     })();
+    for adopted in &adopted_stops {
+        adopted.store(true, Ordering::Release); // fork (gapless)
+    }
 
     // Stop the snapshot polling thread (non-RT diagnostic) before parking
     // the session.  Use the snapshot's *private* stop signal — sharing the
@@ -2528,6 +2655,27 @@ fn push_slab_to_usb_output(
     Ok(())
 }
 
+/// TAG event with a track's tech info (codec, sample rate, bit depth) for the playback bar.
+fn emit_track_tag(
+    events: &Arc<Mutex<VecDeque<(i32, String)>>>,
+    track: &symphonia::core::formats::Track,
+) {
+    let codec_name = codec_label(track.codec_params.codec);
+    let sr = track.codec_params.sample_rate.unwrap_or(0);
+    let bps = track.codec_params.bits_per_sample.unwrap_or(0);
+    let mut tag_parts: Vec<String> = Vec::new();
+    tag_parts.push(format!("codec={codec_name}"));
+    if sr > 0 {
+        tag_parts.push(format!("source_rate={sr}"));
+        tag_parts.push(format!("rate={sr}"));
+    }
+    if bps > 0 {
+        tag_parts.push(format!("source_depth={bps}"));
+        tag_parts.push(format!("depth={bps}"));
+    }
+    queue_native_event(events, crate::EVT_TAG, tag_parts.join(";"));
+}
+
 fn record_decoded_slab(
     snapshot: &Arc<Mutex<NativeTransportSnapshot>>,
     generation: u64,
@@ -2568,7 +2716,7 @@ fn inspect_mpd_source(locator: &str) -> Result<SourceProbeResult, String> {
     })
 }
 
-fn format_mpd_source_summary(info: &MpdManifestInfo) -> String {
+pub(super) fn format_mpd_source_summary(info: &MpdManifestInfo) -> String {
     let mut parts = vec![format!("mpd representations={}", info.representation_count)];
     let duration_s = info.total_duration_s();
     if let Some(rate) = info.first_audio_sampling_rate {
@@ -3257,7 +3405,7 @@ fn open_locator_as_media_source_stream(
 /// 0, except for a DASH source opened at `start_ms` (fork), which starts at the segment
 /// holding that position. Symphonia numbers that segment's packets from 0, so callers seek
 /// or skip to `start_ms - returned start`.
-fn open_source_as_media_source_stream(
+pub(super) fn open_source_as_media_source_stream(
     source: &NativeTransportSource,
     stop: &Arc<AtomicBool>,
     start_ms: Option<u64>,
@@ -3312,7 +3460,7 @@ fn open_source_as_media_source_stream(
     }
 }
 
-fn read_locator_to_string(locator: &str) -> Result<String, String> {
+pub(super) fn read_locator_to_string(locator: &str) -> Result<String, String> {
     let mut text = String::new();
     if let Some(path) = file_uri_to_path(locator) {
         fs::File::open(path)
@@ -4121,5 +4269,199 @@ mod fork_resume_tests {
         assert!(start_ms > 14_000, "started at {start_ms} ms");
         assert!((hz - 1_900.0).abs() < 60.0, "17.3 s should sound at 1900 Hz, got {hz:.0} Hz");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod fork_gapless_tests {
+    //! Fork: gapless playback. The decode worker continues into the queued next track.
+    use super::*;
+    use crate::native_transport::source::{NativeTransportSource, TidalTrackContext};
+    use std::process::Command;
+    use std::time::Duration;
+
+    /// `seconds` of a `hz` tone at `rate`, as DASH FLAC in 2 s segments, in its own directory.
+    fn tone_dash(dir: &std::path::Path, hz: u32, rate: u32, seconds: u32) -> String {
+        std::fs::create_dir_all(dir).unwrap();
+        let mpd = dir.join("out.mpd");
+        let status = Command::new("ffmpeg")
+            .args(["-y", "-loglevel", "error", "-f", "lavfi", "-i"])
+            .arg(format!("sine=frequency={hz}:sample_rate={rate}:duration={seconds}"))
+            .args(["-ac", "2", "-c:a", "flac", "-f", "dash", "-seg_duration", "2"])
+            .arg(&mpd)
+            .status()
+            .expect("ffmpeg must be available to generate the DASH fixtures");
+        assert!(status.success(), "ffmpeg failed to generate a DASH fixture");
+        format!("file://{}", mpd.display())
+    }
+
+    fn request(uri: &str, id: &str) -> NativeTransportLoadRequest {
+        NativeTransportLoadRequest {
+            source: NativeTransportSource::TidalMpd {
+                manifest_uri: uri.to_string(),
+                track: TidalTrackContext {
+                    track_id: id.to_string(),
+                    title: format!("Track {id}"),
+                    quality_label: "LOSSLESS".to_string(),
+                },
+            },
+            target_driver: "test".to_string(),
+            bit_perfect: true,
+            output_target: None,
+            dsp_config: None,
+        }
+    }
+
+    /// Every PCM frame in the stream, decoded on its own.
+    fn frames_in(uri: &str) -> u64 {
+        let stop = Arc::new(AtomicBool::new(false));
+        let (mss, _) = open_source_as_media_source_stream(&request(uri, "x").source, &stop, None).unwrap();
+        let probed = symphonia::default::get_probe()
+            .format(&Hint::new(), mss, &FormatOptions::default(), &MetadataOptions::default())
+            .unwrap();
+        let mut format = probed.format;
+        let track = format.default_track().unwrap().clone();
+        let mut decoder = symphonia::default::get_codecs()
+            .make(&track.codec_params, &DecoderOptions::default())
+            .unwrap();
+        let mut frames = 0u64;
+        while let Ok(packet) = format.next_packet() {
+            if packet.track_id() == track.id {
+                frames += decoder.decode(&packet).unwrap().frames() as u64;
+            }
+        }
+        frames
+    }
+
+    /// Waits for the decode run to finish; returns the events of the whole run.
+    fn run_to_end(controller: &NativeTransportController) -> Vec<String> {
+        let mut events = Vec::new();
+        let deadline = Instant::now() + Duration::from_secs(20);
+        loop {
+            events.extend(controller.take_events().into_iter().map(|(_, msg)| msg));
+            let snapshot = controller.snapshot();
+            if snapshot.decode_completed || snapshot.last_error.is_some() {
+                break;
+            }
+            assert!(Instant::now() < deadline, "decode never finished; events: {events:#?}");
+            thread::sleep(Duration::from_millis(10));
+        }
+        thread::sleep(Duration::from_millis(20));
+        events.extend(controller.take_events().into_iter().map(|(_, msg)| msg));
+        events
+    }
+
+    fn count(events: &[String], needle: &str) -> usize {
+        events.iter().filter(|e| e.contains(needle)).count()
+    }
+
+    struct Fixtures {
+        dir: std::path::PathBuf,
+        a: String,
+        b: String,
+        c44: String,
+    }
+
+    impl Fixtures {
+        fn new(name: &str) -> Self {
+            let dir = std::env::temp_dir().join(format!("ebb-gapless-{name}-{}", std::process::id()));
+            Self {
+                a: tone_dash(&dir.join("a"), 300, 48_000, 6),
+                b: tone_dash(&dir.join("b"), 700, 48_000, 4),
+                c44: tone_dash(&dir.join("c"), 500, 44_100, 4),
+                dir,
+            }
+        }
+    }
+
+    impl Drop for Fixtures {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.dir);
+        }
+    }
+
+    #[test]
+    fn the_next_track_continues_in_the_same_decode_run_sample_for_sample() {
+        let fx = Fixtures::new("continue");
+        let (frames_a, frames_b) = (frames_in(&fx.a), frames_in(&fx.b));
+        let controller = NativeTransportController::new();
+        controller.load(request(&fx.a, "1")).unwrap();
+        controller.set_next(Some(request(&fx.b, "2"))).unwrap();
+        controller.play().unwrap();
+        let events = run_to_end(&controller);
+
+        assert_eq!(count(&events, "decode-start"), 1, "one decode run, no restart: {events:#?}");
+        assert_eq!(count(&events, &format!("about-to-finish uri={}", fx.a)), 1, "{events:#?}");
+        let advance = format!("gapless-advance prev_frames={frames_a} uri={}", fx.b);
+        assert_eq!(count(&events, &advance), 1, "every frame of A, then B: {events:#?}");
+        assert!(events.iter().any(|e| e.contains("decode-complete") && e.contains(&format!("frames={frames_b} "))),
+            "then every frame of B: {events:#?}");
+        let snapshot = controller.snapshot();
+        assert_eq!(snapshot.current_track_id.as_deref(), Some("2"));
+        assert_eq!(snapshot.source_locator.as_deref(), Some(fx.b.as_str()));
+        assert!((snapshot.duration_s.unwrap() - 4.0).abs() < 0.05, "{:?}", snapshot.duration_s);
+        assert_eq!(snapshot.seek_offset_s, 0.0);
+        drop(controller);
+    }
+
+    #[test]
+    fn a_next_track_in_another_format_ends_the_track_instead() {
+        let fx = Fixtures::new("mismatch");
+        let frames_a = frames_in(&fx.a);
+        let controller = NativeTransportController::new();
+        controller.load(request(&fx.a, "1")).unwrap();
+        controller.set_next(Some(request(&fx.c44, "3"))).unwrap();
+        controller.play().unwrap();
+        let events = run_to_end(&controller);
+
+        assert_eq!(count(&events, "gapless-advance"), 0, "{events:#?}");
+        assert!(events.iter().any(|e| e.contains("decode-complete") && e.contains(&format!("frames={frames_a} "))));
+        assert_eq!(controller.snapshot().current_track_id.as_deref(), Some("1"));
+        drop(controller);
+    }
+
+    #[test]
+    fn a_new_load_or_a_cleared_next_drops_the_queued_track() {
+        let fx = Fixtures::new("dropped");
+        let controller = NativeTransportController::new();
+        controller.load(request(&fx.a, "1")).unwrap();
+        controller.set_next(Some(request(&fx.b, "2"))).unwrap();
+        controller.load(request(&fx.b, "2")).unwrap(); // the user picked another track
+        controller.play().unwrap();
+        let events = run_to_end(&controller);
+        assert_eq!(count(&events, "gapless-advance"), 0, "{events:#?}");
+
+        controller.load(request(&fx.a, "1")).unwrap();
+        controller.set_next(Some(request(&fx.b, "2"))).unwrap();
+        controller.set_next(None).unwrap(); // the queue changed: nothing follows any more
+        controller.play().unwrap();
+        let events = run_to_end(&controller);
+        assert_eq!(count(&events, "gapless-advance"), 0, "{events:#?}");
+        assert_eq!(controller.snapshot().current_track_id.as_deref(), Some("1"));
+        drop(controller);
+    }
+
+    #[test]
+    fn after_an_advance_seeking_reopens_the_new_track() {
+        let fx = Fixtures::new("seek");
+        let controller = NativeTransportController::new();
+        controller.load(request(&fx.a, "1")).unwrap();
+        controller.set_next(Some(request(&fx.b, "2"))).unwrap();
+        controller.play().unwrap();
+        let events = run_to_end(&controller);
+        assert_eq!(count(&events, "gapless-advance"), 1, "{events:#?}");
+
+        controller.seek_ms(1_000).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while controller.snapshot().decode_completed {
+            assert!(Instant::now() < deadline, "the seek never restarted decoding");
+            thread::sleep(Duration::from_millis(5));
+        }
+        let events = run_to_end(&controller);
+        let snapshot = controller.snapshot();
+        // A is 6 s long and B 4 s; the probe of the reopened stream sets the duration.
+        assert!((snapshot.duration_s.unwrap() - 4.0).abs() < 0.05, "reopened A, not B: {events:#?}");
+        assert_eq!(snapshot.current_track_id.as_deref(), Some("2"));
+        drop(controller);
     }
 }

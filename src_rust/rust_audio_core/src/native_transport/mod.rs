@@ -1,6 +1,7 @@
 pub mod alsa_output;
 pub mod controller;
 pub mod format_util;
+pub(crate) mod gapless; // fork
 pub mod native_dsp;
 pub mod output;
 pub mod processor;
