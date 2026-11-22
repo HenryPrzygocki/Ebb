@@ -135,7 +135,14 @@ pub struct MpdManifestInfo {
     pub segment_template_duration: Option<u64>,
     /// Summed `<S d="...">` duration in `timescale` units.
     pub segment_timeline_total: Option<u64>,
+    /// Fork: every segment's `<S d>` in `timescale` units, in order, with `r` expanded, so a
+    /// resume or seek can start at the segment holding the position instead of at segment 1.
+    pub segment_durations: Vec<u64>,
 }
+
+/// Fork: cap on expanded timeline entries (about 4.6 days of 4 s segments); beyond it the
+/// timeline is not kept and playback starts at segment 1 as before.
+const MAX_TIMELINE_SEGMENTS: u64 = 100_000;
 
 pub fn inspect_mpd_manifest(xml: &str) -> Result<MpdManifestInfo, String> {
     let mut reader = Reader::from_str(xml);
@@ -322,6 +329,12 @@ fn parse_mpd_node<'a>(
                         .saturating_add(total),
                 );
             }
+            if seg_d > 0
+                && (info.segment_durations.len() as u64).saturating_add(count) <= MAX_TIMELINE_SEGMENTS
+            {
+                info.segment_durations
+                    .extend(std::iter::repeat(seg_d).take(count as usize));
+            }
         }
         _ => {}
     }
@@ -393,6 +406,27 @@ fn infer_quality_label(locator: &str) -> String {
 }
 
 impl MpdManifestInfo {
+    /// Fork: the media segment holding `position_ms` (0-based, after the init segment) and
+    /// its start in ms, rounded down. `None` when the timeline is unknown or incomplete, so
+    /// the caller starts at segment 1 as before. Past the end: the last segment.
+    pub fn segment_at_ms(&self, position_ms: u64) -> Option<(usize, u64)> {
+        let ts = self.first_timescale.filter(|t| *t > 0)? as u128;
+        let count = self.first_segment_count? as usize;
+        if self.segment_durations.is_empty() || self.segment_durations.len() != count {
+            return None;
+        }
+        let target = position_ms as u128 * ts / 1000;
+        let mut start: u128 = 0;
+        for (index, d) in self.segment_durations.iter().enumerate() {
+            let end = start + *d as u128;
+            if target < end || index + 1 == count {
+                return Some((index, (start * 1000 / ts) as u64));
+            }
+            start = end;
+        }
+        None
+    }
+
     pub fn total_duration_s(&self) -> Option<f64> {
         if let Some(ms) = self.total_duration_ms {
             return Some(ms as f64 / 1000.0);
@@ -642,5 +676,44 @@ mod tests {
         assert_eq!(info.first_segment_count, Some(3));
         assert_eq!(info.segment_timeline_total, Some(288000));
         assert_eq!(info.total_duration_s(), Some(6.0));
+    }
+}
+
+#[cfg(test)]
+mod fork_segment_tests {
+    //! Fork: per-segment timeline, so a resume or seek can start mid-track.
+    use super::*;
+
+    /// Shaped like TIDAL's manifest for Speak to Me: 16 × 3.968 s and a 0.845 s tail at 96 kHz.
+    const TIDAL_LIKE_MPD: &str = r#"<?xml version='1.0' encoding='UTF-8'?><MPD xmlns="urn:mpeg:dash:schema:mpd:2011" profiles="urn:mpeg:dash:profile:isoff-main:2011" type="static" mediaPresentationDuration="PT1M4.333S"><Period id="0"><AdaptationSet id="0" contentType="audio" mimeType="audio/mp4" segmentAlignment="true"><Representation id="FLAC_HIRES,96000,24" codecs="flac" bandwidth="2420922" audioSamplingRate="96000"><SegmentTemplate timescale="96000" initialization="https://example.invalid/0.mp4" media="https://example.invalid/$Number$.mp4" startNumber="1"><SegmentTimeline><S d="380928" r="15"/><S d="81152"/></SegmentTimeline></SegmentTemplate></Representation></AdaptationSet></Period></MPD>"#;
+
+    #[test]
+    fn the_timeline_keeps_every_segment_duration() {
+        let info = inspect_mpd_manifest(TIDAL_LIKE_MPD).unwrap();
+        assert_eq!(info.first_segment_count, Some(17));
+        assert_eq!(info.segment_durations.len(), 17);
+        assert_eq!((info.segment_durations[0], info.segment_durations[16]), (380928, 81152));
+    }
+
+    #[test]
+    fn segment_at_ms_finds_the_segment_holding_a_position() {
+        let info = inspect_mpd_manifest(TIDAL_LIKE_MPD).unwrap();
+        assert_eq!(info.segment_at_ms(0), Some((0, 0)));
+        assert_eq!(info.segment_at_ms(3_967), Some((0, 0)));
+        assert_eq!(info.segment_at_ms(3_968), Some((1, 3_968)));
+        assert_eq!(info.segment_at_ms(57_470), Some((14, 55_552))); // the pause in the bug report
+        assert_eq!(info.segment_at_ms(63_500), Some((16, 63_488)));
+        assert_eq!(info.segment_at_ms(999_999), Some((16, 63_488))); // past the end: the last one
+    }
+
+    #[test]
+    fn segment_at_ms_gives_up_without_a_complete_timeline() {
+        let missing_d = TIDAL_LIKE_MPD.replace(r#"<S d="81152"/>"#, "<S/>");
+        assert_eq!(inspect_mpd_manifest(&missing_d).unwrap().segment_at_ms(1_000), None);
+        let no_timeline = TIDAL_LIKE_MPD.replace(
+            r#"<SegmentTimeline><S d="380928" r="15"/><S d="81152"/></SegmentTimeline>"#,
+            "",
+        );
+        assert_eq!(inspect_mpd_manifest(&no_timeline).unwrap().segment_at_ms(1_000), None);
     }
 }

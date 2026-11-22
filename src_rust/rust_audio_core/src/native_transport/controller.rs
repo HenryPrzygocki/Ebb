@@ -1589,7 +1589,7 @@ fn decode_direct_audio_stream(
     let output_config: Option<UsbRawSinkConfig> = output_target
         .as_ref()
         .and_then(|t| t.usb_cfg().cloned());
-    let mss = open_source_as_media_source_stream(source, stop)?;
+    let (mss, stream_start_ms) = open_source_as_media_source_stream(source, stop, seek_start_ms)?;
     let mut hint = Hint::new();
     if let Some(extension) = source_probe_hint(source) {
         hint.with_extension(extension);
@@ -1703,6 +1703,8 @@ fn decode_direct_audio_stream(
     // Fall back to packet-skip for non-seekable sources (HTTP streams).
     let skip_until_ts: Option<u64> = if let Some(ms) = seek_start_ms {
         let rate = track.codec_params.sample_rate.unwrap_or(44100);
+        // Fork: relative to where the stream starts (a DASH segment's packets count from 0).
+        let ms = ms.saturating_sub(stream_start_ms);
         let ts = (ms as f64 / 1000.0 * rate as f64) as u64;
         match format.seek(SeekMode::Accurate, SeekTo::TimeStamp { ts, track_id }) {
             Ok(_seeked) => {
@@ -3251,18 +3253,41 @@ fn open_locator_as_media_source_stream(
     ))
 }
 
+/// Opens `source` for decoding. Returns the stream and the track time it starts at, in ms:
+/// 0, except for a DASH source opened at `start_ms` (fork), which starts at the segment
+/// holding that position. Symphonia numbers that segment's packets from 0, so callers seek
+/// or skip to `start_ms - returned start`.
 fn open_source_as_media_source_stream(
     source: &NativeTransportSource,
     stop: &Arc<AtomicBool>,
-) -> Result<MediaSourceStream, String> {
+    start_ms: Option<u64>,
+) -> Result<(MediaSourceStream, u64), String> {
     match source {
         NativeTransportSource::TidalDirectMedia { url, .. } => {
-            open_locator_as_media_source_stream(url, stop)
+            Ok((open_locator_as_media_source_stream(url, stop)?, 0))
         }
         NativeTransportSource::TidalMpd { manifest_uri, .. } => {
             let xml = read_locator_to_string(manifest_uri)?;
             let info = inspect_mpd_manifest(&xml)?;
-            let sequence = build_mpd_segment_sequence(manifest_uri, &info)?;
+            // Fork: a resume or seek used to fetch the track from segment 1 and skip packets
+            // up to the position, so resuming at 0:57 of a 24/96 track downloaded ~17 MB
+            // before the first sample, and a pause near the end seemed to hang.
+            let segmented = info.first_initialization.is_some() && info.first_media_template.is_some();
+            let (first_media, stream_start_ms) = start_ms
+                .filter(|ms| *ms > 0 && segmented)
+                .and_then(|ms| info.segment_at_ms(ms))
+                .map(|(index, start)| (index as u64, start))
+                .unwrap_or((0, 0));
+            if first_media > 0 {
+                eprintln!(
+                    "native-transport: starting at segment #{}/{} ({} ms) for {} ms",
+                    first_media + 1,
+                    info.first_segment_count.unwrap_or(0),
+                    stream_start_ms,
+                    start_ms.unwrap_or(0),
+                );
+            }
+            let sequence = build_mpd_segment_sequence(manifest_uri, &info, first_media)?;
             // Wrap the serial segment reader in the same background-fetch
             // channel pipeline used for TidalDirectMedia.  Without this,
             // every Symphonia read for a DASH source blocked on the next
@@ -3279,9 +3304,9 @@ fn open_source_as_media_source_stream(
             let rx = spawn_download_thread(segment_reader, Arc::clone(stop));
             let source: Box<dyn MediaSource> =
                 Box::new(ReadOnlySource::new(ChannelReader::new(rx)));
-            Ok(MediaSourceStream::new(
-                source,
-                MediaSourceStreamOptions::default(),
+            Ok((
+                MediaSourceStream::new(source, MediaSourceStreamOptions::default()),
+                stream_start_ms,
             ))
         }
     }
@@ -3320,9 +3345,11 @@ fn file_uri_to_path(locator: &str) -> Option<&str> {
     locator.strip_prefix("file://")
 }
 
+/// The init segment, then the media segments from index `first_media` (0-based; fork) on.
 fn build_mpd_segment_sequence(
     manifest_locator: &str,
     info: &MpdManifestInfo,
+    first_media: u64,
 ) -> Result<Vec<String>, String> {
     let Some(init) = info.first_initialization.as_deref() else {
         if let Some(base_url) = info.first_base_url.as_deref() {
@@ -3349,7 +3376,7 @@ fn build_mpd_segment_sequence(
         &segment_base,
         &replace_representation_id(init, rep),
     ));
-    for idx in 0..segment_count {
+    for idx in first_media.min(segment_count)..segment_count {
         let number = start_number.saturating_add(idx);
         let media_name = replace_representation_id(media, rep);
         let media_name = replace_number_token(&media_name, number)?;
@@ -4001,5 +4028,98 @@ mod tests {
             .unwrap_or_default()
             .contains("mpd representations=1"));
         let _ = std::fs::remove_dir_all(dash_dir);
+    }
+}
+
+#[cfg(test)]
+mod fork_resume_tests {
+    //! Fork: a DASH resume or seek starts at the segment holding the position.
+    use super::*;
+    use crate::native_transport::source::{NativeTransportSource, TidalTrackContext};
+    use std::process::Command;
+    use symphonia::core::audio::SampleBuffer;
+    use symphonia::core::codecs::DecoderOptions;
+
+    /// 20 s of tone at 200 Hz + 100 Hz per elapsed second, as DASH FLAC in ~2 s segments:
+    /// the pitch of decoded audio tells which second of the track it came from.
+    fn stepped_tone_dash(dir: &std::path::Path) -> String {
+        std::fs::create_dir_all(dir).unwrap();
+        let mpd = dir.join("out.mpd");
+        let status = Command::new("ffmpeg")
+            .args(["-y", "-loglevel", "error", "-f", "lavfi", "-i"])
+            .arg("aevalsrc=sin(2*PI*(200+100*floor(t))*t):s=48000:d=20")
+            .args(["-c:a", "flac", "-f", "dash", "-seg_duration", "2"])
+            .arg(&mpd)
+            .status()
+            .expect("ffmpeg must be available to generate the DASH fixture");
+        assert!(status.success(), "ffmpeg failed to generate the stepped-tone DASH fixture");
+        format!("file://{}", mpd.display())
+    }
+
+    fn mpd_source(uri: &str) -> NativeTransportSource {
+        NativeTransportSource::TidalMpd {
+            manifest_uri: uri.to_string(),
+            track: TidalTrackContext {
+                track_id: "903".to_string(),
+                title: "Stepped Tone".to_string(),
+                quality_label: "HI_RES_LOSSLESS".to_string(),
+            },
+        }
+    }
+
+    /// Opens the stream at `position_ms` as the decode worker does and skips the same way.
+    /// Returns where the stream starts (ms), its first packet's timestamp, and the pitch (Hz)
+    /// of the first 200 ms decoded at the position.
+    fn resume_at(uri: &str, position_ms: u64) -> (u64, u64, f64) {
+        let stop = Arc::new(AtomicBool::new(false));
+        let (mss, start_ms) =
+            open_source_as_media_source_stream(&mpd_source(uri), &stop, Some(position_ms)).unwrap();
+        let probed = symphonia::default::get_probe()
+            .format(&Hint::new(), mss, &FormatOptions::default(), &MetadataOptions::default())
+            .unwrap();
+        let mut format = probed.format;
+        let track = format.default_track().unwrap().clone();
+        let rate = track.codec_params.sample_rate.unwrap();
+        let mut decoder = symphonia::default::get_codecs()
+            .make(&track.codec_params, &DecoderOptions::default())
+            .unwrap();
+        let skip_until = ((position_ms - start_ms) as f64 / 1000.0 * rate as f64) as u64;
+        let mut first_ts = None;
+        let mut pcm: Vec<f32> = Vec::new();
+        while pcm.len() < rate as usize / 5 {
+            let packet = format.next_packet().unwrap();
+            if packet.track_id() != track.id {
+                continue;
+            }
+            first_ts.get_or_insert(packet.ts());
+            if packet.ts() + packet.dur() < skip_until {
+                continue;
+            }
+            let decoded = decoder.decode(&packet).unwrap();
+            let mut buf = SampleBuffer::<f32>::new(decoded.capacity() as u64, *decoded.spec());
+            buf.copy_interleaved_ref(decoded);
+            pcm.extend_from_slice(buf.samples());
+        }
+        stop.store(true, Ordering::Release);
+        let crossings = pcm.windows(2).filter(|w| (w[0] < 0.0) != (w[1] < 0.0)).count();
+        let hz = crossings as f64 / 2.0 / (pcm.len() as f64 / rate as f64);
+        (start_ms, first_ts.unwrap(), hz)
+    }
+
+    #[test]
+    fn a_dash_resume_starts_at_the_segment_holding_the_position() {
+        let dir = std::env::temp_dir().join(format!("ebb-dash-resume-{}", std::process::id()));
+        let uri = stepped_tone_dash(&dir);
+        let (start_ms, first_ts, hz) = resume_at(&uri, 0);
+        assert_eq!((start_ms, first_ts), (0, 0));
+        assert!((hz - 200.0).abs() < 30.0, "0 s should sound at 200 Hz, got {hz:.0} Hz");
+        let (start_ms, first_ts, hz) = resume_at(&uri, 9_500);
+        assert!(start_ms > 6_000 && start_ms <= 9_500, "started at {start_ms} ms, not near 9.5 s");
+        assert_eq!(first_ts, 0, "Symphonia numbers a mid-stream fragment's packets from 0");
+        assert!((hz - 1_100.0).abs() < 60.0, "9.5 s should sound at 1100 Hz, got {hz:.0} Hz");
+        let (start_ms, _, hz) = resume_at(&uri, 17_300); // late, like the pause in the report
+        assert!(start_ms > 14_000, "started at {start_ms} ms");
+        assert!((hz - 1_900.0).abs() < 60.0, "17.3 s should sound at 1900 Hz, got {hz:.0} Hz");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
