@@ -32,8 +32,6 @@ _NOW_PLAYING_CONTENT_INSET = 22
 _NOW_PLAYING_COVER_FRAME_SCALE = 1.00
 _NOW_PLAYING_LEFT_RATIO = 0.60
 _NOW_PLAYING_RIGHT_RATIO = 0.40
-_NOW_PLAYING_TRACK_INFO_WIDTH = 170
-_NOW_PLAYING_TRACK_ALBUM_WIDTH = 120
 _NOW_PLAYING_TRACK_DURATION_WIDTH = 64
 _NOW_PLAYING_REVEAL_DURATION_MS = 260
 _NOW_PLAYING_LAYOUT_SETTLE_DELAYS_MS = (90, _NOW_PLAYING_REVEAL_DURATION_MS + 40)
@@ -75,6 +73,13 @@ def _clamp01(value):
     return max(0.0, min(1.0, float(value or 0.0)))
 
 
+# Fork: the queue side's album column shows only while the side is wide enough for it. The
+# rows' fixed widths (title 22 chars, album 120 px) used to make the side wider than the space
+# it gets in a narrower window, which cut off the durations and the Lyrics tab.
+_NOW_PLAYING_ALBUM_COLUMN_MIN_W = 480
+_now_playing_album_column = True
+
+
 def _build_now_playing_track_album_label(track):
     album_name = _now_playing_track_album_name(track)
     album_lbl = Gtk.Label(
@@ -84,10 +89,31 @@ def _build_now_playing_track_album_label(track):
         css_classes=["dim-label", "track-album", "now-playing-track-album"],
     )
     album_lbl.set_tooltip_text(album_name)
-    album_lbl.set_size_request(_NOW_PLAYING_TRACK_ALBUM_WIDTH, -1)
+    album_lbl.set_width_chars(14)  # one width for every row, so the column lines up
     album_lbl.set_max_width_chars(14)
     album_lbl.set_valign(Gtk.Align.CENTER)
+    album_lbl.set_visible(_now_playing_album_column)
     return album_lbl
+
+
+def _set_now_playing_album_column(self, visible):
+    global _now_playing_album_column
+    visible = bool(visible)
+    if visible == _now_playing_album_column:
+        return
+    _now_playing_album_column = visible
+    for name in ("now_playing_queue_list", "now_playing_track_list"):
+        listbox = getattr(self, name, None)
+        pending = [listbox] if listbox is not None else []
+        while pending:
+            widget = pending.pop()
+            if widget.has_css_class("now-playing-track-album"):
+                widget.set_visible(visible)
+                continue
+            child = widget.get_first_child()
+            while child is not None:
+                pending.append(child)
+                child = child.get_next_sibling()
 
 
 def _build_now_playing_track_row(track, idx):
@@ -108,26 +134,24 @@ def _build_now_playing_track_row(track, idx):
     stack.add_named(icon, "icon")
     box.append(stack)
 
-    info = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2, hexpand=False)
-    info.set_size_request(_NOW_PLAYING_TRACK_INFO_WIDTH, -1)
+    # Fork: the title column takes the room there is (it was a fixed 22 characters).
+    info = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2, hexpand=True)
     title = str(getattr(track, "name", "") or "Unknown Track")
     title_lbl = Gtk.Label(label=title, xalign=0, ellipsize=3, css_classes=["track-title"])
     title_lbl.set_single_line_mode(True)
-    title_lbl.set_width_chars(22)
-    title_lbl.set_max_width_chars(22)
+    title_lbl.set_width_chars(6)
+    title_lbl.set_max_width_chars(40)
     title_lbl.set_tooltip_text(title)
     info.append(title_lbl)
     artist_name = str(getattr(getattr(track, "artist", None), "name", "") or "")
     if artist_name:
         artist_lbl = Gtk.Label(label=artist_name, xalign=0, ellipsize=3, css_classes=["dim-label", "track-artist"])
         artist_lbl.set_single_line_mode(True)
-        artist_lbl.set_width_chars(22)
-        artist_lbl.set_max_width_chars(22)
+        artist_lbl.set_width_chars(6)
+        artist_lbl.set_max_width_chars(40)
         artist_lbl.set_tooltip_text(artist_name)
         info.append(artist_lbl)
     box.append(info)
-
-    box.append(Gtk.Box(hexpand=True))
     box.append(_build_now_playing_track_album_label(track))
 
     dur = int(getattr(track, "duration", 0) or 0)
@@ -316,7 +340,7 @@ def _apply_now_playing_dynamic_color(self, rgb=None):
 }}
 .now-playing-info-card {{
     background-image: none;
-    background-color: rgba({r8}, {g8}, {b8}, 0.35);
+    background-color: rgba({r8}, {g8}, {b8}, 0.60);
     border-color: rgba({r8}, {g8}, {b8}, 0.34);
     box-shadow: none;
 }}
@@ -590,7 +614,47 @@ def _draw_cover_contain(cr, pixbuf, width, height):
     _draw_pixbuf_to_rect(cr, pixbuf, (rx + off_x, ry + off_y, rw, rh))
 
 
-def _build_now_playing_cover_surface(pixbuf, width, height, dark_rgb=None):
+# Fork: where the cover goes. When the left panel is tall enough, the cover sits above the
+# track info, both in full view; otherwise the info lies over the cover's lower part, on its
+# scrim. Before, the cover was always centred in the panel, so in a tall panel the info card
+# covered half of it while empty space sat above it.
+_NOW_PLAYING_TOP_BAR_H = _NOW_PLAYING_CONTENT_INSET + 40  # the close button and "Now Playing"
+_NOW_PLAYING_STACKED_MIN_SHARE = 0.6  # stack only while the cover keeps this share of the width
+_NOW_PLAYING_STACKED_RADIUS = 14.0
+
+
+def _now_playing_cover_box(stage_w, stage_h, info_h, top_h=_NOW_PLAYING_TOP_BAR_H):
+    """The cover's square (x, y, size) in a stage_w x stage_h panel whose bottom info_h
+    pixels hold the track info, or None when the cover should fill the panel instead."""
+    pad = _NOW_PLAYING_CONTENT_INSET
+    room = int(stage_h) - int(top_h) - int(info_h) - pad
+    size = min(int(stage_w) - 2 * pad, room)
+    if stage_w <= 0 or info_h <= 0 or size < _NOW_PLAYING_STACKED_MIN_SHARE * stage_w:
+        return None
+    return (int((stage_w - size) / 2), int(top_h + (room - size) / 2), int(size))
+
+
+def _draw_cover_in_box(cr, pixbuf, box):
+    x, y, size = box
+    rect = _now_playing_cover_rect(int(pixbuf.get_width() or 0), int(pixbuf.get_height() or 0), size, size, mode="contain")
+    if rect is None:
+        return
+    rx, ry, rw, rh = rect
+    rx, ry = rx + x, ry + y
+    radius = _NOW_PLAYING_STACKED_RADIUS
+    for spread in range(1, 7):  # a soft shadow, so the cover lifts off the blurred backdrop
+        grow = spread * 2.0
+        _rounded_rect_path(cr, rx - grow, ry - grow + 6.0, rw + 2 * grow, rh + 2 * grow, *([radius + grow] * 4))
+        cr.set_source_rgba(0.0, 0.0, 0.0, 0.045)
+        cr.fill()
+    cr.save()
+    _rounded_rect_path(cr, rx, ry, rw, rh, radius, radius, radius, radius)
+    cr.clip()
+    _draw_pixbuf_to_rect(cr, pixbuf, (rx, ry, rw, rh))
+    cr.restore()
+
+
+def _build_now_playing_cover_surface(pixbuf, width, height, dark_rgb=None, box=None):
     surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, width, height)
     cache_cr = cairo.Context(surface)
     cache_cr.set_operator(cairo.Operator.SOURCE)
@@ -613,7 +677,10 @@ def _build_now_playing_cover_surface(pixbuf, width, height, dark_rgb=None):
 
     cache_cr.push_group()
     _draw_now_playing_cover_background(cache_cr, pixbuf, width, height, dark_rgb)
-    _draw_cover_contain(cache_cr, pixbuf, width, height)
+    if box is not None:
+        _draw_cover_in_box(cache_cr, pixbuf, box)
+    else:
+        _draw_cover_contain(cache_cr, pixbuf, width, height)
 
     vertical_scrim = cairo.LinearGradient(0.0, 0.0, 0.0, float(height))
     vertical_scrim.add_color_stop_rgba(0.00, 0.0, 0.0, 0.0, 0.02)
@@ -642,10 +709,11 @@ def _draw_now_playing_cover(area, cr, width, height, _data=None):
         # Use the source URL as the cache key — more stable than id(pixbuf)
         # which can be reused by the GC for a different object.
         url = getattr(area, "_target_url", None) or ""
-        cache_key = (url if url else id(pixbuf), width, height, tuple(dark_rgb or ()))
+        box = getattr(area, "_cover_box", None)
+        cache_key = (url if url else id(pixbuf), width, height, tuple(dark_rgb or ()), box)
         cache_surface = getattr(area, "_cover_cache_surface", None)
         if cache_surface is None or getattr(area, "_cover_cache_key", None) != cache_key:
-            cache_surface = _build_now_playing_cover_surface(pixbuf, width, height, dark_rgb)
+            cache_surface = _build_now_playing_cover_surface(pixbuf, width, height, dark_rgb, box)
             area._cover_cache_key = cache_key
             area._cover_cache_surface = cache_surface
         cr.set_source_surface(cache_surface, 0.0, 0.0)
@@ -1104,6 +1172,7 @@ def _sync_now_playing_surface_size(self):
     left_target_w, right_panel_w = _now_playing_split_widths(surface_w, target_h)
     if right_panel is not None:
         _set_size_request_if_changed(right_panel, right_panel_w, -1)
+        _set_now_playing_album_column(self, right_panel_w >= _NOW_PLAYING_ALBUM_COLUMN_MIN_W)
     visible_left_w = None
     if left_stage is not None:
         visible_left_w = left_target_w
@@ -1122,6 +1191,15 @@ def _sync_now_playing_surface_size(self):
         _set_size_request_if_changed(meta_panel, meta_target_w, -1)
         if progress_box is not None:
             _set_size_request_if_changed(progress_box, meta_target_w, -1)
+        if art_img is not None and visible_left_w:
+            try:
+                info_h = int(meta_panel.measure(Gtk.Orientation.VERTICAL, meta_target_w)[1])
+            except Exception:
+                info_h = 0
+            box = _now_playing_cover_box(visible_left_w, target_h, info_h)
+            if getattr(art_img, "_cover_box", None) != box:
+                art_img._cover_box = box
+                art_img.queue_draw()
     _apply_now_playing_scrim_css(self, visible_left_w or 0)
     return False
 
@@ -1191,6 +1269,18 @@ def _build_now_playing_left_panel(self, layout):
     left_top.set_margin_top(_NOW_PLAYING_CONTENT_INSET)
     left_top.set_margin_start(_NOW_PLAYING_CONTENT_INSET)
     left_top.set_margin_end(_NOW_PLAYING_CONTENT_INSET)
+    # Fork: Now Playing's one close button, where its title is. It had two: a down arrow in the
+    # bottom-left corner and an x on the queue's side (cut off when the window is narrow).
+    # The chevron the bottom panel closes with: each sliding panel closes the way it leaves.
+    close_btn = Gtk.Button(
+        icon_name="hiresti-pan-down-symbolic",
+        css_classes=["flat", "circular", "now-playing-close-btn"],
+        tooltip_text="Close Now Playing (Esc)",
+        valign=Gtk.Align.CENTER,
+    )
+    close_btn.connect("clicked", self.hide_now_playing_overlay)
+    self.now_playing_close_btn = close_btn
+    left_top.append(close_btn)
     left_top.append(Gtk.Label(label="Now Playing", xalign=0, css_classes=["now-playing-kicker"], hexpand=True))
     left.add_overlay(left_top)
 
@@ -1214,20 +1304,26 @@ def _build_now_playing_left_panel(self, layout):
     )
     meta_panel.append(info_card)
 
-    meta_tool_band = Gtk.Overlay(hexpand=True, halign=Gtk.Align.FILL, valign=Gtk.Align.END)
-
+    # Fork: one vertical flow: where it plays from, title, artist, album, then the tool row,
+    # the timeline and the transport. The source label and the tool row used to float as
+    # overlays over the title's band, so a long title ran under "Playing from ...".
     track_meta_box = Gtk.Box(
         orientation=Gtk.Orientation.VERTICAL,
         spacing=6,
         hexpand=True,
         halign=Gtk.Align.FILL,
     )
-    track_meta_box.set_valign(Gtk.Align.END)
-    # Reserve vertical room for the floating tool-row so long text grows upward
-    # instead of overlapping the three action buttons.
-    track_meta_box.set_margin_bottom(42)
-    info_card.append(meta_tool_band)
-    meta_tool_band.set_child(track_meta_box)
+    info_card.append(track_meta_box)
+
+    self.now_playing_source_label = Gtk.Label(label="", xalign=0, ellipsize=3, css_classes=["now-playing-source"])
+    source_btn = Gtk.Button(
+        css_classes=["flat", "now-playing-source-btn"],
+        halign=Gtk.Align.START,
+    )
+    source_btn.set_child(self.now_playing_source_label)
+    source_btn.connect("clicked", self._on_playback_source_clicked)
+    self.now_playing_source_btn = source_btn
+    track_meta_box.append(source_btn)
 
     self.now_playing_title_label = Gtk.Label(
         label="Nothing playing",
@@ -1238,6 +1334,8 @@ def _build_now_playing_left_panel(self, layout):
         css_classes=["now-playing-title"],
     )
     self.now_playing_title_label.set_max_width_chars(28)
+    self.now_playing_title_label.set_lines(3)  # fork: a very long title ends in "..." instead
+    self.now_playing_title_label.set_ellipsize(3)
     track_meta_box.append(self.now_playing_title_label)
 
     self.now_playing_artist_label = Gtk.Label(
@@ -1274,19 +1372,6 @@ def _build_now_playing_left_panel(self, layout):
     self.now_playing_album_btn = album_btn
     track_meta_box.append(album_btn)
 
-    self.now_playing_source_label = Gtk.Label(label="", xalign=1, ellipsize=3, max_width_chars=32, css_classes=["now-playing-source"])
-    source_btn = Gtk.Button(
-        css_classes=["flat", "now-playing-source-btn"],
-        halign=Gtk.Align.END,
-        valign=Gtk.Align.START,
-        hexpand=True,
-    )
-    source_btn.set_child(self.now_playing_source_label)
-    source_btn.set_margin_bottom(42)
-    source_btn.connect("clicked", self._on_playback_source_clicked)
-    self.now_playing_source_btn = source_btn
-    meta_tool_band.add_overlay(source_btn)
-
     controls_stack = Gtk.Box(
         orientation=Gtk.Orientation.VERTICAL,
         spacing=12,
@@ -1299,7 +1384,6 @@ def _build_now_playing_left_panel(self, layout):
     tool_row = Gtk.Box(spacing=8, halign=Gtk.Align.CENTER, css_classes=["now-playing-tool-row"])
     tool_row.set_vexpand(False)
     tool_row.set_halign(Gtk.Align.CENTER)
-    tool_row.set_valign(Gtk.Align.END)
     self.now_playing_tool_row = tool_row
 
     self.now_playing_track_fav_btn = Gtk.Button(
@@ -1347,7 +1431,7 @@ def _build_now_playing_left_panel(self, layout):
     self.now_playing_vol_btn.connect("clicked", lambda _b: self.now_playing_vol_pop.popup())
     tool_row.append(self.now_playing_vol_btn)
 
-    meta_tool_band.add_overlay(tool_row)
+    info_card.append(tool_row)
 
     progress_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10, css_classes=["now-playing-progress-box"])
     progress_box.set_hexpand(True)
@@ -1387,20 +1471,6 @@ def _build_now_playing_left_panel(self, layout):
 
     info_card.append(controls_stack)
 
-    # Collapse button — bottom-left corner of the left panel
-    collapse_btn = Gtk.Button(
-        icon_name="go-down-symbolic",
-        css_classes=["flat", "circular", "now-playing-collapse-btn"],
-        tooltip_text="Close Now Playing",
-        halign=Gtk.Align.START,
-        valign=Gtk.Align.END,
-    )
-    collapse_btn.set_margin_start(_NOW_PLAYING_CONTENT_INSET - 15)
-    collapse_btn.set_margin_bottom(_NOW_PLAYING_CONTENT_INSET - 15)
-    collapse_btn.connect("clicked", self.hide_now_playing_overlay)
-    left.add_overlay(collapse_btn)
-    self.now_playing_collapse_btn = collapse_btn
-
 
 def _build_now_playing_right_panel(self, layout):
     """Build the right half of the overlay: tab switcher and Queue/Album/Lyrics pages."""
@@ -1437,18 +1507,11 @@ def _build_now_playing_right_panel(self, layout):
 
     self.now_playing_switcher = Gtk.StackSwitcher()
     self.now_playing_switcher.add_css_class("now-playing-switcher")
-    self.now_playing_switcher.set_halign(Gtk.Align.START)
+    self.now_playing_switcher.set_halign(Gtk.Align.FILL)  # fork: the tabs share the side's width
+    self.now_playing_switcher.set_hexpand(True)
     self.now_playing_switcher.set_valign(Gtk.Align.START)
     right_head.append(self.now_playing_switcher)
 
-    self.now_playing_close_btn = Gtk.Button(icon_name="window-close-symbolic", css_classes=["flat", "circular"])
-    self.now_playing_close_btn.set_tooltip_text("Close Now Playing")
-    self.now_playing_close_btn.connect("clicked", self.hide_now_playing_overlay)
-    self.now_playing_close_btn.set_halign(Gtk.Align.END)
-    self.now_playing_close_btn.set_valign(Gtk.Align.START)
-    self.now_playing_close_btn.set_margin_top(_NOW_PLAYING_CONTENT_INSET - 15)
-    self.now_playing_close_btn.set_margin_end(_NOW_PLAYING_CONTENT_INSET - 15)
-    right.add_overlay(self.now_playing_close_btn)
     right_body.append(right_head)
 
     self.now_playing_stack = Gtk.Stack(
@@ -1991,7 +2054,7 @@ def _refresh_now_playing_from_track(self):
         if src:
             src_type = src.get("type", "")
             src_name = src.get("name", "")
-            if src_type and src_name and src_name != src_type:
+            if src_type and src_name and src_name.casefold() != src_type.casefold():
                 source_text = f"Playing from {src_type} \u00B7 {src_name}"
             elif src_name:
                 source_text = f"Playing from {src_name}"
@@ -2005,6 +2068,8 @@ def _refresh_now_playing_from_track(self):
             source_label.set_text("")
             if self.now_playing_source_btn is not None:
                 self.now_playing_source_btn.set_visible(False)
+    # Fork: the info's height follows the title's length, and the cover's place follows it.
+    _schedule_now_playing_surface_resync(self, include_settle=False)
     if self.now_playing_open_album_btn is not None:
         self.now_playing_open_album_btn.set_sensitive(getattr(track, "album", None) is not None)
 

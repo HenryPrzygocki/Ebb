@@ -730,10 +730,13 @@ def build_header(app, container):
     app.header = Adw.HeaderBar()
     app.window_handle.set_child(app.header)
 
-    app.back_btn = Gtk.Button(icon_name="go-previous-symbolic", sensitive=False)
-    app.back_btn.connect("clicked", app.on_back_clicked)
-    app.back_btn.set_tooltip_text("Back (Alt+←)")  # fork
-    app.back_btn.set_tooltip_text("Back")
+    # Fork: Back steps out of the top layer (Now Playing, the queue, Settings), else goes back a
+    # page; see actions/layers.py. (Upstream's "Back" tooltip also overwrote this one.)
+    from actions import layers
+
+    app.back_btn = layers.BackButton(icon_name="go-previous-symbolic", sensitive=False)
+    app.back_btn.connect("clicked", lambda _b: layers.step_back(app))
+    app.back_btn.set_tooltip_text("Back (Alt+←, Esc)")
     app.header.pack_start(app.back_btn)
     # Fork: only shown when the window is too narrow to dock the sidebar.
     app.sidebar_toggle_btn = Gtk.Button(icon_name="sidebar-show-symbolic", visible=False)
@@ -775,8 +778,8 @@ def build_header(app, container):
     app.user_popover = app._build_user_popover()
     app.user_popover.set_parent(app.login_btn)
 
-    app.mini_btn = Gtk.Button(icon_name="hiresti-mini-symbolic", css_classes=["flat"])
-    app.mini_btn.set_tooltip_text("Mini Player Mode")
+    app.mini_btn = Gtk.Button(icon_name="ebb-pip-symbolic", css_classes=["flat"])
+    app.mini_btn.set_tooltip_text("Mini Player")  # fork: PiP icon; the arrows read as "minimize"
     app.mini_btn.connect("clicked", app.toggle_mini_mode)
 
     app.tools_btn = Gtk.Button(css_classes=["flat"])
@@ -1276,7 +1279,17 @@ def build_body(app, container):
             row.set_child(box)
             app.nav_list.append(row)
 
-    app.sidebar_box.append(app.nav_list)
+    # Fork: the list scrolls, so its height never sets the window's minimum height. Unscrolled,
+    # a long Recent section made the content taller than an 800 px window and pushed the
+    # player bar off the bottom.
+    app.nav_scroll = Gtk.ScrolledWindow(
+        vexpand=True,
+        hscrollbar_policy=Gtk.PolicyType.NEVER,
+        vscrollbar_policy=Gtk.PolicyType.AUTOMATIC,
+        css_classes=["sidebar-scroll"],
+    )
+    app.nav_scroll.set_child(app.nav_list)
+    app.sidebar_box.append(app.nav_scroll)
     app.paned.set_start_child(app.sidebar_box)
     app.paned.set_shrink_start_child(False)
     _body_mark("sidebar")
@@ -1326,8 +1339,8 @@ def build_player_bar(app, container):
     app.mini_controls.set_margin_end(6)
     app.mini_controls.set_visible(False)
 
-    m_restore = Gtk.Button(icon_name="hiresti-view-fullscreen-symbolic", css_classes=["flat", "circular"])
-    m_restore.set_tooltip_text("Restore to Default View")
+    m_restore = Gtk.Button(icon_name="ebb-pip-exit-symbolic", css_classes=["flat", "circular"])
+    m_restore.set_tooltip_text("Leave Mini Player")  # fork
     m_restore.connect("clicked", app.toggle_mini_mode)
 
     m_close = Gtk.Button(icon_name="window-close-symbolic", css_classes=["flat", "circular"])

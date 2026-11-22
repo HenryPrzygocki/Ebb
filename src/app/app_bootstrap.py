@@ -279,6 +279,10 @@ def do_activate(self):
     )
     self.window_created = True
     self.win.connect("close-request", self.on_window_close_request)
+    # Fork: Ebb's own translucency (ui/glass.py): the backgrounds only; text and artwork stay solid.
+    from ui import glass as ui_glass
+
+    ui_glass.install(self)
 
     self.main_vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
     self.win.set_content(self.main_vbox)
@@ -433,6 +437,9 @@ def do_activate(self):
     key_controller.connect("key-pressed", self.on_key_pressed)
     self.win.add_controller(key_controller)
     self._install_global_keys()
+    from actions import layers  # fork: Back stays enabled while a layer is open
+
+    layers.install(self)
     self._install_adaptive_layout()
     _startup_mark("key-controller")
 

@@ -1329,6 +1329,29 @@ flowboxchild { background-color: transparent; padding: 0; margin: 0; }
 .now-playing-layout {
     min-height: 0;
 }
+/* Fork: Now Playing is black in both schemes, so what is on it takes the dark scheme's
+   foreground. Inherited from the light scheme, the queue, the tool buttons and the transport
+   icons were dark grey on black. Popovers opened from it keep the theme's own colours. */
+.now-playing-surface {
+    color: white;
+    --window-fg-color: white;
+    --view-fg-color: white;
+    --card-fg-color: white;
+}
+.now-playing-surface popover {
+    --window-fg-color: var(--popover-fg-color);
+    --view-fg-color: var(--popover-fg-color);
+    --card-fg-color: var(--popover-fg-color);
+}
+.now-playing-close-btn {
+    color: white;
+    background-color: alpha(black, 0.30);
+    min-width: 34px;
+    min-height: 34px;
+}
+.now-playing-close-btn:hover {
+    background-color: alpha(black, 0.45);
+}
 .now-playing-left {
     min-width: 0;
     border-radius: 24px 0 0 0;
@@ -1360,7 +1383,9 @@ flowboxchild { background-color: transparent; padding: 0; margin: 0; }
     min-width: 0;
 }
 .now-playing-info-card {
-    background-color: rgba(0, 0, 0, 0.20);
+    /* Fork: 0.20 let busy cover art through the small source line; it lies over the cover in
+       wide windows. */
+    background-color: rgba(0, 0, 0, 0.45);
     background-image: none;
     border: 1px solid alpha(white, 0.10);
     border-radius: 16px;
@@ -1397,25 +1422,24 @@ flowboxchild { background-color: transparent; padding: 0; margin: 0; }
     text-decoration: underline;
     color: white;
 }
+/* Fork: "Playing from ..." is the line above the title now, a link like the artist and album
+   below it (it was a pill floating over the title's corner). */
 .now-playing-source {
-    font-size: 13px;
-    font-weight: 600;
+    font-size: 12px;
+    font-weight: 700;
     opacity: 1;
     color: #f1c76a;
     text-shadow: 0 2px 12px alpha(black, 0.30);
 }
 .now-playing-source-btn {
-    padding: 4px 8px;
+    padding: 0;
     min-height: 0;
-    border-radius: 6px;
     opacity: 1;
-    background-color: alpha(black, 0.22);
-}
-.now-playing-source-btn:hover {
-    background-color: alpha(black, 0.36);
+    background: none;
+    box-shadow: none;
 }
 .now-playing-source-btn:hover label {
-    color: white;
+    text-decoration: underline;
 }
 .now-playing-tool-row {
     margin-top: 0;

@@ -109,8 +109,10 @@ def on_about_clicked(self, _btn=None):
 
 
 def on_settings_clicked(self, btn):
-    if hasattr(self, "right_stack"):
-        self.right_stack.set_visible_child_name("settings")
+    # Fork: remember the page, so Back and Escape return to it (actions/layers.py).
+    from actions import layers
+
+    layers.open_settings(self)
 
 
 def on_check_for_updates_clicked(self, _btn=None):

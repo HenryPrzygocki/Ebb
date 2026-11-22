@@ -518,6 +518,33 @@ def build_settings_page(app):
     keys_btn.connect("clicked", lambda _b: app.show_shortcuts_dialog())
     row_keys.append(keys_btn)
     group_cfg.append(row_keys)
+    # Fork: Ebb's own translucency (ui/glass.py).
+    from ui import glass as ui_glass
+
+    row_glass = Gtk.Box(spacing=12, margin_start=12, margin_end=12, margin_top=8, margin_bottom=8)
+    glass_info = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, valign=Gtk.Align.CENTER, hexpand=True)
+    glass_info.append(Gtk.Label(label="Window Transparency", xalign=0, css_classes=["settings-label"]))
+    glass_info.append(
+        Gtk.Label(
+            label="The desktop shows through the backgrounds; text and artwork stay solid. "
+            "Reads best with a compositor that blurs behind windows.",
+            xalign=0,
+            wrap=True,
+            css_classes=["dim-label"],
+        )
+    )
+    row_glass.append(glass_info)
+    app.glass_scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0, ui_glass.MAX * 100, 5)
+    app.glass_scale.set_size_request(220, -1)
+    app.glass_scale.set_valign(Gtk.Align.CENTER)
+    app.glass_scale.set_round_digits(0)
+    app.glass_scale.set_draw_value(True)
+    app.glass_scale.set_value_pos(Gtk.PositionType.RIGHT)
+    app.glass_scale.set_format_value_func(lambda _s, v: "Off" if v < 0.5 else f"{v:.0f}%")
+    app.glass_scale.set_value(round(ui_glass.amount(app.settings) * 100))
+    app.glass_scale.connect("value-changed", lambda s: ui_glass.set_amount(app, s.get_value() / 100))
+    row_glass.append(app.glass_scale)
+    group_cfg.append(row_glass)
     settings_vbox.append(group_cfg)
 
     settings_vbox.append(Gtk.Label(label="Streaming", xalign=0, css_classes=["section-title"], margin_top=10))

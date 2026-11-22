@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Ebb: picture-in-picture (switch to the mini player): the window, and a small one in its corner. -->
+<svg height="16px" viewBox="0 0 16 16" width="16px" xmlns="http://www.w3.org/2000/svg">
+    <g fill="currentColor">
+        <path fill-rule="evenodd" d="m 2.5 2 h 11 a 2 2 0 0 1 2 2 v 8 a 2 2 0 0 1 -2 2 h -11 a 2 2 0 0 1 -2 -2 v -8 a 2 2 0 0 1 2 -2 z m 0.25 1.5 a 0.75 0.75 0 0 0 -0.75 0.75 v 7.5 a 0.75 0.75 0 0 0 0.75 0.75 h 10.5 a 0.75 0.75 0 0 0 0.75 -0.75 v -7.5 a 0.75 0.75 0 0 0 -0.75 -0.75 z"/>
+        <path d="m 7.75 7.5 h 4.5 a 0.75 0.75 0 0 1 0.75 0.75 v 2.5 a 0.75 0.75 0 0 1 -0.75 0.75 h -4.5 a 0.75 0.75 0 0 1 -0.75 -0.75 v -2.5 a 0.75 0.75 0 0 1 0.75 -0.75 z"/>
+    </g>
+</svg>

@@ -3507,12 +3507,11 @@ def _nudge_volume(self, delta):
 
 
 def _go_back(self):
-    """Fork: Alt+Left, the Back key and the mouse's back button do what the header's Back does."""
-    btn = getattr(self, "back_btn", None)
-    if btn is None or not btn.get_sensitive():
-        return False
-    self.on_back_clicked(btn)
-    return True
+    """Fork: Alt+Left, the Back key and the mouse's back button do what the header's Back does:
+    step out of the top layer, else go back a page (actions/layers.py)."""
+    from actions import layers
+
+    return layers.step_back(self)
 
 
 def _leave_text_input(self):
@@ -3558,10 +3557,10 @@ _SHORTCUT_SECTIONS = (
         ("Queue", "q"),
         ("Now Playing", "w"),
         ("Lyrics, visualizer & DSP", "e"),
-        ("Close the open panel", "Escape"),
     )),
     ("General", (
-        ("Back (or the mouse's back button)", "<Alt>Left"),
+        ("Back: close Now Playing, the queue or Settings, else the previous page", "<Alt>Left"),
+        ("The same, and fold the bottom panel", "Escape"),
         ("Move between controls (Enter activates)", "Tab"),
         ("Keyboard shortcuts", "<Control>question"),
         ("Quit (closing the window keeps playing in the tray)", "<Control>q"),
@@ -3622,20 +3621,13 @@ def on_key_pressed(self, controller, keyval, keycode, state):
         return True
 
     if keyval == Gdk.KEY_Escape:
-        hide_sidebar = getattr(self, "_hide_sidebar_overlay", None)
-        if callable(hide_sidebar) and hide_sidebar():
-            return True
-        if getattr(self, "now_playing_revealer", None) is not None and self.now_playing_revealer.get_reveal_child():
-            self.hide_now_playing_overlay()
-            return True
-        if getattr(self, "queue_revealer", None) is not None and self.queue_revealer.get_reveal_child():
-            self.close_queue_drawer()
-            return True
-        # Fork: Esc also folds the bottom playback workspace (E / the ^ handle open it).
-        if getattr(self, "viz_revealer", None) is not None and self.viz_revealer.get_reveal_child():
-            self._set_visualizer_expanded(False)
-            self.settings["viz_expanded"] = False  # else it reopens on the next start
-            self.schedule_save_settings()
+        # Fork: Escape steps out like Back, and also folds the bottom workspace (actions/layers.py).
+        # In a text field the first Escape only leaves the field (on_global_key_pressed).
+        if _focus_in_text_input(self):
+            return False
+        from actions import layers
+
+        if layers.step_back(self, escape=True):
             return True
 
     return False
