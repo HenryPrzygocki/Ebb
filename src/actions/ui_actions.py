@@ -1490,18 +1490,17 @@ def _on_play_album_tracks(app):
 
 def _on_shuffle_album_tracks(app):
     """Shuffle and play album tracks."""
+    from actions import play_modes
     from actions.playlist_playback import start_playlist
-    if start_playlist(app, shuffle=True):
+    if start_playlist(app, shuffle=True):  # turns Shuffle on once the playlist loads
         return
     tracks = list(app._get_current_track_view_tracks() if hasattr(app, "_get_current_track_view_tracks") else (getattr(app, "current_track_list", []) or []))
     if not tracks:
         return
-    # Shuffle only for playback, don't modify display list
-    import random
-    shuffled = tracks.copy()
-    random.shuffle(shuffled)
-    app._set_play_queue(shuffled)
-    app.play_track(0)
+    # Fork: Shuffle on, from a random track; the queue is shuffled around it (actions/play_modes.py).
+    start = play_modes.shuffled_start(app, len(tracks))
+    app._set_play_queue(tracks)
+    app.play_track(start)
 
 
 def _make_pill_button(icon_name, label, css_extra):
@@ -6035,9 +6034,12 @@ def render_uploads_dashboard(app, tracks=None):
         queue = [t for t in all_tracks if _upload_ready(t)]
         if not queue:
             return
-        if shuffle:
-            random.shuffle(queue)
-        app.on_history_track_clicked(queue, 0, source={"type": "uploads", "name": "Uploads"})
+        start = 0
+        if shuffle:  # fork: Shuffle on, from a random track (actions/play_modes.py)
+            from actions import play_modes
+
+            start = play_modes.shuffled_start(app, len(queue))
+        app.on_history_track_clicked(queue, start, source={"type": "uploads", "name": "Uploads"})
 
     play_all_btn = Gtk.Button(icon_name="media-playback-start-symbolic", css_classes=["flat", "playlist-tool-btn"])
     play_all_btn.set_tooltip_text("Play All")
@@ -6499,14 +6501,17 @@ def render_liked_songs_dashboard(app, tracks=None):
         if not items:
             return
         queue = list(items)
-        if shuffle:
-            random.shuffle(queue)
+        start = 0
+        if shuffle:  # fork: Shuffle on, from a random track (actions/play_modes.py)
+            from actions import play_modes
+
+            start = play_modes.shuffled_start(app, len(queue))
         app.current_track_list = queue
         if hasattr(app, "_set_play_queue"):
             app._set_play_queue(queue)
         else:
             app.play_queue = queue
-        app.play_track(0)
+        app.play_track(start)
 
     def _queue_liked_tracks_next(tracks):
         items = [t for t in list(tracks or []) if t is not None]

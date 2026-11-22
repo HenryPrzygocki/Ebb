@@ -36,6 +36,7 @@ def _set_play_queue(self, tracks):
     self._playlist_play_request = getattr(self, "_playlist_play_request", 0) + 1
     new_queue = list(tracks or [])
     current_entry = getattr(self, "_current_queue_entry", None)
+    old_queue = list(getattr(self, "play_queue", None) or [])
     self.play_queue = new_queue
     self.shuffle_indices = []
     # A new queue invalidates the actually-played back-stack and the shuffle order. An edit of
@@ -45,6 +46,9 @@ def _set_play_queue(self, tracks):
     if current_entry is None or not any(t is current_entry for t in new_queue):
         self._play_history = []
         self._shuffle_order = None
+    from actions import play_modes  # fork: under Shuffle the queue is in shuffled order
+
+    play_modes.queue_replaced(self, old_queue, new_queue)
     if hasattr(self, "_render_now_playing_queue"):
         GLib.idle_add(lambda: (self._render_now_playing_queue(self._get_active_queue()), False)[1])
     if hasattr(self, "_mpris_sync_metadata"):
@@ -429,15 +433,18 @@ def play_tracks_now(self, tracks, shuffle=False, source=None):
     items = [track for track in list(tracks or []) if track is not None]
     if not items:
         return False
-    if shuffle:
-        random.shuffle(items)
+    start = 0
+    if shuffle:  # fork: Shuffle on, from a random track (actions/play_modes.py)
+        from actions import play_modes
+
+        start = play_modes.shuffled_start(self, len(items))
     if source is not None:
         self.playback_source = source
     if hasattr(self, "_set_play_queue"):
         self._set_play_queue(items)
     else:
         self.play_queue = list(items)
-    self.play_track(0)
+    self.play_track(start)
     return True
 
 

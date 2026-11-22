@@ -284,15 +284,22 @@ def test_concurrent_resolution_requests_only_one_copy():
     assert playlist.calls == [(1, 75)]
 
 
-def test_local_album_shuffle_keeps_existing_behavior(setup):
+def test_local_album_shuffle_turns_shuffle_on_and_starts_on_a_random_track(setup, monkeypatch):
+    # Fork: upstream shuffled a copy of the album and left the Shuffle mode off. Now the mode is
+    # on, the queue is the album, and it is shuffled around the first track as that starts
+    # (actions/play_modes.py; tests/test_shuffled_queue.py covers the order).
+    from actions import play_modes
+
     app, playlist, workers, _ = setup
     app.current_remote_playlist = None
     app.current_track_list = [SimpleNamespace(id=i) for i in range(30)]
+    monkeypatch.setattr(play_modes.random, "randrange", lambda n: 17)
     ui_actions._on_shuffle_album_tracks(app)
     assert not workers
     assert not playlist.calls
-    assert [track.id for track in app.play_queue] == list(reversed(range(30)))
-    assert app.played == [0]
+    assert play_modes.shuffle_on(app)
+    assert [track.id for track in app.play_queue] == list(range(30))
+    assert app.played == [17]
 
 
 def test_click_sorted_remote_track_preserves_selected_song_and_full_queue(setup):

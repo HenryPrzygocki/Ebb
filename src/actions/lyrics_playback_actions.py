@@ -339,12 +339,17 @@ def play_track(app, index, from_history=False, engine_advanced=False):
         track = track.resolved_track
     # Back-stack + shuffle-order bookkeeping, by queue entry (fork #9).
     from actions.playback_actions import record_track_change
+    left = getattr(app, "_current_queue_entry", None)
     record_track_change(app, queue, entry, from_history=from_history)
     app.current_track_index = index
     app.playing_track = track
     app.playing_track_id = track.id
+    from actions import play_modes  # fork: under Shuffle a new queue is shuffled around this track
+
+    play_modes.track_started(app, changed=left is not entry)
     from actions import up_next  # fork #25: queued tracks follow whatever plays now
     up_next.settle(app)
+    index = app.current_track_index  # both can move the playing track
     if hasattr(app, "_mpris_sync_metadata"):
         app._mpris_sync_metadata()
     if hasattr(app, "_mpris_sync_playback"):

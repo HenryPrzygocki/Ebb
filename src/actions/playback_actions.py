@@ -84,8 +84,8 @@ def _choose_shuffle_index(app, current, total, wrap=True):
 
     `wrap`: once every track has had its turn, start a new shuffled pass (Repeat All or One);
     otherwise -1 (Repeat off: the end)."""
-    from actions.playlist_playback import uses_shuffled_playlist_order
-    if uses_shuffled_playlist_order(app):
+    from actions import play_modes
+    if play_modes.preshuffled(app):  # fork: the queue is in shuffled play order: walk it
         if current + 1 < total:
             return current + 1
         return 0 if wrap else -1
@@ -136,8 +136,8 @@ def shuffle_order_add(app, entries, play_next):
     entries = [e for e in (entries or []) if e is not None]
     if not entries or not _shuffle_like(app):
         return
-    from actions.playlist_playback import uses_shuffled_playlist_order
-    if uses_shuffled_playlist_order(app):
+    from actions import play_modes
+    if play_modes.preshuffled(app):
         return  # that queue already plays in queue order
     queue = _active_queue(app)
     current = getattr(app, "current_track_index", -1)
@@ -255,6 +255,7 @@ def on_next_track(app, btn=None, auto=False):
     elif repeat == play_modes.REPEAT_OFF:
         if shuffled:
             app._shuffle_order = None  # every track had its turn: the next play starts a new pass
+            play_modes.new_pass(app)
         _stop_after_queue_end(app)
 
 

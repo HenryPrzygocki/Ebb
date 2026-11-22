@@ -88,6 +88,10 @@ def start_playlist(app, shuffle=False, start_position=0, track_id=None):
                 "obj": playlist,
             }
             app._set_play_queue(entries)
+            if shuffle:  # fork: the Shuffle toggle shows it; turning it off restores the order
+                from actions import play_modes
+
+                play_modes.turn_shuffle_on(app)
             app.play_track(start_position)
             hydrate_queue_metadata(app, entries, start_position)
             return False
