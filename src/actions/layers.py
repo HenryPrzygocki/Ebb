@@ -85,6 +85,11 @@ def open_settings(app):
     if current == SETTINGS:
         return
     app._settings_return_to = current
+    # Fork: Settings isn't a sidebar page, so no row stays lit under it; leaving relights it.
+    nav = getattr(app, "nav_list", None)
+    app._settings_return_row = nav.get_selected_row() if nav is not None else None
+    if app._settings_return_row is not None:
+        nav.select_row(None)
     stack.set_visible_child_name(SETTINGS)
 
 
@@ -95,6 +100,11 @@ def leave_settings(app):
     if stack.get_child_by_name(target) is None:
         target = "grid_view"
     stack.set_visible_child_name(target)
+    row, app._settings_return_row = getattr(app, "_settings_return_row", None), None
+    nav = getattr(app, "nav_list", None)
+    # Unless a row was picked meanwhile. select_row emits row-selected only: no navigation.
+    if row is not None and nav is not None and nav.get_selected_row() is None and row.get_parent() is nav:
+        nav.select_row(row)
 
 
 def step_back(app, escape=False):

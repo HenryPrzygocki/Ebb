@@ -145,6 +145,42 @@ def test_settings_returns_to_the_page_it_was_opened_from():
     assert not layers.layer_open(app)
 
 
+class Nav:
+    """The sidebar's list, as far as layers.py uses it."""
+
+    def __init__(self):
+        self.selected = None
+
+    def get_selected_row(self):
+        return self.selected
+
+    def select_row(self, row):
+        self.selected = row
+
+
+class Row:
+    def __init__(self, parent):
+        self.parent = parent
+
+    def get_parent(self):
+        return self.parent
+
+
+def test_settings_is_not_a_sidebar_page_so_no_row_stays_lit_under_it():
+    app = _app(view="tracks")
+    app.nav_list = Nav()
+    home, albums = Row(app.nav_list), Row(app.nav_list)
+    app.nav_list.selected = home
+    layers.open_settings(app)
+    assert app.nav_list.selected is None
+    layers.step_back(app)
+    assert app.nav_list.selected is home
+    layers.open_settings(app)
+    app.nav_list.select_row(albums)  # a page was picked meanwhile: its row stays
+    layers.step_back(app)
+    assert app.nav_list.selected is albums
+
+
 def test_settings_falls_back_to_the_grid_when_its_page_is_gone():
     app = _app(view="tracks")
     layers.open_settings(app)
