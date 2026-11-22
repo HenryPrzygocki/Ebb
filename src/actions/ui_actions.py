@@ -2983,6 +2983,7 @@ def render_artist_detail(app, artist, render_token=None):
     hero_content.append(Gtk.Label(label=_artist_fans_text(artist), xalign=0, css_classes=["artist-detail-meta"]))
     hero.add_overlay(hero_content)
     app._update_fav_icon(hero_fav_btn, app.backend.is_artist_favorite(getattr(artist, "id", None)))
+    app._artist_hero_fav_btn = hero_fav_btn  # fork #24: a menu's Follow/Unfollow updates it too
     app.collection_content_box.append(hero)
 
     def _apply_hero_size(source="unknown"):

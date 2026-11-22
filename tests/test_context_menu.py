@@ -246,6 +246,63 @@ def test_artist_menu_is_the_link():
     assert _labels(context_menu.actions_for(_app(), "artist", SimpleNamespace(id=9))) == ["Copy TIDAL Link"]
 
 
+# ---------------------------------------------------------------- fork #24: favorites, artist radio
+
+def _favorites_app(monkeypatch, favorite=False, ok=True):
+    app = _app()
+    toggled = []
+    for check, toggle in (("is_favorite", "toggle_album_favorite"), ("is_mix_favorite", "toggle_mix_favorite"),
+                          ("is_artist_favorite", "toggle_artist_favorite")):
+        setattr(app.backend, check, lambda _oid: favorite)
+        setattr(app.backend, toggle, lambda oid, add, t=toggle: toggled.append((t, oid, add)) or ok)
+    hearts = []
+    app._update_fav_icon = lambda btn, on: hearts.append((btn, on))
+    monkeypatch.setattr(context_menu, "Thread", _SyncThread)
+    monkeypatch.setattr(context_menu.GLib, "idle_add", lambda fn, *a: fn(*a))
+    return app, toggled, hearts
+
+
+def test_album_and_mix_menus_add_to_and_remove_from_favorites(monkeypatch):
+    app, toggled, hearts = _favorites_app(monkeypatch)
+    app.current_album, app.fav_btn = Album(id=5, name="Record"), "album-heart"
+    rows = context_menu.actions_for(app, "album", Album(id=5, name="Record"))
+    assert _labels(rows)[-3:] == ["Add to Favorites", "\u2014", "Copy TIDAL Link"]
+    _run(rows, "Add to Favorites")
+    assert toggled == [("toggle_album_favorite", 5, True)]
+    assert app.notices[-1] == ("Added \u201cRecord\u201d to Favorites", "ok")
+    assert hearts == [("album-heart", True)]  # the open album page follows
+    app, toggled, _ = _favorites_app(monkeypatch, favorite=True)
+    _run(context_menu.actions_for(app, "mix", MixV2(id="m1", name="Daily")), "Remove from Favorites")
+    assert toggled == [("toggle_mix_favorite", "m1", False)]
+
+
+def test_artist_menu_follows_and_plays_the_artist_radio(monkeypatch):
+    app, toggled, hearts = _favorites_app(monkeypatch, favorite=True)
+    radio = [_track(1), _track(2)]
+    artist = SimpleNamespace(id=9, name="Band", get_radio=lambda: radio)
+    rows = context_menu.actions_for(app, "artist", artist)
+    assert _labels(rows) == ["Play Artist Radio", "\u2014", "Unfollow", "\u2014", "Copy TIDAL Link"]
+    _run(rows, "Play Artist Radio")
+    name, args, kwargs = app.calls[-1]
+    assert (name, args, kwargs["source"]) == ("play_now", (radio,), {"type": "radio", "name": "Band Radio"})
+    _run(rows, "Unfollow")
+    assert toggled == [("toggle_artist_favorite", 9, False)] and app.notices[-1] == ("Unfollowed Band", "ok")
+    assert hearts == []  # no artist page open
+
+
+def test_a_refused_favorite_change_says_so_and_leaves_the_heart(monkeypatch):
+    app, toggled, hearts = _favorites_app(monkeypatch, ok=False)
+    app.current_album, app.fav_btn = Album(id=5), "album-heart"
+    _run(context_menu.actions_for(app, "album", Album(id=5, name="Record")), "Add to Favorites")
+    assert app.notices[-1][1] == "error" and hearts == []
+
+
+def test_playlists_have_no_favorites_entry_yet(monkeypatch):
+    app, _, _ = _favorites_app(monkeypatch)
+    labels = _labels(context_menu.actions_for(app, "playlist", Playlist(id="u", name="P")))
+    assert "Add to Favorites" not in labels
+
+
 # ---------------------------------------------------------------- the window gesture
 
 def test_secondary_click_on_an_item_claims_and_opens_its_menu(monkeypatch):

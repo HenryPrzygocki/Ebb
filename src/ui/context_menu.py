@@ -277,6 +277,103 @@ def removal_action(widget):
     return None
 
 
+# Fork #24: favorites from any menu, not only from the open page's heart. Playlists have no
+# favorite call in the backend yet.
+_FAVORITES = {
+    "album": ("is_favorite", "toggle_album_favorite", "Add to Favorites", "Remove from Favorites"),
+    "mix": ("is_mix_favorite", "toggle_mix_favorite", "Add to Favorites", "Remove from Favorites"),
+    "artist": ("is_artist_favorite", "toggle_artist_favorite", "Follow", "Unfollow"),
+}
+
+
+def _collection_favorite_row(app, kind, obj):
+    spec = _FAVORITES.get(kind)
+    backend = getattr(app, "backend", None)
+    oid = item_id(obj)
+    if spec is None or backend is None or oid is None:
+        return None
+    is_fav, toggle = getattr(backend, spec[0], None), getattr(backend, spec[1], None)
+    if not (callable(is_fav) and callable(toggle)):
+        return None
+    try:
+        active = bool(is_fav(oid))
+    except Exception:
+        return None
+    raw_id = getattr(obj, "id", None) or oid  # what the page's own heart passes to the backend
+    return (spec[3] if active else spec[2], lambda: _set_favorite(app, kind, obj, raw_id, toggle, not active))
+
+
+def favorite_notice(kind, name, add):
+    if kind == "artist":
+        return f"Following {name}" if add else f"Unfollowed {name}"
+    return f"Added \u201c{name}\u201d to Favorites" if add else f"Removed \u201c{name}\u201d from Favorites"
+
+
+def _set_favorite(app, kind, obj, oid, toggle, add):
+    name = str(getattr(obj, "name", None) or getattr(obj, "title", None) or kind.title())
+
+    def finish(ok):
+        if ok:
+            _notice(app, favorite_notice(kind, name, add), "ok", 2400)
+            sync_open_page_heart(app, kind, oid, add)
+        else:
+            _notice(app, "TIDAL didn't accept that change. Try again.", "error", 2800)
+        return False
+
+    def task():
+        try:
+            ok = bool(toggle(oid, add))
+        except Exception:
+            logger.exception("Context menu: favorite toggle failed for %s %s", kind, oid)
+            ok = False
+        GLib.idle_add(finish, ok)
+
+    Thread(target=task, daemon=True, name="ctx-menu-favorite").start()
+
+
+def sync_open_page_heart(app, kind, oid, add):
+    """The open album or artist page's heart follows a change made from a menu."""
+    update = _method(app, "_update_fav_icon")
+    if update is None:
+        return
+    if kind == "artist":
+        shown, btn = getattr(app, "current_selected_artist", None), getattr(app, "_artist_hero_fav_btn", None)
+    else:
+        shown, btn = getattr(app, "current_album", None), getattr(app, "fav_btn", None)
+    if btn is not None and shown is not None and str(item_id(shown)) == str(oid):
+        update(btn, add)
+
+
+def _artist_rows(app, obj):
+    """An artist's radio, from any artist card or row."""
+    play_now = _method(app, "play_tracks_now")
+    if play_now is None or not callable(getattr(obj, "get_radio", None)):
+        return []
+    name = str(getattr(obj, "name", None) or "this artist")
+
+    def start():
+        _notice(app, "Loading radio\u2026", "info", 1600)
+
+        def finish(tracks):
+            if tracks:
+                play_now(tracks, source={"type": "radio", "name": f"{name} Radio"})
+            else:
+                _notice(app, f"TIDAL has no radio for {name}", "warn", 2600)
+            return False
+
+        def task():
+            try:
+                tracks = list(obj.get_radio() or [])
+            except Exception:
+                logger.exception("Context menu: artist radio failed for %s", item_id(obj))
+                tracks = []
+            GLib.idle_add(finish, tracks)
+
+        Thread(target=task, daemon=True, name="ctx-menu-radio").start()
+
+    return [("Play Artist Radio", start)]
+
+
 def actions_for(app, kind, obj, origin=None):
     """Menu rows for one item: ``(label, callback)`` tuples, with ``None`` as a separator.
 
@@ -288,8 +385,13 @@ def actions_for(app, kind, obj, origin=None):
         rows = _track_rows(app, obj)
     elif kind in ("album", "playlist", "mix"):
         rows = _collection_rows(app, kind, obj)
-    else:  # artist, video: left-click already opens them.
+    elif kind == "artist":
+        rows = _artist_rows(app, obj)  # fork #24
+    else:  # video: left-click already opens it.
         rows = []
+    favorite = _collection_favorite_row(app, kind, obj)  # fork #24
+    if favorite is not None:
+        rows += [None, favorite]
     if tidal_url(kind, obj):
         rows += [None, ("Copy TIDAL Link", lambda: copy_link(app, kind, obj))]
     remove = removal_action(origin) if kind == "track" else None
