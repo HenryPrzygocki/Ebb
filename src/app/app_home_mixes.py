@@ -34,6 +34,7 @@ def refresh_liked_songs_dashboard(self, _initial_render_done=False, force=False)
 
     req_id = int(getattr(self, "_liked_tracks_request_id", 0) or 0) + 1
     self._liked_tracks_request_id = req_id
+    grid_token = ui_actions.grid_page(self)  # fork: an artist opened from here keeps the nav row
 
     def _is_stale():
         return req_id != int(getattr(self, "_liked_tracks_request_id", 0) or 0)
@@ -45,6 +46,8 @@ def refresh_liked_songs_dashboard(self, _initial_render_done=False, force=False)
     def _apply_if_active(tracks):
         current = self.nav_list.get_selected_row() if self.nav_list is not None else None
         if not current or getattr(current, "nav_id", None) != "liked_songs":
+            return False
+        if not ui_actions.grid_page_open(self, grid_token):
             return False
         if _is_stale():
             return False

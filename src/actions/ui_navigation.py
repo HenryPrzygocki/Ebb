@@ -158,6 +158,7 @@ def _restore_artists_page_state(app):
 def on_nav_selected(app, box, row):
     if not row or not str(getattr(row, "nav_id", "") or "").strip():
         return
+    ui_actions.open_grid_page(app)  # fork: the page being left stops rendering here
     hide_sidebar = getattr(app, "_hide_sidebar_overlay", None)
     if callable(hide_sidebar):
         hide_sidebar()  # fork: picking a page closes the floating sidebar on narrow windows
@@ -207,11 +208,14 @@ def on_nav_selected(app, box, row):
                 margin_top=8,
             )
             app.collection_content_box.append(loading)
+            grid_token = ui_actions.grid_page(app)
 
             def task():
                 sections = app.backend.get_home_page()
 
                 def apply_home():
+                    if not ui_actions.grid_page_open(app, grid_token):
+                        return False  # fork: Home was left before it loaded
                     while c := app.collection_content_box.get_first_child():
                         app.collection_content_box.remove(c)
                     app._home_sections_cache = sections
@@ -310,12 +314,15 @@ def on_nav_selected(app, box, row):
             # favourite removed on mobile) are picked up on every navigation.
             # Pre-compute cached IDs in the main thread for later comparison.
             cached_ids = [str(getattr(a, "id", "")) for a in cached] if show_cached else None
+            grid_token = ui_actions.grid_page(app)
 
             def task():
                 albums = list(app.backend.get_recent_albums())
                 album_count = len(albums)
                 fresh_ids = [str(getattr(a, "id", "")) for a in albums]
                 def update():
+                    if not ui_actions.grid_page_open(app, grid_token):
+                        return False  # fork: Albums was left before the refresh came back
                     # Skip re-render when the cached first-paint already shows
                     # exactly the same albums — avoids a visible double-flash.
                     if cached_ids is not None and fresh_ids == cached_ids:
@@ -373,10 +380,14 @@ def on_nav_selected(app, box, row):
         )
         app.collection_content_box.append(loading)
 
+        grid_token = ui_actions.grid_page(app)
+
         def task():
             mixes = app.build_daily_mixes()
 
             def apply_daily():
+                if not ui_actions.grid_page_open(app, grid_token):
+                    return False
                 app.render_daily_mixes(mixes)
                 return False
 
@@ -434,6 +445,7 @@ def on_artist_clicked(app, artist):
 
     _cancel_artist_albums_view(app, clear_selected=False)
 
+    ui_actions.open_grid_page(app)  # fork: the artist takes the grid from the page it was opened on
     render_token = int(getattr(app, "_artist_albums_render_token", 0) or 0) + 1
     app._artist_albums_render_token = render_token
     ui_actions.render_artist_detail(app, artist, render_token=render_token)

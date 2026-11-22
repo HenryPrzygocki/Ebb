@@ -532,6 +532,26 @@ def set_search_status(app, message=None):
         app.search_status_label.set_text("")
         app.search_status_label.set_visible(False)
 
+def grid_page(app):
+    """Fork: which page the shared grid belongs to.
+
+    Home, the Explore tabs, the library pages and an artist's page all render into one box
+    (collection_content_box), and most render again when their data arrives. A page left
+    before its data arrived rendered over the next one: Albums' refresh put the albums and
+    "15 saved albums" on New. Opening a page bumps this token (open_grid_page), and a late
+    render goes ahead only while the token it started with is current (grid_page_open)."""
+    return int(getattr(app, "_grid_page", 0) or 0)
+
+
+def open_grid_page(app):
+    app._grid_page = grid_page(app) + 1
+    return app._grid_page
+
+
+def grid_page_open(app, token):
+    return grid_page(app) == token
+
+
 def _clear_container(container):
     while child := container.get_first_child():
         container.remove(child)
@@ -2291,6 +2311,7 @@ def render_mixes_dashboard(app):
     My-Mix-N tiles use elsewhere — that path already detects Mix via
     `"Mix" in type(...).__name__` and routes track loading through
     `backend.get_tracks(mix)` (which calls `session.mix(id).items()`)."""
+    grid_token = grid_page(app)  # fork: its late renders check this (grid_page)
     logger.info("Mixes dashboard opened")
     _clear_container(app.collection_content_box)
     app.playlist_track_list = None
@@ -2365,7 +2386,7 @@ def render_mixes_dashboard(app):
         except Exception as e:
             logger.warning("get_favorite_mixes failed: %s", e)
             mixes = []
-        GLib.idle_add(_populate, mixes)
+        GLib.idle_add(lambda: grid_page_open(app, grid_token) and _populate(mixes))
 
     Thread(target=_fetch, daemon=True).start()
 
@@ -3997,6 +4018,7 @@ def render_history_dashboard(app):
 
 
 def render_top_dashboard(app, prefer_cache=True):
+    grid_token = grid_page(app)  # fork: its late renders check this (grid_page)
     _clear_container(app.collection_content_box)
 
     def _render_sections(sections):
@@ -4359,7 +4381,8 @@ def render_top_dashboard(app, prefer_cache=True):
                 sections = [s for s in fallback if any(k in str(s.get("title", "")).lower() for k in keys)]
 
             def apply():
-                _render_sections(sections)
+                if grid_page_open(app, grid_token):
+                    _render_sections(sections)
                 return False
 
             GLib.idle_add(apply)
@@ -4368,6 +4391,7 @@ def render_top_dashboard(app, prefer_cache=True):
 
 
 def render_new_dashboard(app, prefer_cache=True):
+    grid_token = grid_page(app)  # fork: its late renders check this (grid_page)
     _clear_container(app.collection_content_box)
 
     def _render_sections(sections):
@@ -4719,12 +4743,13 @@ def render_new_dashboard(app, prefer_cache=True):
                     and "video" not in str(s.get("title", "")).lower()
                 ]
 
-            GLib.idle_add(lambda: (_render_sections(sections), False)[1])
+            GLib.idle_add(lambda: (grid_page_open(app, grid_token) and _render_sections(sections), False)[1])
 
         Thread(target=task, daemon=True).start()
 
 
 def render_hires_dashboard(app, prefer_cache=True):
+    grid_token = grid_page(app)  # fork: its late renders check this (grid_page)
     _clear_container(app.collection_content_box)
 
     def _render_sections(sections):
@@ -4867,11 +4892,12 @@ def render_hires_dashboard(app, prefer_cache=True):
     if not cache_is_fresh:
         def task():
             sections = list(app.backend.get_hires_page() or [])
-            GLib.idle_add(lambda: (_render_sections(sections), False)[1])
+            GLib.idle_add(lambda: (grid_page_open(app, grid_token) and _render_sections(sections), False)[1])
         Thread(target=task, daemon=True).start()
 
 
 def render_decades_dashboard(app, prefer_cache=True):
+    grid_token = grid_page(app)  # fork: its late renders check this (grid_page)
     _clear_container(app.collection_content_box)
 
     def _open_item(item_data):
@@ -5088,13 +5114,15 @@ def render_decades_dashboard(app, prefer_cache=True):
                 app._decades_definitions = defs
                 app._decades_tab_cache = new_cache
                 app._decades_cache_time = time.monotonic()
-                _build_ui(defs, new_cache)
+                if grid_page_open(app, grid_token):
+                    _build_ui(defs, new_cache)
                 return False
             GLib.idle_add(apply)
         Thread(target=task, daemon=True).start()
 
 
 def _render_tabbed_page_dashboard(app, cfg, prefer_cache=True):
+    grid_token = grid_page(app)  # fork: its late renders check this (grid_page)
     _clear_container(app.collection_content_box)
 
     def _genre_category_visible_count(sample_item=None, widget=None):
@@ -5710,7 +5738,8 @@ def _render_tabbed_page_dashboard(app, cfg, prefer_cache=True):
                 setattr(app, cfg["defs_attr"], defs)
                 setattr(app, cfg["tab_cache_attr"], new_cache)
                 setattr(app, cfg["cache_time_attr"], time.monotonic())
-                _build_ui(defs, new_cache)
+                if grid_page_open(app, grid_token):
+                    _build_ui(defs, new_cache)
                 return False
             GLib.idle_add(apply)
         Thread(target=task, daemon=True).start()

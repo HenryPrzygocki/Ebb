@@ -201,6 +201,9 @@ def on_playlist_folder_delete_clicked(self, folder_obj=None):
 
 
 def on_playlist_card_clicked(self, playlist_id):
+    from actions import ui_actions
+
+    ui_actions.open_grid_page(self)  # fork: a local playlist renders into the grid too
     self.current_remote_playlist = None
     if self.remote_playlist_edit_btn is not None:
         self.remote_playlist_edit_btn.set_visible(False)
