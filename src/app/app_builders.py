@@ -3650,13 +3650,9 @@ def toggle_mini_mode(self, btn):
 
 
 def _build_user_popover(self):
-    pop = Gtk.Popover()
-    vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin_top=6, margin_bottom=6, margin_start=6, margin_end=6)
-    btn = Gtk.Button(label="Logout", css_classes=["flat", "destructive-action"])
-    btn.connect("clicked", self.on_logout_clicked)
-    vbox.append(btn)
-    pop.set_child(vbox)
-    return pop
+    # Fork: who is signed in, what quality that login gets, Get Lossless, Log Out.
+    from ui import account
+    return account.build_account_popover(self)
 
 
 def _build_eq_popover(self, sliders_attr="sliders"):

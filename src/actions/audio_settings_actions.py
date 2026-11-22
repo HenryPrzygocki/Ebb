@@ -1963,7 +1963,7 @@ def update_tech_label(self, info):
     if downgraded:
         limited = getattr(backend, "login_limits_lossless", None)
         why = (
-            "TIDAL limits this login type to AAC for most tracks; sign in again with HiFi Login."
+            "TIDAL sends this type of sign-in AAC for most tracks; Get Lossless in the account menu fixes it."
             if callable(limited) and limited()
             else "TIDAL has no lossless version of this track."
         )

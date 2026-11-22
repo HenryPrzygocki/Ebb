@@ -11,6 +11,7 @@ gi.require_version('Adw', '1')
 from gi.repository import Gtk, Adw, GLib, Gdk
 
 from ui import config as ui_config
+from ui import account  # fork
 from core import brand  # fork
 
 logger = logging.getLogger(__name__)
@@ -283,13 +284,14 @@ def do_activate(self):
     self.win.set_content(self.main_vbox)
 
     self._build_header(self.main_vbox)
-    # Fork: shown while the login type caps most tracks at AAC (backend.login_limits_lossless).
+    # Fork: shown while the login type caps most tracks at AAC (ui/account.banner_wanted). It is
+    # about quality, not about signing in: the button explains first (and can hide it for good).
     self.lossless_banner = Adw.Banner(
-        title="This TIDAL login gets AAC, not lossless, for most tracks",
-        button_label="Sign In for Lossless",
+        title="Most tracks are streaming as AAC, not lossless",
+        button_label="Get Lossless…",
         revealed=False,
     )
-    self.lossless_banner.connect("button-clicked", lambda _b: self._start_pkce_login_flow())
+    self.lossless_banner.connect("button-clicked", lambda _b: account.show_get_lossless(self))
     self.main_vbox.append(self.lossless_banner)
     self.content_window_handle = Gtk.WindowHandle()
     self.content_window_handle.set_hexpand(True)

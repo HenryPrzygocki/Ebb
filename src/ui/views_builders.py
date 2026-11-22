@@ -6,6 +6,7 @@ from gi.repository import Gtk, Adw, Pango
 
 from app.app_remote_control import REMOTE_ACCESS_MODES
 from core import brand  # fork
+from ui import account  # fork
 import utils
 from ui.track_table import build_tracks_header, append_header_action_spacers
 
@@ -122,11 +123,8 @@ def build_grid_view(app):
 
 
 def sync_lossless_banner(app):
-    """Fork: reveal the banner while the login type caps most tracks at AAC."""
-    banner = getattr(app, "lossless_banner", None)
-    check = getattr(getattr(app, "backend", None), "login_limits_lossless", None)
-    if banner is not None:
-        banner.set_revealed(bool(callable(check) and check()))
+    """Fork: reveal the banner while the login type caps most tracks at AAC (ui/account.py)."""
+    account.sync_banner(app)
 
 
 def toggle_login_view(app, logged_in):
@@ -138,7 +136,7 @@ def toggle_login_view(app, logged_in):
     if hasattr(app, "sidebar_box") and app.sidebar_box is not None:
         app.sidebar_box.set_visible(logged_in)
     if not logged_in:
-        app.login_btn.set_label("Login")
+        account.show_signed_out(app)  # fork
         app.grid_title_label.set_text("Welcome")
         if hasattr(app, "grid_subtitle_label") and app.grid_subtitle_label is not None:
             app.grid_subtitle_label.set_text("Sign in to load your personalized mixes and library picks")
@@ -171,7 +169,7 @@ def toggle_login_view(app, logged_in):
             except Exception:
                 display_name = user.username
 
-    app.login_btn.set_label(f"Hi, {display_name}")
+    account.show_signed_in(app, display_name)  # fork: avatar, not "Hi, <name>"
     app.grid_title_label.set_text("Home")
     if hasattr(app, "grid_subtitle_label") and app.grid_subtitle_label is not None:
         app.grid_subtitle_label.set_text("Fresh picks and playlists tailored to your listening")

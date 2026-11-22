@@ -134,13 +134,11 @@ def _configure_login_webview_settings(settings):
 # `tidal.com/android/login/auth?code=...` directly, and skip the manual
 # copy-paste step entirely.  When either piece is missing we fall
 # through to the paste-URL dialog so the auth flow still works.
-try:
-    gi.require_version('WebKit', '6.0')
-    from gi.repository import WebKit  # noqa: F401
-    _WEBKIT_AVAILABLE = _webkit_runtime_usable()
-except (ValueError, ImportError):
-    WebKit = None
-    _WEBKIT_AVAILABLE = False
+# Fork: HiFi sign-in runs in the user's browser (ui/account.py). TIDAL's bot wall blocks the
+# embedded view ("You have been blocked"), and loading WebKit cost every start ~120 ms and
+# ~200 MB of memory, so it is never loaded.
+WebKit = None
+_WEBKIT_AVAILABLE = False
 
 # Disable WebKitGTK's bwrap-based sandbox before the first WebView
 # spawns its network/web process. Default-on sandboxing requires
@@ -192,6 +190,7 @@ from core.errors import classify_exception
 from core.executor import submit_daemon
 from ui import config as ui_config
 from ui import views_builders as ui_views_builders
+from ui import account  # fork
 
 try:
     import qrcode
@@ -367,7 +366,7 @@ def _show_login_method_dialog(self):
     actions = Gtk.Box(spacing=10, orientation=Gtk.Orientation.VERTICAL)
     pkce_btn = _method_button(
         "audio-x-generic-symbolic", "HiFi Login",
-        "Lossless and Hi-Res. Sign in on TIDAL's own page.", ["suggested-action"],
+        "Lossless and hi-res. Sign in on TIDAL's website, in your browser.", ["suggested-action"],
     )
     web_btn = _method_button(
         "network-workgroup-symbolic", "Web Login", "Approve this device in your browser", ["flat"],
@@ -400,7 +399,7 @@ def _show_login_method_dialog(self):
         if self._login_dialog is d:
             self._login_dialog = None
 
-    dialog.connect("destroy", _on_close)
+    account.when_closed(dialog, _on_close)  # fork: "destroy" rarely fires in GTK 4
     self._login_dialog = dialog
     dialog.present()
 
@@ -458,8 +457,8 @@ def _start_login_flow(self, mode):
 
 def _start_pkce_login_flow(self):
     """PKCE auth-code flow.  Opens the Tidal login URL in the browser,
-    then shows a dialog where the user pastes the redirect URL of the
-    'Oops' page they end up on after logging in.  PKCE is the only way
+    then waits for the redirect URL of the 'Oops' page the user ends up on
+    after logging in (fork: picked up from the clipboard, or pasted).  PKCE is the only way
     to get full LOSSLESS / HI_RES streams since Tidal closed the device-
     code path for those qualities (python-tidal#404)."""
     attempt_id = int(time.time() * 1000)
@@ -478,32 +477,8 @@ def _start_pkce_login_flow(self):
         self._on_login_failed(attempt_id, e)
         return
 
-    if _WEBKIT_AVAILABLE:
-        # Embedded browser path — fully automated, no copy-paste.
-        self.show_output_notice(
-            "Opening Tidal login in-app. Sign in to continue.",
-            "ok",
-            2400,
-        )
-        self._show_pkce_webview_dialog(login_url, attempt_id)
-        return
-
-    # Fallback: open external browser + paste-URL dialog.
-    browser_ok = self._open_login_url(login_url, attempt_id)
-    if browser_ok:
-        self.show_output_notice(
-            "Browser opened. Sign in, then copy the redirect URL back here.",
-            "ok",
-            3600,
-        )
-    else:
-        self.show_output_notice(
-            "Failed to open browser. Copy the URL from the dialog and open it manually.",
-            "warn",
-            3600,
-        )
-
-    self._show_pkce_paste_dialog(login_url, attempt_id)
+    # Fork: always the system browser; see ui/account.py.
+    account.show_browser_signin(self, login_url, attempt_id)
 
 
 def _show_pkce_webview_dialog(self, login_url, attempt_id):
@@ -827,7 +802,7 @@ def _show_pkce_paste_dialog(self, login_url, attempt_id):
         if self._login_in_progress and attempt_id == self._login_attempt_id:
             self._cancel_login_attempt(attempt_id, reason="user-cancel")
 
-    dialog.connect("destroy", _on_close)
+    account.when_closed(dialog, _on_close)  # fork: "destroy" rarely fires in GTK 4
     self._login_dialog = dialog
     dialog.present()
     paste_entry.grab_focus()
@@ -1035,7 +1010,7 @@ def _show_login_qr_dialog(self, oauth, attempt_id):
         if self._login_in_progress and attempt_id == self._login_attempt_id:
             self._cancel_login_attempt(attempt_id, reason="user-cancel")
 
-    dialog.connect("destroy", _on_close)
+    account.when_closed(dialog, _on_close)  # fork: "destroy" rarely fires in GTK 4
     self._login_dialog = dialog
     dialog.present()
     return True

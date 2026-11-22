@@ -11,6 +11,8 @@ def on_quality_changed(app, dd, p):
         return
     mode_str = selected.get_string()
     app.backend.set_quality_mode(mode_str)
+    from ui import account  # fork: the AAC banner only applies while lossless is requested
+    account.sync_banner(app)
     if hasattr(app, "stream_prefetch_cache"):
         app.stream_prefetch_cache.clear()
 

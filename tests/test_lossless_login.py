@@ -98,7 +98,8 @@ def test_aac_instead_of_lossless_is_flagged_and_explained():
     asa.update_tech_label(app, {"codec": "AAC", "source_rate": 44100, "source_depth": 16})
     assert app.lbl_tech.text == "MIX/SHR • 44.1kHz • AAC"  # no "16-bit" on a lossy stream
     assert "tech-state-warn" in app.lbl_tech.css
-    assert app.lbl_tech.tooltip.startswith("AAC instead of lossless. TIDAL limits this login type")
+    assert app.lbl_tech.tooltip.startswith("AAC instead of lossless. TIDAL sends this type of sign-in AAC")
+    assert "Get Lossless in the account menu" in app.lbl_tech.tooltip
     app = _label_app(limited=False)
     asa.update_tech_label(app, {"codec": "AAC", "source_rate": 44100, "source_depth": 16})
     assert "no lossless version of this track" in app.lbl_tech.tooltip
@@ -114,12 +115,19 @@ def test_lossless_streams_and_chosen_aac_are_not_flagged():
     assert "tech-state-warn" not in app.lbl_tech.css and not app.lbl_tech.tooltip.startswith("AAC instead")
 
 
-def test_the_banner_follows_the_login_type():
+def test_the_banner_follows_the_login_type_the_quality_and_dont_show_again():
     shown = []
     banner = SimpleNamespace(set_revealed=shown.append)
-    app = SimpleNamespace(lossless_banner=banner, backend=SimpleNamespace(login_limits_lossless=lambda: True))
-    views_builders.sync_lossless_banner(app)
-    app.backend.login_limits_lossless = lambda: False
-    views_builders.sync_lossless_banner(app)
+    backend = SimpleNamespace(login_limits_lossless=lambda: True, quality="HI_RES_LOSSLESS")
+    app = SimpleNamespace(lossless_banner=banner, backend=backend, settings={})
+    views_builders.sync_lossless_banner(app)  # limited login, lossless asked for: shown
+    backend.quality = "HIGH"
+    views_builders.sync_lossless_banner(app)  # AAC chosen on purpose: nothing to report
+    backend.quality = "LOSSLESS"
+    app.settings["lossless_banner_dismissed"] = True
+    views_builders.sync_lossless_banner(app)  # Don't Show Again
+    app.settings.clear()
+    backend.login_limits_lossless = lambda: False
+    views_builders.sync_lossless_banner(app)  # HiFi login
     views_builders.sync_lossless_banner(SimpleNamespace(lossless_banner=banner, backend=None))
-    assert shown == [True, False, False]
+    assert shown == [True, False, False, False, False]

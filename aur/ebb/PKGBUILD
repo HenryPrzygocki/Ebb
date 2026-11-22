@@ -43,7 +43,6 @@ depends=(
   'libusb'
   'mesa'
   'libglvnd'
-  'webkitgtk-6.0'
   'polkit'
   'acl'
 )
