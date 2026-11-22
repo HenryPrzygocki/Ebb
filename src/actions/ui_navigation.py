@@ -552,3 +552,106 @@ def on_back_clicked(app, btn):
             app.on_nav_selected(None, child)
             break
         child = child.get_next_sibling()
+
+
+# --- Fork: Back returns to where you were on the page --------------------------------------
+#
+# Back re-renders top-level grid pages (Home, collections) from scratch, which dropped you at the
+# top after opening an album, mix or artist from deep in a page. Each grid page's scroll is
+# remembered while it is on screen, keyed by sidebar entry + page title (artist pages reuse the
+# same grid), and put back when Back returns to that page. Content loads asynchronously, so the
+# restore follows the content height for a few seconds, until the old position is reachable or
+# you scroll yourself.
+
+_RESTORE_WINDOW_S = 4.0
+_REMEMBERED_PAGES = 64
+
+
+def _grid_page_key(app):
+    nav = getattr(app, "nav_list", None)
+    row = nav.get_selected_row() if nav is not None else None
+    title = getattr(app, "grid_title_label", None)
+    return (str(getattr(row, "nav_id", "") or ""), str(title.get_text() if title is not None else ""))
+
+
+def _note_grid_scroll(app, adj):
+    if app.right_stack.get_visible_child_name() != "grid_view":
+        return
+    saved, key = app._fork_grid_scrolls, _grid_page_key(app)
+    saved.pop(key, None)  # re-inserting keeps the least recently seen page first
+    saved[key] = float(adj.get_value())
+    if len(saved) > _REMEMBERED_PAGES:
+        saved.pop(next(iter(saved)))
+
+
+def _cancel_restore(app):
+    stop = getattr(app, "_fork_restore_stop", None)
+    if stop is not None:
+        stop()
+    return False
+
+
+def install_scroll_memory(app):
+    scroll = getattr(app, "alb_scroll", None)
+    if getattr(app, "right_stack", None) is None or scroll is None:
+        return
+    app._fork_grid_scrolls = {}
+    scroll.get_vadjustment().connect("value-changed", lambda adj: _note_grid_scroll(app, adj))
+    wheel = Gtk.EventControllerScroll(flags=Gtk.EventControllerScrollFlags.VERTICAL)
+    wheel.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+    wheel.connect("scroll", lambda *_a: _cancel_restore(app))
+    scroll.add_controller(wheel)
+
+
+def _restore_grid_scroll(app, remembered, key):
+    _cancel_restore(app)
+    value = float(remembered.get(key, 0.0))
+    if value <= 0 or app.right_stack.get_visible_child_name() != "grid_view":
+        return False
+    vadj = app.alb_scroll.get_vadjustment()
+    deadline = time.monotonic() + _RESTORE_WINDOW_S
+    state = {"handler": 0}
+
+    def stop(*_a):
+        if state["handler"]:
+            vadj.disconnect(state["handler"])
+            state["handler"] = 0
+        if getattr(app, "_fork_restore_stop", None) is stop:
+            app._fork_restore_stop = None
+        return False
+
+    def apply(*_a):
+        if not state["handler"]:
+            return False
+        if app.right_stack.get_visible_child_name() != "grid_view" or _grid_page_key(app) != key:
+            return stop()  # you moved on before the page finished loading
+        reach = max(0.0, float(vadj.get_upper()) - float(vadj.get_page_size()))
+        vadj.set_value(min(value, reach))
+        if reach >= value or time.monotonic() > deadline:
+            stop()
+        return False
+
+    state["handler"] = vadj.connect("notify::upper", apply)
+    app._fork_restore_stop = stop
+    GLib.timeout_add(int(_RESTORE_WINDOW_S * 1000), stop)
+    GLib.idle_add(apply)
+    return True
+
+
+def _restores_grid_scroll(fn):
+    def on_back_clicked(app, btn):
+        was_grid = app.right_stack.get_visible_child_name() == "grid_view"
+        before = _grid_page_key(app)
+        # Copied first: re-rendering the page scrolls it to the top, which is recorded too.
+        remembered = dict(getattr(app, "_fork_grid_scrolls", None) or {})
+        result = fn(app, btn)
+        key = _grid_page_key(app)
+        if not was_grid or key != before:
+            _restore_grid_scroll(app, remembered, key)
+        return result
+
+    on_back_clicked.__doc__ = fn.__doc__
+    return on_back_clicked
+
+
+on_back_clicked = _restores_grid_scroll(on_back_clicked)

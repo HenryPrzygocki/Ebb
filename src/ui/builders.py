@@ -730,6 +730,7 @@ def build_header(app, container):
 
     app.back_btn = Gtk.Button(icon_name="go-previous-symbolic", sensitive=False)
     app.back_btn.connect("clicked", app.on_back_clicked)
+    app.back_btn.set_tooltip_text("Back (Alt+←)")  # fork
     app.back_btn.set_tooltip_text("Back")
     app.header.pack_start(app.back_btn)
     # Fork: only shown when the window is too narrow to dock the sidebar.

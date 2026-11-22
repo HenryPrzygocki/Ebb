@@ -79,7 +79,7 @@ class _Mix(SimpleNamespace):
     pass
 
 
-def test_show_album_details_selects_mixes_sidebar_for_mix(monkeypatch):
+def test_show_album_details_keeps_the_sidebar_for_a_mix(monkeypatch):
     mix = _Mix(id="mix-1", title="Track Radio", name="Track Radio", artist=None)
     selected = []
     app = SimpleNamespace(
@@ -126,7 +126,7 @@ def test_show_album_details_selects_mixes_sidebar_for_mix(monkeypatch):
 
     ui_actions.show_album_details(app, mix)
 
-    assert selected == ["mixes"]
+    assert selected == []  # fork: a mix no longer moves the sidebar (Back returns to where you were)
     assert app._track_view_source == {
         "type": "mix",
         "name": "Track Radio",

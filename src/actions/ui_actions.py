@@ -1743,10 +1743,9 @@ def show_album_details(app, alb):
     is_mix = "Mix" in type(alb).__name__
     if getattr(app, "header_kicker", None) is not None:
         app.header_kicker.set_text("Mix" if is_mix else "Album")
-    if is_mix:
-        select_nav = getattr(app, "_select_sidebar_nav_row", None)
-        if callable(select_nav):
-            select_nav("mixes")
+    # Fork: a mix opened from Home (or any other page) no longer moves the sidebar to Mixes &
+    # Radio. Back re-renders the selected sidebar page, so that sent Back to the wrong page, and it
+    # also made Mixes the page the app reopens on. "Go to the playing mix" still selects Mixes.
 
     current_view = app.right_stack.get_visible_child_name()
     if current_view and current_view != "tracks":

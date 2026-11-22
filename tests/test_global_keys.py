@@ -205,3 +205,42 @@ def test_escape_folds_the_workspace_and_remembers_it():
     assert _key(app, Gdk.KEY_Escape) is True
     assert app.calls == ["expanded=False", "save"]
     assert app.settings["viz_expanded"] is False
+
+
+ALT = int(Gdk.ModifierType.ALT_MASK)
+
+
+class _BackButton:
+    def __init__(self, sensitive):
+        self.sensitive = sensitive
+
+    def get_sensitive(self):
+        return self.sensitive
+
+
+def _back_app(focus, sensitive=True):
+    app = _app(focus)
+    app.back_btn = _BackButton(sensitive)
+    app.on_back_clicked = lambda btn: app.calls.append(("back", btn))
+    return app
+
+
+def test_alt_left_and_the_back_key_go_back_like_the_header_button():
+    app = _back_app(_Row())
+    assert _press(app, Gdk.KEY_Left, ALT) is True
+    assert _press(app, Gdk.KEY_Back) is True
+    assert ab._go_back(app) is True  # what the mouse's back button calls
+    assert app.calls == [("back", app.back_btn)] * 3
+
+
+def test_alt_left_does_nothing_when_there_is_nowhere_to_go_back_to():
+    app = _back_app(_Row(), sensitive=False)
+    assert _press(app, Gdk.KEY_Left, ALT) is False
+    assert app.calls == []
+
+
+def test_alt_left_in_a_text_field_is_left_to_the_field():
+    app = _back_app(_Text())
+    assert _press(app, Gdk.KEY_Left, ALT) is False
+    assert app.calls == []
+

@@ -3411,11 +3411,24 @@ def on_global_key_pressed(self, controller, keyval, keycode, state):
         # Space is play/pause again instead of typing into a field you've finished with.
         GLib.idle_add(_leave_text_input, self)
         return False
+    if (mods == Gdk.ModifierType.ALT_MASK and keyval in (Gdk.KEY_Left, Gdk.KEY_KP_Left)) or keyval == Gdk.KEY_Back:
+        if _focus_in_text_input(self):
+            return False
+        return _go_back(self)
     if keyval in _TAB_KEYS and not mods:
         # Fork: one Tab stop per track list / sidebar instead of one per row (ui/keynav.py).
         return keynav.on_tab(getattr(self, "win", None), backward=keyval == Gdk.KEY_ISO_Left_Tab
                              or bool(state & Gdk.ModifierType.SHIFT_MASK))
     return False
+
+
+def _go_back(self):
+    """Fork: Alt+Left, the Back key and the mouse's back button do what the header's Back does."""
+    btn = getattr(self, "back_btn", None)
+    if btn is None or not btn.get_sensitive():
+        return False
+    self.on_back_clicked(btn)
+    return True
 
 
 def _leave_text_input(self):
@@ -3434,6 +3447,13 @@ def _install_global_keys(self):
     controller.connect("key-pressed", lambda c, kv, kc, st: on_global_key_pressed(self, c, kv, kc, st))
     controller.connect("key-released", lambda c, kv, kc, st: on_global_key_released(self, c, kv, kc, st))
     self.win.add_controller(controller)
+    # Fork: the mouse's back button, like a browser.
+    back = Gtk.GestureClick(button=8)
+    back.connect("pressed", lambda *_a: _go_back(self))
+    self.win.add_controller(back)
+    from actions import ui_navigation
+
+    ui_navigation.install_scroll_memory(self)
     # The release is lost if the window loses focus mid-press; don't stay "held" forever.
     self.win.connect("notify::is-active", lambda *_a: setattr(self, "_space_held", False))
     self._global_key_controller = controller
@@ -3455,6 +3475,7 @@ _SHORTCUT_SECTIONS = (
         ("Close the open panel", "Escape"),
     )),
     ("General", (
+        ("Back (or the mouse's back button)", "<Alt>Left"),
         ("Move between controls (Enter activates)", "Tab"),
         ("Keyboard shortcuts", "<Control>question"),
         ("Quit (closing the window keeps playing in the tray)", "<Control>q"),

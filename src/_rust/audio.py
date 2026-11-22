@@ -1540,7 +1540,9 @@ class RustAudioPlayerAdapter:
             # Keep allowed-rates but release force-rate lock.
             rc = self._rust.set_pipewire_clock_rate(0)
             if rc != 0:
-                logger.warning("PipeWire force-rate release failed rc=%s (reason=%s)", rc, reason)
+                # Fork: rc=-2 just means nothing was forced; the check below warns (with rc) only
+                # if the rate really stays forced. This fired on every pause in normal use.
+                logger.debug("PipeWire force-rate release rc=%s (reason=%s)", rc, reason)
             meta, released_ok = self._wait_pipewire_metadata(
                 lambda m: int(m.get("force_rate", 0) or 0) == 0,
                 timeout_s=1.4,
