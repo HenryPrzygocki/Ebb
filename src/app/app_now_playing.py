@@ -1325,7 +1325,7 @@ def _build_now_playing_left_panel(self, layout):
         css_classes=["flat", "circular", "player-side-btn", "now-playing-tool-btn"],
     )
     self.now_playing_status_btn.set_focusable(False)
-    self.now_playing_status_btn.set_tooltip_text("Normal Mode")
+    self.now_playing_status_btn.set_tooltip_text("Signal path: standard (system mixer)")
     tool_row.append(self.now_playing_status_btn)
 
     self.now_playing_dsp_btn = Gtk.Button(

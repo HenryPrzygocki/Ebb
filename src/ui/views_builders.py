@@ -1030,6 +1030,27 @@ def build_settings_page(app):
     app.right_stack.add_named(settings_scroll, "settings")
 
 
+def _search_carousel(flow):
+    box = flow.get_parent()
+    if box is None:
+        return
+    box.remove(flow)
+    # Every result on one line: the scroller gives the flow its minimum width, which with
+    # min_children_per_line >= the result count is a single row.
+    flow.set_min_children_per_line(100)
+    flow.set_max_children_per_line(100)
+    flow.set_halign(Gtk.Align.START)
+    flow.set_valign(Gtk.Align.START)
+    scroller = Gtk.ScrolledWindow(
+        hscrollbar_policy=Gtk.PolicyType.AUTOMATIC,
+        vscrollbar_policy=Gtk.PolicyType.NEVER,
+        propagate_natural_height=True,
+        css_classes=["search-carousel"],
+    )
+    scroller.set_child(flow)
+    box.append(scroller)
+
+
 def _show_ascii_parentheses(dropdown):
     """Fork: show "ALSA (auto)" while the model keeps upstream's ids ("ALSA（auto）"), which
     settings and driver checks compare against."""
@@ -1160,4 +1181,9 @@ def build_search_view(app):
     app.res_trk_box.set_visible(False)
     vbox.append(app.res_trk_box)
 
+    # Fork: result sections are one sideways-scrolling row each, and tracks come right after
+    # artists, so a grid of giant artist circles no longer pushes the tracks screens down.
+    for flow in (app.res_art_flow, app.res_alb_flow, app.res_pl_flow):
+        _search_carousel(flow)
+    vbox.reorder_child_after(app.res_trk_box, app.res_art_box)
     app.right_stack.add_named(app.search_scroll, "search_view")

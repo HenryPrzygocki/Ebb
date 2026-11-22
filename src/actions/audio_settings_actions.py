@@ -41,10 +41,10 @@ _PLAYBACK_STATUS_ICONS = {
     _PLAYBACK_STATUS_DSP: "hiresti-status-dsp-symbolic",
 }
 _PLAYBACK_STATUS_TOOLTIPS = {
-    _PLAYBACK_STATUS_NORMAL: "Normal Mode",
-    _PLAYBACK_STATUS_BIT_PERFECT: "Bit-Perfect Mode Active",
-    _PLAYBACK_STATUS_EXCLUSIVE: "Exclusive Mode Active",
-    _PLAYBACK_STATUS_DSP: "DSP Processing Active",
+    _PLAYBACK_STATUS_NORMAL: "Signal path: standard (system mixer)",
+    _PLAYBACK_STATUS_BIT_PERFECT: "Signal path: bit-perfect (no DSP, no software volume)",
+    _PLAYBACK_STATUS_EXCLUSIVE: "Signal path: exclusive device access",
+    _PLAYBACK_STATUS_DSP: "Signal path: DSP processing active",
 }
 
 

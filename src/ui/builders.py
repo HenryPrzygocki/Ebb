@@ -1520,7 +1520,7 @@ def build_player_bar(app, container):
         css_classes=["flat", "circular", "player-side-btn"],
     )
     app.playback_status_btn.set_focusable(False)
-    app.playback_status_btn.set_tooltip_text("Normal Mode")
+    app.playback_status_btn.set_tooltip_text("Signal path: standard (system mixer)")
     app.vol_box.append(app.playback_status_btn)
 
     app.dsp_btn = Gtk.Button(icon_name="hiresti-eq-symbolic", css_classes=["flat", "circular", "player-side-btn", "eq-btn"])

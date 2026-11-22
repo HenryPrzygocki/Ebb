@@ -145,7 +145,7 @@ def test_sync_playback_status_icon_prefers_exclusive_over_bit_perfect():
     mod._sync_playback_status_icon(app)
 
     assert app.playback_status_btn.icon_name == "hiresti-status-exclusive-symbolic"
-    assert app.playback_status_btn.tooltip == "Exclusive Mode Active"
+    assert app.playback_status_btn.tooltip == "Signal path: exclusive device access"
     assert app.now_playing_status_btn.icon_name == "hiresti-status-exclusive-symbolic"
 
 
@@ -169,7 +169,7 @@ def test_sync_playback_status_icon_shows_dsp_only_when_processing_is_active():
     mod._sync_playback_status_icon(dsp_app)
 
     assert dsp_app.playback_status_btn.icon_name == "hiresti-status-dsp-symbolic"
-    assert dsp_app.playback_status_btn.tooltip == "DSP Processing Active"
+    assert dsp_app.playback_status_btn.tooltip == "Signal path: DSP processing active"
 
     normal_app = _make_status_app(
         player=SimpleNamespace(
@@ -190,4 +190,4 @@ def test_sync_playback_status_icon_shows_dsp_only_when_processing_is_active():
     mod._sync_playback_status_icon(normal_app)
 
     assert normal_app.playback_status_btn.icon_name == "hiresti-status-normal-symbolic"
-    assert normal_app.playback_status_btn.tooltip == "Normal Mode"
+    assert normal_app.playback_status_btn.tooltip == "Signal path: standard (system mixer)"

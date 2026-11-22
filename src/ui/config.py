@@ -1952,6 +1952,7 @@ flowboxchild { background-color: transparent; padding: 0; margin: 0; }
 .player-title.player-idle { opacity: 0.45; font-weight: 600; }
 .playback-art { background-color: alpha(currentColor, 0.06); border-radius: 8px; }
 .track-list-placeholder label { font-size: 1.05em; }
+.search-carousel, .search-carousel viewport { background: none; }
 """
 
 

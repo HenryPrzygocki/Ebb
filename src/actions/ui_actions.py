@@ -1145,6 +1145,9 @@ def _run_search(app, q):
     Thread(target=do_search, daemon=True).start()
 
 
+_SEARCH_ARTIST_SIZE = 160
+
+
 def render_search_results(app, res):
     logger.debug("render_search_results: starting UI update")
     app.search_selected_indices = set()
@@ -1171,11 +1174,12 @@ def render_search_results(app, res):
     app.res_art_box.set_visible(bool(artists))
     for art in artists:
         card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, css_classes=_artist_card_classes())
-        img = Gtk.Image(pixel_size=utils.COVER_SIZE, css_classes=["circular-avatar"])
+        # Fork: smaller artist circles in search results (they led the page at full cover size).
+        img = Gtk.Image(pixel_size=_SEARCH_ARTIST_SIZE, css_classes=["circular-avatar"])
         url = app.backend.get_artist_artwork_url(art, 320)
         logger.debug("Artist '%s' image URL: %s", getattr(art, "name", "Unknown"), url)
-        utils.load_img(img, url, app.cache_dir, utils.COVER_SIZE)
-        card.append(_build_feed_media_overlay(img, utils.COVER_SIZE, "circular-avatar"))
+        utils.load_img(img, url, app.cache_dir, _SEARCH_ARTIST_SIZE)
+        card.append(_build_feed_media_overlay(img, _SEARCH_ARTIST_SIZE, "circular-avatar"))
         card.append(
             Gtk.Label(
                 label=getattr(art, "name", "Unknown"),
@@ -1250,6 +1254,16 @@ def render_search_results(app, res):
         child = Gtk.FlowBoxChild()
         child.set_child(btn)
         app.res_pl_flow.append(child)
+
+    # Fork: search sections are one-row carousels; exactly one line for exactly these results
+    # (a larger min_children_per_line leaves a scrollable gap after the last card).
+    for flow in (app.res_art_flow, app.res_alb_flow, app.res_pl_flow):
+        n, c = 0, flow.get_first_child()
+        while c is not None:
+            n += 1
+            c = c.get_next_sibling()
+        flow.set_min_children_per_line(max(1, n))
+        flow.set_max_children_per_line(max(1, n))
 
     app.res_trk_box.set_visible(bool(tracks))
     app.search_track_data = tracks
