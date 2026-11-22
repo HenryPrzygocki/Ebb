@@ -919,6 +919,10 @@ def build_body(app, container):
     q_head.append(Gtk.Label(label="Queue", xalign=0, hexpand=True, css_classes=["home-section-title"]))
     app.queue_count_label = Gtk.Label(label="0 tracks", css_classes=["home-section-count"])
     q_head.append(app.queue_count_label)
+    from actions.ui_actions import _queue_save_button  # fork #10
+
+    app.queue_save_btn = _queue_save_button(app, False)
+    q_head.append(app.queue_save_btn)
     app.queue_clear_btn = None
     app.queue_drawer_box.append(q_head)
 

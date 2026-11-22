@@ -113,7 +113,7 @@ def bind_handlers_extra(TidalApp, seen=None):
         on_daily_mix_track_selected,
         on_daily_mix_item_activated,
     )
-    from app.app_queue import add_tracks_to_queue, play_tracks_next, play_tracks_now
+    from app.app_queue import add_tracks_to_queue, move_queue_entry, play_tracks_next, play_tracks_now
 
     bind_map(TidalApp, [
         ("_generate_shuffle_list", _generate_shuffle_list),
@@ -129,6 +129,7 @@ def bind_handlers_extra(TidalApp, seen=None):
         ("play_tracks_now", play_tracks_now),
         ("play_tracks_next", play_tracks_next),
         ("add_tracks_to_queue", add_tracks_to_queue),
+        ("move_queue_entry", move_queue_entry),  # fork #10
         ("on_go_to_track_radio_clicked", on_go_to_track_radio_clicked),
         ("on_add_current_tracks_to_queue_clicked", on_add_current_tracks_to_queue_clicked),
         ("on_queue_remove_track_clicked", on_queue_remove_track_clicked),

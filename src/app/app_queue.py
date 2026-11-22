@@ -8,6 +8,7 @@ from gi.repository import GLib, Gtk
 
 from actions import up_next  # fork #25
 from ui import context_menu
+from ui import queue_dnd  # fork #10
 
 logger = logging.getLogger(__name__)
 
@@ -213,7 +214,7 @@ def render_mini_queue(self):
     if list_box is None:
         return
     tracks = self._get_active_queue()
-    current_idx = int(getattr(self, "current_track_index", -1) or -1)
+    current_idx = queue_dnd.current_index(self)
 
     count_lbl = getattr(self, "mini_queue_count_label", None)
     if count_lbl is not None:
@@ -552,6 +553,53 @@ def on_queue_remove_track_clicked(self, track_index):
         self._mpris_sync_metadata()
     if hasattr(self, "_remote_publish_queue_event"):
         self._remote_publish_queue_event("queue_removed")
+
+
+def move_queue_entry(self, entry, slot):
+    """Fork #10: move the queued `entry` (by identity) to drop `slot` of the queue as it stands:
+    0 is the top, len(queue) the bottom. True when the queue changed.
+
+    The playing track stays put. Previous, the shuffle order and Up Next hold entries, not
+    indices, so they survive the shift; only Up Next membership follows the drop. A track
+    dropped right after the playing one, or among or right after the Up Next tracks, joins Up
+    Next there and so plays in that order in every mode, shuffle too. An Up Next track dragged
+    anywhere else becomes an ordinary queue track.
+    """
+    queue = list(self._get_active_queue() or [])
+    src = next((i for i, e in enumerate(queue) if e is entry), -1)
+    if src < 0:
+        return False
+    try:
+        cur = int(getattr(self, "current_track_index", -1))
+    except (TypeError, ValueError):
+        cur = -1
+    current = queue[cur] if 0 <= cur < len(queue) else None
+    if entry is current:
+        return False
+    slot = max(0, min(int(slot), len(queue)))
+    if slot in (src, src + 1):
+        return False  # dropped onto itself
+    new_queue = queue[:src] + queue[src + 1:]
+    dst = slot - 1 if slot > src else slot
+    new_queue.insert(dst, entry)
+    new_cur = next((i for i, e in enumerate(new_queue) if e is current), -1)
+
+    block = [e for e in up_next.pending(self) if e is not entry]
+    if new_cur >= 0 and new_cur < dst <= new_cur + len(block) + 1:
+        members = {id(e) for e in block} | {id(entry)}
+        self.up_next = [e for e in new_queue if id(e) in members]
+    else:
+        self.up_next = block
+
+    self.play_queue = new_queue
+    if new_cur >= 0:
+        self.current_track_index = new_cur
+    GLib.idle_add(self._refresh_queue_views)
+    if hasattr(self, "_mpris_sync_metadata"):
+        self._mpris_sync_metadata()
+    if hasattr(self, "_remote_publish_queue_event"):
+        self._remote_publish_queue_event("queue_moved")
+    return True
 
 
 def on_queue_clear_clicked(self, _btn=None):

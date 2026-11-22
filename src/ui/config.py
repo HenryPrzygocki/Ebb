@@ -1015,6 +1015,14 @@ flowboxchild { background-color: transparent; padding: 0; margin: 0; }
 /* Fork #17: grid covers (ui/card_grid.py): a faint square while the artwork loads. */
 .card-cover { background-color: alpha(currentColor, 0.06); }
 .card-cover-icon { color: alpha(currentColor, 0.35); }
+/* Fork #10: reordering the queue. */
+/* Specific enough to beat the drawer's `row { box-shadow: none }` and the Up Next bar. */
+.tracks-list > row.track-row.queue-drop-above,
+.queue-anchor .queue-drawer-list > row.track-row.queue-drop-above { box-shadow: inset 0 2px 0 0 @accent_color; }
+.tracks-list > row.track-row.queue-drop-below,
+.queue-anchor .queue-drawer-list > row.track-row.queue-drop-below { box-shadow: inset 0 -2px 0 0 @accent_color; }
+.track-row.queue-row-dragging { opacity: 0.35; }
+.queue-drag-icon { background-color: @popover_bg_color; color: @popover_fg_color; border-radius: 8px; padding: 6px 12px; font-weight: 600; box-shadow: 0 2px 8px alpha(black, 0.30); }
 .playlist-folder-shape { border-radius: 16px; }
 .home-feed-btn:hover,
 .home-feed-btn:active,

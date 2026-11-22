@@ -3555,6 +3555,7 @@ _SHORTCUT_SECTIONS = (
     ("Panels", (
         ("Search", "<Control>f"),
         ("Queue", "q"),
+        ("Move the focused queue track up / down (or drag it)", "<Alt>Up <Alt>Down"),
         ("Now Playing", "w"),
         ("Lyrics, visualizer & DSP", "e"),
     )),

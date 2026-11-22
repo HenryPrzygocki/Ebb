@@ -19,6 +19,7 @@ from ui import config as ui_config
 from ui import context_menu
 from ui import hires_filter  # fork
 from ui import card_grid  # fork #17
+from ui import queue_dnd  # fork #10
 from actions import up_next  # fork #25
 from ui.track_table import LAYOUT, build_tracks_header, append_header_action_spacers
 from ui.track_table import adapt_track_row, clear_track_rows, set_track_rows_hidden, track_columns  # fork
@@ -845,6 +846,7 @@ def _build_queue_track_row(app, track, i, current_idx, compact):
     box.append(rm_btn)
 
     row.set_child(box)
+    queue_dnd.attach(app, row, track, i)  # fork #10: drag to reorder
     return row
 
 
@@ -5910,13 +5912,22 @@ def render_collection_dashboard(app, favorite_tracks=None, favorite_albums=None)
     app.collection_content_box.append(sec_albums)
 
 
+def _queue_save_button(app, sensitive=True):
+    """Fork #10: keep what's queued, in a new playlist or an existing one."""
+    btn = Gtk.Button(icon_name="document-save-symbolic", css_classes=["flat", "playlist-tool-btn"])
+    btn.set_tooltip_text("Save Queue to a Playlist\u2026")
+    btn.set_sensitive(sensitive)
+    btn.connect("clicked", lambda _b: app.on_add_tracks_to_playlist(list(app._get_active_queue() or [])))
+    return btn
+
+
 def render_queue_dashboard(app):
     _clear_container(app.collection_content_box)
     app.playlist_track_list = None
     app.queue_track_list = None
 
     tracks = app._get_active_queue() if hasattr(app, "_get_active_queue") else list(getattr(app, "current_track_list", []) or [])
-    current_idx = int(getattr(app, "current_track_index", -1) or -1)
+    current_idx = queue_dnd.current_index(app)
 
     head = Gtk.Box(spacing=8, css_classes=["home-section-head"], margin_start=6, margin_end=6, margin_bottom=8)
     head.append(Gtk.Label(label="Now Playing Queue", xalign=0, hexpand=True, css_classes=["home-section-title"]))
@@ -5925,6 +5936,7 @@ def render_queue_dashboard(app):
     clear_btn.set_tooltip_text("Clear Queue")
     clear_btn.set_sensitive(bool(tracks))
     clear_btn.connect("clicked", app.on_queue_clear_clicked)
+    head.append(_queue_save_button(app, bool(tracks)))  # fork #10
     head.append(clear_btn)
     app.collection_content_box.append(head)
 
@@ -6488,7 +6500,7 @@ def render_liked_songs_dashboard(app, tracks=None):
             _play_liked_tracks(items, shuffle=False)
             return
 
-        current_idx = int(getattr(app, "current_track_index", -1) or -1)
+        current_idx = queue_dnd.current_index(app)
         if current_idx < 0 or current_idx >= len(base_queue):
             current_idx = 0
         insert_at = min(len(base_queue), current_idx + 1)
@@ -6730,13 +6742,16 @@ def render_queue_drawer(app):
     if list_box is None:
         return
     tracks = app._get_active_queue() if hasattr(app, "_get_active_queue") else list(getattr(app, "current_track_list", []) or [])
-    current_idx = int(getattr(app, "current_track_index", -1) or -1)
+    current_idx = queue_dnd.current_index(app)
     count_lbl = getattr(app, "queue_count_label", None)
     if count_lbl is not None:
         count_lbl.set_text(f"{len(tracks)} tracks")
     clear_btn = getattr(app, "queue_clear_btn", None)
     if clear_btn is not None:
         clear_btn.set_sensitive(bool(tracks))
+    save_btn = getattr(app, "queue_save_btn", None)
+    if save_btn is not None:
+        save_btn.set_sensitive(bool(tracks))
 
     # Fast path: when queue content and playback index are unchanged, keep
     # existing row widgets to avoid costly full rebuild on drawer open.

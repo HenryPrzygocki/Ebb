@@ -20,6 +20,7 @@ from core.executor import submit_daemon
 from utils.helpers import download_to_cache
 from ui import config as ui_config
 from ui import context_menu
+from ui import queue_dnd  # fork #10
 from actions import up_next  # fork #25
 
 logger = logging.getLogger(__name__)
@@ -2191,6 +2192,7 @@ def _npq_expand_above(self):
         track = tracks[i]
         row = _build_now_playing_track_row(track, i)
         row.queue_track_index = i
+        queue_dnd.attach(self, row, track, i)
         self.now_playing_queue_list.insert(row, offset)
     # Insert new "above" placeholder at position 0 if more tracks are still hidden
     if new_start > 0:
@@ -2233,6 +2235,7 @@ def _npq_expand_below(self):
         track = tracks[i]
         row = _build_now_playing_track_row(track, i)
         row.queue_track_index = i
+        queue_dnd.attach(self, row, track, i)
         self.now_playing_queue_list.append(row)
     # Append new "more" placeholder if tracks still hidden below
     tail = total - new_end
@@ -2294,7 +2297,7 @@ def _render_now_playing_queue_body(self, queue_tracks, win_start=None, win_end=N
     _NPQ_EXPAND_STEP = 50
 
     total = len(queue_tracks)
-    current_idx = int(getattr(self, "current_track_index", -1) or -1)
+    current_idx = queue_dnd.current_index(self)
     anchor = max(0, min(current_idx, total - 1)) if total > 0 else 0
 
     # Retrieve (or initialise) the current window bounds, reset when the
@@ -2327,6 +2330,7 @@ def _render_now_playing_queue_body(self, queue_tracks, win_start=None, win_end=N
         track = queue_tracks[idx]
         row = _build_now_playing_track_row(track, idx)
         row.queue_track_index = idx
+        queue_dnd.attach(self, row, track, idx)
         up_next.mark_row(self, row, track)  # fork #25
         self.now_playing_queue_list.append(row)
 
@@ -2386,7 +2390,7 @@ def _render_now_playing_album_tracks(self, tracks):
     if hasattr(self, "_update_track_list_icon"):
         self._update_track_list_icon(target_list=self.now_playing_track_list)
     if hasattr(self, "_update_list_ui"):
-        self._update_list_ui(int(getattr(self, "current_track_index", -1) or -1))
+        self._update_list_ui(queue_dnd.current_index(self))
 
 
 def _render_now_playing_lyrics(self, lyrics_obj=None, status_msg=None):
