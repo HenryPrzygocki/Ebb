@@ -11,6 +11,8 @@ of whatever is on top, one layer at a time:
 5. Settings, back to the page it was opened from,
 6. otherwise the page history, as the header's Back always did.
 
+In the mini player the pages are hidden, so only its queue closes.
+
 The header's arrow is enabled whenever one of these applies, so it never sits greyed out
 while there is something to step out of (Settings used to be a dead end for it).
 """
@@ -95,6 +97,12 @@ def leave_settings(app):
 
 def step_back(app, escape=False):
     """Close the top layer, else go back a page. True when something happened."""
+    if getattr(app, "is_mini_mode", False):
+        # The mini player hides the pages: only its queue is there to close.
+        if _revealed(app, "mini_queue_revealer"):
+            app.close_mini_queue()
+            return True
+        return False
     hide_sidebar = getattr(app, "_hide_sidebar_overlay", None)
     if callable(hide_sidebar) and hide_sidebar():
         return True

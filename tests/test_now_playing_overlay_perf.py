@@ -490,7 +490,7 @@ def test_dynamic_color_tints_now_playing_track_list():
     assert ".tracks-list.now-playing-track-list" in css
     assert "background-color: rgba(26, 51, 76, 0.30);" in css
     assert ".now-playing-info-card" in css
-    assert "background-color: rgba(26, 51, 76, 0.35);" in css
+    assert "background-color: rgba(26, 51, 76, 0.60);" in css  # fork: stronger over busy covers
 
 
 def test_now_playing_track_album_name_falls_back_to_unknown():

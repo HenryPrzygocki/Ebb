@@ -153,6 +153,18 @@ def test_settings_falls_back_to_the_grid_when_its_page_is_gone():
     assert app.right_stack.visible == "grid_view"
 
 
+def test_the_mini_player_only_closes_its_queue():
+    app = _app(view="settings", page_back=True, now_playing=True)
+    app.is_mini_mode = True
+    app.mini_queue_revealer = Revealer(True)
+    app.close_mini_queue = lambda: app.calls.append("mini_queue")
+    assert layers.step_back(app, escape=True)
+    assert app.calls == ["mini_queue"]
+    app.mini_queue_revealer.revealed = False
+    assert not layers.step_back(app, escape=True)
+    assert app.right_stack.visible == "settings"
+
+
 def test_nothing_to_step_out_of():
     app = _app(page_back=False)
     assert not layers.step_back(app)
