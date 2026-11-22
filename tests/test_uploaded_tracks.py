@@ -81,7 +81,9 @@ def test_get_uploaded_tracks_paginates_and_hydrates_via_v1():
     tracks = backend.get_uploaded_tracks()
 
     assert [t.id for t in tracks] == [10, 11, 12]
-    assert calls["hydrated"] == ["10", "11", "12"]
+    # Fork: sorted; the tracks hydrate concurrently (TaskExecutor().map), so the calls may come in
+    # any order under load, while the tracks themselves keep theirs (asserted above).
+    assert sorted(calls["hydrated"]) == ["10", "11", "12"]
     assert all(base == "https://openapi.example/v2/" for _m, _p, _q, base in calls["requests"])
     assert calls["requests"][0][2] == {"filter[owners.id]": "42"}
     assert calls["requests"][1][2]["page[cursor]"] == "c2"
