@@ -1287,6 +1287,7 @@ def render_search_results(app, res):
         btn = Gtk.Button(css_classes=["flat", "history-card-btn", "home-feed-btn"])
         btn.set_child(card)
         btn.connect("clicked", lambda _b, pid=p.get("id"): app.on_playlist_card_clicked(pid))
+        context_menu.tag(btn, p, "localplaylist")  # fork #24
         child = Gtk.FlowBoxChild()
         child.set_child(btn)
         app.res_pl_flow.append(child)
@@ -3323,6 +3324,7 @@ def render_artist_detail(app, artist, render_token=None):
             btn.set_hexpand(True)
             btn.set_halign(Gtk.Align.FILL)
             btn._dashboard_track_id = str(getattr(track, "id", "") or "").strip()
+            context_menu.tag(btn, track, "track")  # fork #24: an artist's top tracks had no menu
             btn._dashboard_track_name = _norm_trackish_text(track_name)
             btn._dashboard_track_artist = _norm_trackish_text(str(getattr(getattr(track, "artist", None), "name", "") or ""))
             btn._dashboard_playing_icon = playing_icon
@@ -3899,6 +3901,7 @@ def render_history_dashboard(app):
         btn.set_hexpand(True)
         btn.set_halign(Gtk.Align.FILL)
         btn._dashboard_track_id = str(track_id or "").strip()
+        context_menu.tag(btn, tr, "track")  # fork #24: History's rows had no menu
         btn._dashboard_track_name = row_name_norm
         btn._dashboard_track_artist = row_artist_norm
         btn._dashboard_playing_icon = playing_icon
@@ -4272,6 +4275,8 @@ def render_top_dashboard(app, prefer_cache=True):
                 btn._dashboard_playing_icon = playing_icon
                 btn.set_child(row_box)
                 btn.connect("clicked", lambda _b, arr=section_items, idx=src_idx: _play_tracks_section(arr, idx))
+                if obj is not None and not isinstance(obj, dict):  # fork #24: these rows had no menu
+                    context_menu.tag(btn, obj, item_data.get("type") or "track")
                 return btn
 
             def _is_tracks_section(sec):
@@ -4632,6 +4637,8 @@ def render_new_dashboard(app, prefer_cache=True):
                 btn._dashboard_playing_icon = playing_icon
                 btn.set_child(row_box)
                 btn.connect("clicked", lambda _b, arr=section_items, idx=src_idx: _play_tracks_section(arr, idx))
+                if obj is not None and not isinstance(obj, dict):  # fork #24: these rows had no menu
+                    context_menu.tag(btn, obj, item_data.get("type") or "track")
                 return btn
 
             def _is_tracks_section(sec):
@@ -6164,6 +6171,8 @@ def render_uploads_dashboard(app, tracks=None):
         row = Gtk.ListBoxRow(css_classes=["track-row"])
         row.upload_track_index = i
         row.track_id = getattr(t, "id", None)
+        if _upload_ready(t):  # fork #24: an upload still processing can't be queued
+            context_menu.tag(row, t, "track")
         box = Gtk.Box(
             spacing=LAYOUT["col_gap"],
             margin_top=LAYOUT["row_margin_y"],
@@ -7193,6 +7202,7 @@ def render_playlist_detail(app, playlist_id):
     app.collection_content_box.append(detail_box)
 
     header_box = Gtk.Box(spacing=24, css_classes=["album-header-box"])
+    context_menu.tag(header_box, p, "localplaylist")  # fork #24: Play / Shuffle / Queue
     cover = Gtk.Image(pixel_size=utils.COVER_SIZE, css_classes=["header-art"])
     cover.set_size_request(utils.COVER_SIZE, utils.COVER_SIZE)
     refs = app.playlist_mgr.get_cover_refs(p, limit=4)

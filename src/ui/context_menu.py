@@ -23,7 +23,9 @@ from gi.repository import Gdk, GLib, Gtk
 logger = logging.getLogger(__name__)
 
 TIDAL_BROWSE = "https://tidal.com/browse"
-KINDS = ("track", "video", "album", "artist", "playlist", "mix")
+TIDAL_KINDS = ("track", "video", "album", "artist", "playlist", "mix")
+# Fork #24: an Ebb-only playlist (a dict from playlist_mgr). It isn't on TIDAL: no link.
+KINDS = TIDAL_KINDS + ("localplaylist",)
 _KIND_ALIASES = {"userplaylist": "playlist", "mixv2": "mix"}
 _CTX_ATTR = "_hiresti_ctx"
 ROW_REMOVE_ATTR = "_hiresti_remove"  # fork: set on a track row that shows a trash button
@@ -56,8 +58,44 @@ def item_id(obj):
 
 def tidal_url(kind, obj):
     """Public TIDAL link, the same form as tidalapi's ``share_url``; None if there is none."""
-    oid = item_id(obj) if kind in KINDS else None
+    oid = item_id(obj) if kind in TIDAL_KINDS and not is_private(obj) else None
     return f"{TIDAL_BROWSE}/{kind}/{oid}" if oid else None
+
+
+def is_private(obj):
+    """Fork #24: an upload (accessType PRIVATE). TIDAL serves it only to its owner, so it has
+    no link to share, and no radio, credits or favorite; its album and artist pages don't
+    open either."""
+    return str(getattr(obj, "access_type", "") or "").upper() == "PRIVATE"
+
+
+# Fork #24: Home's promo tiles are tidalapi PageItems: a type and an artifact id, but no `id`,
+# so they had no menu. The menu shows at once with rows for a stand-in (PageRef), and the row
+# chosen runs on the real item, fetched then (PageItem.get).
+_PAGE_ITEM_KINDS = {"ALBUM": "album", "PLAYLIST": "playlist", "TRACK": "track", "ARTIST": "artist", "VIDEO": "video"}
+
+
+class PageRef:
+    """A promo tile's item before it is fetched: its kind, id and name."""
+
+    def __init__(self, page_item, kind):
+        self.page_item = page_item
+        self.kind = kind
+        self.id = str(getattr(page_item, "artifact_id", "") or "").strip() or None
+        self.name = str(getattr(page_item, "short_header", "") or getattr(page_item, "header", "") or "").strip() or None
+
+    def fetch(self):
+        return self.page_item.get()
+
+
+def page_ref(obj):
+    """The PageRef of a PageItem that names an item; None for anything else."""
+    if isinstance(obj, PageRef):
+        return obj
+    kind = _PAGE_ITEM_KINDS.get(str(getattr(obj, "type", "") or "").upper())
+    if kind is None or not getattr(obj, "artifact_id", None) or not callable(getattr(obj, "get", None)):
+        return None
+    return PageRef(obj, kind)
 
 
 def tag(widget, obj, kind=None):
@@ -99,6 +137,9 @@ def resolve(widget):
             hint, obj = found
             # Lazily-loaded playlist queue entries carry the real track once resolved.
             obj = getattr(obj, "resolved_track", None) or obj
+            ref = page_ref(obj)  # fork #24: a promo tile
+            if ref is not None:
+                hint, obj = ref.kind, ref
             kind = kind_of(obj, hint)
             return (kind, obj) if kind and item_id(obj) else None
         try:
@@ -214,6 +255,8 @@ def _track_rows(app, track):
     add("Play Next", "on_play_next_track_clicked", track)
     add("Add to Queue", "on_add_track_to_queue_clicked", track)
     add("Add to Playlist…", "on_add_single_track_to_playlist", track)
+    if is_private(track):  # fork #24: an upload; the rest is TIDAL's public catalogue
+        return rows
     fav = _favorite_row(app, track)
     if fav is not None:
         rows.append(fav)
@@ -221,6 +264,59 @@ def _track_rows(app, track):
     add("Go to Album", "go_to_album_of", track, when=item_id(getattr(track, "album", None)) is not None)
     add("Go to Artist", "go_to_artist_of", track, when=getattr(track, "artist", None) is not None)
     add("Go to Track Radio", "on_go_to_track_radio_clicked", track)
+    credits = _credits_row(app, track)
+    if credits is not None:
+        rows.append(credits)
+    return rows
+
+
+def _credits_row(app, track):
+    """Fork #24: "Show Credits" (upstream `#54`). Not in the mini player's strip, whose window
+    is too small for the dialog."""
+    backend = getattr(app, "backend", None)
+    if not callable(getattr(backend, "get_track_credits", None)) or item_id(track) is None:
+        return None
+    if getattr(app, "_mini_shape", None) == "strip":
+        return None
+
+    def show():
+        from ui import credits_dialog
+
+        credits_dialog.show(app, track)
+
+    return ("Show Credits", show)
+
+
+def _local_playlist_rows(app, playlist):
+    """Fork #24: an Ebb-only playlist: play or queue its tracks, in the playlist's order. Its
+    page has no Play button; a row played one track at a time."""
+    mgr = getattr(app, "playlist_mgr", None)
+    pid = item_id(playlist)
+    if mgr is None or pid is None:
+        return []
+    name = str((playlist.get("name") if isinstance(playlist, dict) else getattr(playlist, "name", None)) or "Playlist")
+    source = {"type": "playlist", "name": name, "playlist_id": pid, "obj": None}
+
+    def run(then):
+        try:
+            tracks = [t for t in (mgr.get_tracks(pid) or []) if t is not None]
+        except Exception:
+            logger.exception("Context menu: reading local playlist %s failed", pid)
+            tracks = []
+        if tracks:
+            then(tracks)
+        else:
+            _notice(app, "This playlist is empty", "warn", 2400)
+
+    rows = []
+    play_now = _method(app, "play_tracks_now")
+    if play_now is not None:
+        rows.append(("Play", lambda: run(lambda ts: play_now(ts, source=source))))
+        rows.append(("Shuffle", lambda: run(lambda ts: play_now(ts, shuffle=True, source=source))))
+    for label, meth in (("Play Next", "play_tracks_next"), ("Add to Queue", "add_tracks_to_queue")):
+        fn = _method(app, meth)
+        if fn is not None:
+            rows.append((label, lambda fn=fn: run(fn)))
     return rows
 
 
@@ -277,13 +373,23 @@ def removal_action(widget):
     return None
 
 
-# Fork #24: favorites from any menu, not only from the open page's heart. Playlists have no
-# favorite call in the backend yet.
+# Fork #24: favorites from any menu, not only from the open page's heart.
 _FAVORITES = {
     "album": ("is_favorite", "toggle_album_favorite", "Add to Favorites", "Remove from Favorites"),
     "mix": ("is_mix_favorite", "toggle_mix_favorite", "Add to Favorites", "Remove from Favorites"),
+    "playlist": ("is_playlist_favorite", "toggle_playlist_favorite", "Add to Favorites", "Remove from Favorites"),
     "artist": ("is_artist_favorite", "toggle_artist_favorite", "Follow", "Unfollow"),
 }
+
+
+def is_own_playlist(app, obj):
+    """Your own TIDAL playlist (tidalapi makes it a UserPlaylist). It is in your collection
+    already, so it has no favorite to add or remove."""
+    if type(obj).__name__ == "UserPlaylist":
+        return True
+    uid = getattr(getattr(getattr(app, "backend", None), "user", None), "id", None)
+    cid = getattr(getattr(obj, "creator", None), "id", None)
+    return uid is not None and cid is not None and str(uid) == str(cid)
 
 
 def _collection_favorite_row(app, kind, obj):
@@ -291,6 +397,8 @@ def _collection_favorite_row(app, kind, obj):
     backend = getattr(app, "backend", None)
     oid = item_id(obj)
     if spec is None or backend is None or oid is None:
+        return None
+    if kind == "playlist" and is_own_playlist(app, obj):
         return None
     is_fav, toggle = getattr(backend, spec[0], None), getattr(backend, spec[1], None)
     if not (callable(is_fav) and callable(toggle)):
@@ -338,6 +446,8 @@ def sync_open_page_heart(app, kind, oid, add):
         return
     if kind == "artist":
         shown, btn = getattr(app, "current_selected_artist", None), getattr(app, "_artist_hero_fav_btn", None)
+    elif kind == "playlist":
+        shown, btn = getattr(app, "current_remote_playlist", None), getattr(app, "fav_btn", None)
     else:
         shown, btn = getattr(app, "current_album", None), getattr(app, "fav_btn", None)
     if btn is not None and shown is not None and str(item_id(shown)) == str(oid):
@@ -388,10 +498,19 @@ def actions_for(app, kind, obj, origin=None):
     """
     if obj is None or kind not in KINDS:
         return []
+    rows = _rows(app, kind, obj, origin)
+    if isinstance(obj, PageRef):  # fork #24: a promo tile
+        rows = [_deferred(app, kind, obj, origin, row) for row in rows]
+    return _tidy(rows)
+
+
+def _rows(app, kind, obj, origin):
     if kind == "track":
         rows = _track_rows(app, obj)
     elif kind in ("album", "playlist", "mix"):
         rows = _collection_rows(app, kind, obj)
+    elif kind == "localplaylist":
+        rows = _local_playlist_rows(app, obj)  # fork #24
     elif kind == "artist":
         rows = _artist_rows(app, obj)  # fork #24
     else:  # video: left-click already opens it.
@@ -404,7 +523,39 @@ def actions_for(app, kind, obj, origin=None):
     remove = removal_action(origin) if kind == "track" else None
     if remove is not None:  # destructive, so last
         rows += [None, ("Remove from This Playlist", remove)]
-    return _tidy(rows)
+    return rows
+
+
+def _deferred(app, kind, ref, origin, row):
+    """A promo tile's row: it runs on the real item, fetched first, as the same row of the real
+    item's menu. The link needs only the id, so it runs at once."""
+    if row is None or row[0] == f"Copy {link_noun(kind)} Link":
+        return row
+    label = row[0]
+
+    def run():
+        def finish(real):
+            match = None
+            if real is not None:
+                rows = _rows(app, kind_of(real, kind) or kind, real, origin)
+                match = next((r for r in rows if r is not None and r[0] == label), None)
+            if match is None:
+                _notice(app, "Couldn't load this item", "warn", 2600)
+            else:
+                match[1]()
+            return False
+
+        def task():
+            try:
+                real = ref.fetch()
+            except Exception:
+                logger.exception("Context menu: loading promo %s %s failed", kind, ref.id)
+                real = None
+            GLib.idle_add(finish, real)
+
+        Thread(target=task, daemon=True, name="ctx-menu-promo").start()
+
+    return (label, run)
 
 
 # ---------------------------------------------------------------- GTK

@@ -272,7 +272,12 @@ def on_remote_playlist_card_clicked(self, playlist_obj):
     if hasattr(self, "similar_albums_box"):
         self.similar_albums_box.set_visible(False)
     if self.fav_btn is not None:
-        self.fav_btn.set_visible(False)
+        # Fork #24: the heart shows on someone else's playlist (your own are yours already).
+        # It was hidden because on_fav_clicked could only toggle albums and mixes.
+        can_fav = not self._remote_playlist_is_own and callable(getattr(self.backend, "is_playlist_favorite", None))
+        self.fav_btn.set_visible(can_fav)
+        if can_fav:
+            self._update_fav_icon(self.fav_btn, self.backend.is_playlist_favorite(getattr(playlist_obj, "id", "")))
     if self.add_playlist_btn is not None:
         self.add_playlist_btn.set_visible(False)
     if self.remote_playlist_edit_btn is not None:

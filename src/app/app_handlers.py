@@ -159,6 +159,10 @@ def on_tech_info_clicked(self, btn):
 
 
 def on_fav_clicked(self, btn):
+    playlist = getattr(self, "current_remote_playlist", None)
+    if playlist is not None and not self.current_album:
+        _toggle_playlist_heart(self, btn, playlist)  # fork #24
+        return
     if not self.current_album:
         return
     is_currently_active = "active" in btn.get_css_classes()
@@ -179,6 +183,20 @@ def on_fav_clicked(self, btn):
         else:
             ok = self.backend.toggle_album_favorite(item_id, is_add)
         if ok:
+            GLib.idle_add(lambda: self._update_fav_icon(btn, is_add))
+
+    submit_daemon(do)
+
+
+def _toggle_playlist_heart(self, btn, playlist):
+    """Fork #24: a playlist page's heart puts someone else's playlist in or out of your favorites."""
+    pid = getattr(playlist, "id", None)
+    if pid is None:
+        return
+    is_add = "active" not in btn.get_css_classes()
+
+    def do():
+        if self.backend.toggle_playlist_favorite(pid, is_add):
             GLib.idle_add(lambda: self._update_fav_icon(btn, is_add))
 
     submit_daemon(do)

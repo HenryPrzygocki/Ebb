@@ -17,6 +17,28 @@ from utils.paths import get_cache_dir, get_config_dir
 logger = logging.getLogger(__name__)
 
 
+def parse_credits(payload):
+    """Fork #24: TIDAL's v1 `tracks/{id}/credits`, a list of {"type": role, "contributors":
+    [{"name", "id"}]}, as [(role, [(name, artist_id or None), ...]), ...] in TIDAL's order. A
+    role listed twice is merged, and a name appears once per role."""
+    roles, order = {}, []
+    for entry in payload if isinstance(payload, list) else []:
+        role = str(entry.get("type") or "").strip() if isinstance(entry, dict) else ""
+        if not role:
+            continue
+        if role not in roles:
+            roles[role] = []
+            order.append(role)
+        people = roles[role]
+        for person in entry.get("contributors") or []:
+            name = str(person.get("name") or "").strip() if isinstance(person, dict) else ""
+            if not name or any(known == name for known, _ in people):
+                continue
+            pid = person.get("id")
+            people.append((name, str(pid) if pid not in (None, "", 0) else None))
+    return [(role, roles[role]) for role in order if roles[role]]
+
+
 class TidalBackend:
     def __init__(self):
         self._normalize_tls_ca_env()
@@ -34,6 +56,7 @@ class TidalBackend:
         self.fav_artist_ids = set()
         self.fav_track_ids = set()
         self.fav_mix_ids = set()
+        self.fav_playlist_ids = set()  # fork #24
         self._cached_albums = []
         self._cached_albums_ts = 0.0
         self._albums_cache_ttl = 0.0
@@ -580,6 +603,18 @@ class TidalBackend:
             }
         except Exception as e:
             logger.debug("Failed to refresh favorite mix ids: %s", e)
+        try:  # fork #24
+            if not self.user:
+                return
+            fav = self.user.favorites
+            playlists = fav.playlists_paginated() if hasattr(fav, "playlists_paginated") else fav.playlists()
+            self.fav_playlist_ids = {
+                str(getattr(p, "id", ""))
+                for p in (playlists or [])
+                if getattr(p, "id", None) is not None
+            }
+        except Exception as e:
+            logger.debug("Failed to refresh favorite playlist ids: %s", e)
 
     def is_favorite(self, album_id):
         return str(album_id) in self.fav_album_ids
@@ -592,6 +627,9 @@ class TidalBackend:
 
     def is_mix_favorite(self, mix_id):
         return str(mix_id) in self.fav_mix_ids
+
+    def is_playlist_favorite(self, playlist_id):
+        return str(playlist_id) in self.fav_playlist_ids
 
     def _album_cache_ttl_seconds(self, default=300.0):
         try:
@@ -681,6 +719,24 @@ class TidalBackend:
             return True
         except Exception as e:
             logger.warning("Failed to toggle mix favorite for %s (add=%s): %s", mix_id, add, e)
+            return False
+
+    def toggle_playlist_favorite(self, playlist_id, add=True):
+        """Fork #24: someone else's playlist in or out of your favorites (tidalapi's v2 calls,
+        which say whether TIDAL took the change)."""
+        pid = str(playlist_id)
+        try:
+            fav = self.user.favorites
+            ok = fav.add_playlist(pid) if add else fav.remove_playlist(pid)
+            if ok is False:
+                raise RuntimeError("TIDAL refused the change")
+            if add:
+                self.fav_playlist_ids.add(pid)
+            else:
+                self.fav_playlist_ids.discard(pid)
+            return True
+        except Exception as e:
+            logger.warning("Failed to toggle playlist favorite for %s (add=%s): %s", pid, add, e)
             return False
 
     def toggle_track_favorite(self, track_id, add=True):
@@ -1071,6 +1127,24 @@ class TidalBackend:
                 "Failed to fetch uploaded tracks [%s]: %s", classify_exception(e), e
             )
             return []
+
+    def get_track_credits(self, track_id):
+        """Fork #24: a track's credits (parse_credits): [] when TIDAL has none, None when the
+        request failed. tidalapi doesn't wrap this v1 endpoint."""
+        if not track_id:
+            return None
+
+        def _fetch():
+            resp = self.session.request.request(
+                "GET", f"tracks/{track_id}/credits", params={"includeContributors": "true"}
+            )
+            return parse_credits(resp.json())
+
+        try:
+            return self._call_with_session_recovery(_fetch, context="track credits")
+        except Exception as e:
+            logger.warning("Failed to fetch credits for track %s [%s]: %s", track_id, classify_exception(e), e)
+            return None
 
     def get_favorite_tracks(self, limit=50, sort="recent"):
         """Fetch favorite tracks, ordered by date-added DESC by default.
@@ -4029,6 +4103,7 @@ class TidalBackend:
         self.session = tidalapi.Session()
         self.fav_album_ids = set()
         self.fav_track_ids = set()
+        self.fav_playlist_ids = set()  # fork #24
         self._cached_albums = []
         self._cached_albums_ts = 0.0
         self._apply_global_config()

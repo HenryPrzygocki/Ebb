@@ -962,6 +962,10 @@ window.mini-mode .mini-queue-drawer {
 .card-bar.mini-state.mini-cover .player-ctrls-box .pill image { -gtk-icon-size: 22px; }
 .card-bar.mini-state.mini-cover .player-ctrls-box .transport-mode-btn.on { background-color: alpha(@accent_bg_color, 0.18); }
 .card-bar.mini-strip .mini-cover-art { border-radius: 6px; }
+/* fork #24: the credits dialog; a linked name lines up with the plain ones */
+.credits-role { margin-top: 18px; margin-bottom: 2px; }
+button.credits-name { padding: 3px 6px; margin-left: -6px; min-height: 0; font-weight: normal; }
+label.credits-name { padding: 3px 0; }
 /* the strip's corner row ends on the transport's right edge */
 window.mini-mode .mini-controls { margin: 0 7px 0 0; }
 .mini-controls button.on { background-color: alpha(@accent_bg_color, 0.18); color: @accent_color; }

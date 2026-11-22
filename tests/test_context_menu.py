@@ -33,6 +33,10 @@ class PageItem(SimpleNamespace):
     pass
 
 
+class UserPlaylist(SimpleNamespace):
+    pass
+
+
 class _Widget:
     def __init__(self, parent=None):
         self._parent = parent
@@ -252,6 +256,7 @@ def _favorites_app(monkeypatch, favorite=False, ok=True):
     app = _app()
     toggled = []
     for check, toggle in (("is_favorite", "toggle_album_favorite"), ("is_mix_favorite", "toggle_mix_favorite"),
+                          ("is_playlist_favorite", "toggle_playlist_favorite"),
                           ("is_artist_favorite", "toggle_artist_favorite")):
         setattr(app.backend, check, lambda _oid: favorite)
         setattr(app.backend, toggle, lambda oid, add, t=toggle: toggled.append((t, oid, add)) or ok)
@@ -297,10 +302,91 @@ def test_a_refused_favorite_change_says_so_and_leaves_the_heart(monkeypatch):
     assert app.notices[-1][1] == "error" and hearts == []
 
 
-def test_playlists_have_no_favorites_entry_yet(monkeypatch):
-    app, _, _ = _favorites_app(monkeypatch)
-    labels = _labels(context_menu.actions_for(app, "playlist", Playlist(id="u", name="P")))
-    assert "Add to Favorites" not in labels
+def test_playlist_favorites_are_for_other_peoples_playlists(monkeypatch):
+    app, toggled, hearts = _favorites_app(monkeypatch)
+    app.backend.user = SimpleNamespace(id=42)
+    theirs = Playlist(id="u1", name="Jazz Classics", creator=SimpleNamespace(id=7))
+    app.current_remote_playlist, app.fav_btn = theirs, "playlist-heart"
+    rows = context_menu.actions_for(app, "playlist", theirs)
+    assert _labels(rows)[-3:] == ["Add to Favorites", "\u2014", "Copy Playlist Link"]
+    _run(rows, "Add to Favorites")
+    assert toggled == [("toggle_playlist_favorite", "u1", True)]
+    assert hearts == [("playlist-heart", True)]  # the open playlist page follows
+    # Your own playlists are in your collection already: by creator, or as tidalapi's class.
+    for mine in (Playlist(id="u2", name="Mine", creator=SimpleNamespace(id=42)), UserPlaylist(id="u3", name="Mine too")):
+        assert "Add to Favorites" not in _labels(context_menu.actions_for(app, "playlist", mine))
+
+
+# ---------------------------------------------------------------- fork #24: more surfaces, credits
+
+def test_promo_tiles_get_their_items_menu_and_fetch_the_item_only_for_a_row(monkeypatch):
+    app = _app()
+    tracks = [_track(1)]
+    app.backend.get_tracks = lambda obj: tracks if isinstance(obj, Album) else []
+    monkeypatch.setattr(context_menu, "Thread", _SyncThread)
+    monkeypatch.setattr(context_menu.GLib, "idle_add", lambda fn, *a: fn(*a))
+    copied = []
+    monkeypatch.setattr(context_menu, "copy_text", lambda _app, text: copied.append(text) or True)
+    real = Album(id=5, name="Record", artist=SimpleNamespace(id=9, name="Band"))
+    fetched = []
+    promo = PageItem(type="ALBUM", artifact_id="5", header="New: Record", short_header="Record",
+                     get=lambda: fetched.append(1) or real)
+    kind, ref = context_menu.resolve(context_menu.tag(_Widget(), promo, "PageItem"))
+    assert kind == "album" and isinstance(ref, context_menu.PageRef) and ref.id == "5"
+    rows = context_menu.actions_for(app, kind, ref)
+    assert _labels(rows) == ["Play", "Shuffle", "Play Next", "Add to Queue", "\u2014", "Copy Album Link"]
+    _run(rows, "Copy Album Link")  # needs only the id
+    assert copied == ["https://tidal.com/browse/album/5"] and fetched == []
+    _run(rows, "Add to Queue")  # runs as the real album's row
+    assert fetched == [1] and app.calls == [("add_tracks", (tracks,), {})]
+
+    def gone():
+        raise RuntimeError("gone")
+
+    broken = PageItem(type="PLAYLIST", artifact_id="u", header="P", short_header="P", get=gone)
+    _run(context_menu.actions_for(app, *context_menu.resolve(context_menu.tag(_Widget(), broken))), "Play")
+    assert app.notices[-1] == ("Couldn't load this item", "warn")
+
+
+def test_an_upload_has_only_the_queue_and_playlist_rows():
+    app = _app()
+    app.backend.get_track_credits = lambda _tid: []
+    upload = _track(88)
+    upload.access_type = "PRIVATE"  # TIDAL serves it only to its owner
+    assert _labels(context_menu.actions_for(app, "track", upload)) == ["Play Next", "Add to Queue", "Add to Playlist…"]
+    assert context_menu.tidal_url("track", upload) is None
+
+
+def test_track_menu_shows_credits_except_in_the_mini_strip(monkeypatch):
+    from ui import credits_dialog
+
+    app = _app()
+    app.backend.get_track_credits = lambda _tid: []
+    t = _track()
+    labels = _labels(context_menu.actions_for(app, "track", t))
+    assert labels[labels.index("Go to Track Radio") + 1] == "Show Credits"
+    shown = []
+    monkeypatch.setattr(credits_dialog, "show", lambda _app, track: shown.append(track))
+    _run(context_menu.actions_for(app, "track", t), "Show Credits")
+    assert shown == [t]
+    app._mini_shape = "strip"  # too small a window for the dialog
+    assert "Show Credits" not in _labels(context_menu.actions_for(app, "track", t))
+
+
+def test_local_playlists_play_and_queue_their_tracks_and_have_no_link():
+    tracks = [_track(1), _track(2)]
+    app = _app(playlist_mgr=SimpleNamespace(get_tracks=lambda pid: tracks if pid == "lp1" else []))
+    road_trip = {"id": "lp1", "name": "Road Trip", "tracks": []}
+    kind, obj = context_menu.resolve(context_menu.tag(_Widget(), road_trip, "localplaylist"))
+    assert kind == "localplaylist" and context_menu.tidal_url(kind, obj) is None
+    rows = context_menu.actions_for(app, kind, obj)
+    assert _labels(rows) == ["Play", "Shuffle", "Play Next", "Add to Queue"]
+    _run(rows, "Play")
+    name, args, kwargs = app.calls[-1]
+    assert (name, args) == ("play_now", (tracks,))
+    assert kwargs["source"] == {"type": "playlist", "name": "Road Trip", "playlist_id": "lp1", "obj": None}
+    _run(context_menu.actions_for(app, "localplaylist", {"id": "lp2", "name": "Empty"}), "Add to Queue")
+    assert app.notices[-1] == ("This playlist is empty", "warn")
 
 
 # ---------------------------------------------------------------- the window gesture
