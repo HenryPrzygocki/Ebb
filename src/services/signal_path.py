@@ -403,7 +403,7 @@ class AudioSignalPathWindow(Adw.Window):
 
     def _init_bitperfect_help_button(self):
         btn = Gtk.Button(css_classes=["flat"])
-        btn.set_child(Gtk.Image.new_from_icon_name("dialog-question-symbolic"))
+        btn.set_child(Gtk.Image.new_from_icon_name("dialog-information-symbolic"))  # fork: see views_builders
         btn.add_css_class("signal-terminal-help-button")
         btn.set_valign(Gtk.Align.CENTER)
         btn.set_tooltip_text("Explain bit-perfect verdict")

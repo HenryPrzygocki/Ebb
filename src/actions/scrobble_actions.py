@@ -147,6 +147,7 @@ def _refresh_lastfm_status_ui(self):
     disconnect_btn = getattr(self, "scrobble_lastfm_disconnect_btn", None)
     if disconnect_btn is not None:
         disconnect_btn.set_sensitive(bool(session_key))
+        disconnect_btn.set_visible(bool(session_key))  # fork: not a greyed-out button beside Connect
 
     connect_btn = getattr(self, "scrobble_lastfm_connect_btn", None)
     if connect_btn is not None:

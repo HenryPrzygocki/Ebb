@@ -2,7 +2,7 @@ import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Gtk, Adw, Pango
+from gi.repository import Gtk, Adw, GObject, Pango
 
 from app.app_remote_control import REMOTE_ACCESS_MODES
 from core import brand  # fork
@@ -11,6 +11,35 @@ import utils
 from ui.track_table import build_tracks_header, append_header_action_spacers
 
 PAGE_INSET = 32  # fork: where every page's content starts (left and right)
+
+
+# Fork: what the selected driver does, under the Audio Driver row. Upstream's fixed text
+# recommended "ALSA (auto) for most setups" and didn't mention Auto or PipeWire.
+_DRIVER_SUMMARY = {
+    "Auto (Default)": "The system's default output, shared with other apps.",
+    "PipeWire": "A PipeWire output, shared with other apps.",
+    "ALSA (auto)": "Opens the device directly: other apps can't play on it meanwhile.",
+    "ALSA (mmap)": "Opens the device directly, with zero-copy writes.",
+    "USB Rawlink v2": "Talks to a USB DAC directly, past the kernel's USB audio driver.",
+}
+_DRIVER_SUMMARY_FALLBACK = "How Ebb reaches the output device."
+
+
+def _driver_summary(driver):
+    """The summary for a driver id; the ids keep upstream's full-width parentheses."""
+    key = str(driver or "").replace("（", " (").replace("）", ")").replace("  (", " (").strip()
+    return _DRIVER_SUMMARY.get(key, _DRIVER_SUMMARY_FALLBACK)
+
+
+def _row_follows(row, control):
+    """Fork: a driver-specific Audio Output row shows only while its control applies. The
+    actions code makes the control insensitive otherwise (on_driver_changed and the bit-depth
+    sync), which left five of the nine rows greyed out under the default driver."""
+    def sync(*_args):
+        row.set_visible(bool(control.get_sensitive()))
+
+    control.connect("notify::sensitive", sync)
+    sync()
 
 
 def build_grid_view(app):
@@ -624,23 +653,23 @@ def build_settings_page(app):
     bp_info = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, valign=Gtk.Align.CENTER)
     bp_title_box = Gtk.Box(spacing=6, orientation=Gtk.Orientation.HORIZONTAL)
     bp_title_box.append(Gtk.Label(label="Bit-Perfect Mode", xalign=0, css_classes=["settings-label"]))
-    bp_help_btn = Gtk.Button(icon_name="dialog-question-symbolic", css_classes=["flat", "circular"])
-    bp_help_btn.set_tooltip_text("Click for details")
+    # Fork: dialog-question-symbolic is a diamond with a "?" in Papirus, which reads as a
+    # broken glyph (U+FFFD); every theme draws the information icon as a circled "i".
+    bp_help_btn = Gtk.Button(icon_name="dialog-information-symbolic", css_classes=["flat", "circular"])
+    bp_help_btn.set_tooltip_text("About Bit-Perfect Mode")
     bp_help_pop = Gtk.Popover()
     bp_help_pop.set_parent(bp_help_btn)
     bp_help_pop.set_autohide(True)
     bp_pop_content = Gtk.Label(wrap=True, max_width_chars=44, xalign=0)
     bp_pop_content.set_markup(
         "<b>Bit-Perfect Mode</b>\n\n"
-        "• <b>Always:</b> bypasses the app EQ and app volume processing.\n\n"
-        "• <b>PipeWire mode:</b> shared output through the PipeWire graph. Convenient "
-        "for sharing the device with other apps, but PipeWire resamples to its own "
-        "session rate, so this path is not bit-perfect.\n\n"
-        "• <b>ALSA (auto)/ALSA (mmap) + Exclusive mode:</b> bypasses the system mixer and is treated as "
-        "true bit-perfect playback.\n\n"
-        "• <b>USB Rawlink v2:</b> bypasses the kernel USB audio driver and lets Ebb "
-        "talk directly to a compatible external USB DAC. With Bit-Perfect Mode on, "
-        "Rawlink uses the app's most direct player-to-device playback path."
+        "Sends the audio to the device untouched.\n\n"
+        "• <b>Processing:</b> the EQ and DSP are bypassed, and the app's volume stays at "
+        "100%. A USB DAC's own hardware volume still works.\n\n"
+        "• <b>Drivers:</b> only ALSA and USB Rawlink are offered. Auto and PipeWire go "
+        "through the system mixer, which can resample.\n\n"
+        "• <b>The device:</b> Ebb asks the system to release it, so other apps can't play "
+        "on it meanwhile."
     )
     bp_pop_box = Gtk.Box(margin_top=12, margin_bottom=12, margin_start=12, margin_end=12)
     bp_pop_box.append(bp_pop_content)
@@ -648,7 +677,15 @@ def build_settings_page(app):
     bp_help_btn.connect("clicked", lambda x: bp_help_pop.popup())
     bp_title_box.append(bp_help_btn)
     bp_info.append(bp_title_box)
-    bp_info.append(Gtk.Label(label="Bypass app EQ/volume; direct device path in USB Rawlink v2", xalign=0, css_classes=["dim-label"]))
+    bp_desc = Gtk.Label(
+        label="No EQ, DSP or app volume, and only drivers that reach the device directly.",
+        xalign=0,
+        css_classes=["dim-label"],
+    )
+    bp_desc.set_wrap(True)
+    bp_desc.set_wrap_mode(Pango.WrapMode.WORD_CHAR)
+    bp_desc.set_max_width_chars(56)
+    bp_info.append(bp_desc)
     row_bp.append(bp_info)
     row_bp.append(Gtk.Box(hexpand=True))
     app.bp_switch = Gtk.Switch(valign=Gtk.Align.CENTER)
@@ -729,23 +766,30 @@ def build_settings_page(app):
     app.latency_dd.connect("notify::selected-item", app.on_latency_changed)
     row_lat.append(app.latency_dd)
     group_out.append(row_lat)
+    _row_follows(row_lat, app.latency_dd)
 
     row_drv = Gtk.Box(spacing=12, margin_start=12, margin_end=12, margin_top=8, margin_bottom=8)
     drv_info = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, valign=Gtk.Align.CENTER)
     drv_title_box = Gtk.Box(spacing=6, orientation=Gtk.Orientation.HORIZONTAL)
     drv_title_box.append(Gtk.Label(label="Audio Driver", xalign=0, css_classes=["settings-label"]))
-    drv_help_btn = Gtk.Button(icon_name="dialog-question-symbolic", css_classes=["flat", "circular"])
-    drv_help_btn.set_tooltip_text("Click for details")
+    drv_help_btn = Gtk.Button(icon_name="dialog-information-symbolic", css_classes=["flat", "circular"])
+    drv_help_btn.set_tooltip_text("About the drivers")
     drv_help_pop = Gtk.Popover()
     drv_help_pop.set_parent(drv_help_btn)
     drv_help_pop.set_autohide(True)
     drv_pop_content = Gtk.Label(wrap=True, max_width_chars=44, xalign=0)
     drv_pop_content.set_markup(
-        "<b>Audio Driver Modes</b>\n\n"
-        "• <b>ALSA (auto):</b> Recommended for most setups. Ebb chooses the most compatible ALSA path for your device automatically.\n\n"
-        "• <b>ALSA (mmap):</b> A zero-copy ALSA path with a more direct handoff to the device. Best for users who want a leaner playback path or prefer MMAP on their hardware.\n\n"
-        "• <b>PipeWire:</b> Routes through the PipeWire shared graph (ALSA→PipeWire bridge). Shared with other apps and resampled to PipeWire's session rate — convenient, but not bit-perfect.\n\n"
-        "• <b>USB Rawlink v2:</b> Bypasses the kernel USB audio driver and lets Ebb talk directly to the USB device for playback. Best for users who want the most direct player-to-DAC path on a compatible external USB DAC."
+        "<b>Audio Drivers</b>\n\n"
+        "• <b>Auto (Default):</b> the system's default output, shared with other apps. "
+        "The system mixer can resample.\n\n"
+        "• <b>PipeWire:</b> a PipeWire output you pick, also shared and possibly resampled.\n\n"
+        "• <b>ALSA (auto):</b> opens the device directly, with no mixer in between. Other "
+        "apps can't play on it meanwhile.\n\n"
+        "• <b>ALSA (mmap):</b> the same, with memory-mapped, zero-copy writes and an "
+        "optional realtime writer thread.\n\n"
+        "• <b>USB Rawlink v2:</b> talks to a USB DAC directly, past the kernel's USB audio "
+        "driver.\n\n"
+        "Bit-Perfect Mode offers only the direct ones: ALSA and USB Rawlink."
     )
     drv_pop_box = Gtk.Box(margin_top=12, margin_bottom=12, margin_start=12, margin_end=12)
     drv_pop_box.append(drv_pop_content)
@@ -754,7 +798,7 @@ def build_settings_page(app):
     drv_title_box.append(drv_help_btn)
     drv_info.append(drv_title_box)
     drv_desc = Gtk.Label(
-        label="ALSA (auto) for most setups. ALSA (mmap) for zero-copy tuning. USB Rawlink v2 for direct USB playback.",
+        label=_driver_summary(None),
         xalign=0,
         css_classes=["dim-label"],
     )
@@ -779,6 +823,13 @@ def build_settings_page(app):
     app.driver_dd = Gtk.DropDown(model=Gtk.StringList.new(drivers))
     _show_ascii_parentheses(app.driver_dd)
     app.driver_dd.connect("notify::selected-item", app.on_driver_changed)
+
+    def _sync_driver_desc(dd, _pspec=None):
+        item = dd.get_selected_item()
+        drv_desc.set_text(_driver_summary(item.get_string() if item is not None else None))
+
+    app.driver_dd.connect("notify::selected-item", _sync_driver_desc)
+    _sync_driver_desc(app.driver_dd)
     row_drv.append(app.driver_dd)
     group_out.append(row_drv)
 
@@ -800,10 +851,12 @@ def build_settings_page(app):
     app.bit_depth_dd.connect("notify::selected-item", app.on_output_bit_depth_changed)
     row_depth.append(app.bit_depth_dd)
     group_out.append(row_depth)
+    _row_follows(row_depth, app.bit_depth_dd)
 
     saved_driver_init = app.settings.get("driver", "")
     app.mmap_realtime_priority_dd.set_sensitive(saved_driver_init == "ALSA（mmap）")
     group_out.append(row_rt)
+    _row_follows(row_rt, app.mmap_realtime_priority_dd)
 
     # ── USB Rawlink: Clock Alignment ────────────────────────────────────────
     from actions.audio_settings_actions import USB_CLOCK_OPTIONS, USB_CLOCK_DEFAULT
@@ -829,6 +882,7 @@ def build_settings_page(app):
     app.usb_clock_mode_dd.connect("notify::selected-item", app.on_usb_clock_mode_changed)
     row_usb_clk.append(app.usb_clock_mode_dd)
     group_out.append(row_usb_clk)
+    _row_follows(row_usb_clk, app.usb_clock_mode_dd)
 
     row_dev = Gtk.Box(spacing=12, margin_start=12, margin_end=12, margin_top=8, margin_bottom=8)
     row_dev.append(Gtk.Label(label="Output Device", hexpand=True, xalign=0))
@@ -856,6 +910,9 @@ def build_settings_page(app):
     app.output_recover_btn = Gtk.Button(label="Recover", css_classes=["flat"], valign=Gtk.Align.START)
     app.output_recover_btn.connect("clicked", app.on_recover_output_clicked)
     app.output_recover_btn.set_sensitive(False)
+    # Fork: offered once the output has failed or fallen back (update_output_status_ui), not
+    # as a greyed-out button beside "Active".
+    _row_follows(app.output_recover_btn, app.output_recover_btn)
     row_state.append(app.output_recover_btn)
     group_out.append(row_state)
 
@@ -898,6 +955,11 @@ def build_settings_page(app):
     app.remote_api_switch.connect("state-set", app.on_remote_api_enabled_toggled)
     row_remote_enable.append(app.remote_api_switch)
     group_remote.append(row_remote_enable)
+    # Fork: the access mode, endpoints and key matter only while remote control is on; they
+    # were six rows of noise (an empty key box among them) with it off.
+    remote_details = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+    group_remote.append(remote_details)
+    app.remote_api_switch.bind_property("active", remote_details, "visible", GObject.BindingFlags.SYNC_CREATE)
 
     row_remote_mode = Gtk.Box(spacing=12, margin_start=12, margin_end=12, margin_top=8, margin_bottom=8)
     mode_info = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, valign=Gtk.Align.CENTER)
@@ -915,7 +977,7 @@ def build_settings_page(app):
     app.remote_api_access_dd = Gtk.DropDown(model=Gtk.StringList.new(REMOTE_ACCESS_MODES))
     app.remote_api_access_dd.connect("notify::selected-item", app.on_remote_api_access_mode_changed)
     row_remote_mode.append(app.remote_api_access_dd)
-    group_remote.append(row_remote_mode)
+    remote_details.append(row_remote_mode)
 
     row_remote_network = Gtk.Box(spacing=12, margin_start=12, margin_end=12, margin_top=8, margin_bottom=8)
     app.remote_api_network_row = row_remote_network
@@ -942,7 +1004,7 @@ def build_settings_page(app):
     app.remote_api_apply_btn.connect("clicked", app.on_remote_api_apply_network_settings)
     network_controls.append(app.remote_api_apply_btn)
     row_remote_network.append(network_controls)
-    group_remote.append(row_remote_network)
+    remote_details.append(row_remote_network)
 
     row_remote_allow = Gtk.Box(spacing=12, margin_start=12, margin_end=12, margin_top=8, margin_bottom=8)
     app.remote_api_allowlist_row = row_remote_allow
@@ -960,7 +1022,7 @@ def build_settings_page(app):
     app.remote_api_allowlist_entry = Gtk.Entry(placeholder_text="192.168.1.0/24, 192.168.1.50/32")
     app.remote_api_allowlist_entry.set_width_chars(16)
     row_remote_allow.append(app.remote_api_allowlist_entry)
-    group_remote.append(row_remote_allow)
+    remote_details.append(row_remote_allow)
 
     row_remote_endpoint = Gtk.Box(spacing=12, margin_start=12, margin_end=12, margin_top=8, margin_bottom=8)
     row_remote_endpoint.append(Gtk.Label(label="MCP Endpoint", xalign=0, css_classes=["settings-label"]))
@@ -973,7 +1035,7 @@ def build_settings_page(app):
     app.remote_api_endpoint_copy_btn.connect("clicked", app.on_remote_api_copy_endpoint_clicked)
     endpoint_controls.append(app.remote_api_endpoint_copy_btn)
     row_remote_endpoint.append(endpoint_controls)
-    group_remote.append(row_remote_endpoint)
+    remote_details.append(row_remote_endpoint)
 
     row_remote_rpc_endpoint = Gtk.Box(spacing=12, margin_start=12, margin_end=12, margin_top=8, margin_bottom=8)
     row_remote_rpc_endpoint.append(Gtk.Label(label="RPC Endpoint", xalign=0, css_classes=["settings-label"]))
@@ -986,7 +1048,7 @@ def build_settings_page(app):
     app.remote_api_rpc_endpoint_copy_btn.connect("clicked", app.on_remote_api_copy_rpc_endpoint_clicked)
     rpc_endpoint_controls.append(app.remote_api_rpc_endpoint_copy_btn)
     row_remote_rpc_endpoint.append(rpc_endpoint_controls)
-    group_remote.append(row_remote_rpc_endpoint)
+    remote_details.append(row_remote_rpc_endpoint)
 
     row_remote_status = Gtk.Box(spacing=12, margin_start=12, margin_end=12, margin_top=8, margin_bottom=8)
     row_remote_status.append(Gtk.Label(label="Status", xalign=0, css_classes=["settings-label"]))
@@ -994,7 +1056,7 @@ def build_settings_page(app):
     app.remote_api_status_label = Gtk.Label(label="Stopped", xalign=1, css_classes=["dim-label"])
     app.remote_api_status_label.set_selectable(True)
     row_remote_status.append(app.remote_api_status_label)
-    group_remote.append(row_remote_status)
+    remote_details.append(row_remote_status)
 
     row_remote_key = Gtk.Box(spacing=12, margin_start=12, margin_end=12, margin_top=8, margin_bottom=8)
     key_info = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, valign=Gtk.Align.CENTER)
@@ -1008,7 +1070,8 @@ def build_settings_page(app):
     )
     row_remote_key.append(key_info)
     key_controls = Gtk.Box(spacing=8, hexpand=True, halign=Gtk.Align.END)
-    app.remote_api_key_entry = Gtk.Entry(editable=False, hexpand=True)
+    app.remote_api_key_entry = Gtk.Entry(editable=False, hexpand=True, valign=Gtk.Align.CENTER,
+                                         placeholder_text="No key yet")
     app.remote_api_key_entry.set_width_chars(14)
     key_controls.append(app.remote_api_key_entry)
     app.remote_api_copy_btn = Gtk.Button(label="Copy", css_classes=["flat"])
@@ -1018,7 +1081,7 @@ def build_settings_page(app):
     app.remote_api_generate_btn.connect("clicked", app.on_remote_api_generate_key_clicked)
     key_controls.append(app.remote_api_generate_btn)
     row_remote_key.append(key_controls)
-    group_remote.append(row_remote_key)
+    remote_details.append(row_remote_key)
 
     settings_vbox.append(group_remote)
 
@@ -1046,6 +1109,7 @@ def build_settings_page(app):
     row_lfm_connect.append(app.scrobble_lastfm_status_label)
     app.scrobble_lastfm_disconnect_btn = Gtk.Button(label="Disconnect", css_classes=["flat", "destructive-action"])
     app.scrobble_lastfm_disconnect_btn.set_sensitive(False)
+    app.scrobble_lastfm_disconnect_btn.set_visible(False)
     app.scrobble_lastfm_disconnect_btn.connect("clicked", app.on_lastfm_disconnect_clicked)
     row_lfm_connect.append(app.scrobble_lastfm_disconnect_btn)
     app.scrobble_lastfm_connect_btn = Gtk.Button(label="Connect", css_classes=["flat", "suggested-action"])
