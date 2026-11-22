@@ -1288,6 +1288,11 @@ flowboxchild { background-color: transparent; padding: 0; margin: 0; }
 .artist-detail-section {
     margin-bottom: 12px;
 }
+/* Fork: section headings (Home, Top, search, Genres, the queue). They had no style of their
+   own and read as body text, below their pages' subtitles. */
+.home-section-title { font-size: 17px; font-weight: 700; }
+.home-section-more { font-weight: 600; padding-left: 12px; padding-right: 12px; }
+
 .home-subtitle,
 .album-artist-medium,
 .album-meta,
@@ -2140,6 +2145,7 @@ def get_scale_css_overrides(font_scale: float) -> str:
 /* DPI-adaptive font overrides (font_scale={font_scale:.2f}) */
 .sidebar-header {{ font-size: {fs(13)}; }}
 .section-title {{ font-size: {fs(20)}; }}
+.home-section-title {{ font-size: {fs(17)}; }}
 .album-title-large {{ font-size: {fs(28)}; }}
 .album-artist-medium {{ font-size: {fs(16)}; }}
 .album-meta {{ font-size: {fs(13)}; }}

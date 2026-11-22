@@ -20,6 +20,7 @@ from ui import context_menu
 from ui import hires_filter  # fork
 from ui import card_grid  # fork #17
 from ui import queue_dnd  # fork #10
+from ui import shelf  # fork #27
 from actions import up_next  # fork #25
 from ui.track_table import LAYOUT, build_tracks_header, append_header_action_spacers
 from ui.track_table import adapt_track_row, clear_track_rows, set_track_rows_hidden, track_columns  # fork
@@ -3704,17 +3705,14 @@ def batch_load_home(app, sections):
                     css_classes=["dim-label", "home-card-subtitle", "home-section-subtitle"],
                 )
             )
+        heading_box.set_valign(Gtk.Align.CENTER)  # level with the button beside it
         section_head.append(heading_box)
+        # Fork #27: one row per section; the button opens the rest (ui/shelf.py).
+        more_btn = Gtk.Button(label="Show all", css_classes=["flat", "home-section-more"], valign=Gtk.Align.CENTER)
+        section_head.append(more_btn)
         section_box.append(section_head)
 
-        flow = Gtk.FlowBox(
-            homogeneous=False,
-            min_children_per_line=1,
-            max_children_per_line=16,
-            column_spacing=16,
-            row_spacing=16,
-            selection_mode=Gtk.SelectionMode.NONE,
-        )
+        flow = shelf.Shelf(button=more_btn)
         section_box.append(flow)
         app.collection_content_box.append(section_box)
         render_queue.append({"flow": flow, "items": list(sec["items"]), "index": 0})
