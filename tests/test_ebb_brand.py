@@ -111,3 +111,19 @@ def test_identifiers_are_valid_and_not_hiresti_s():
 def test_upstream_version_names_the_hiresti_release():
     with open(os.path.join(os.path.dirname(__file__), "..", "version.txt"), encoding="utf-8") as fh:
         assert brand.upstream_version() == fh.read().strip()
+
+
+def test_the_command_is_ebb_player_everywhere_it_is_named():
+    """/usr/bin/ebb belongs to texlive-basic, so the command must not be plain ebb."""
+    root = os.path.join(os.path.dirname(__file__), "..")
+
+    def read(*parts):
+        with open(os.path.join(root, *parts), encoding="utf-8") as fh:
+            return fh.read()
+
+    assert brand.COMMAND == "ebb-player"
+    assert f"Exec={brand.COMMAND}\n" in read("data", f"{brand.APP_ID}.desktop")
+    assert f"<binary>{brand.COMMAND}</binary>" in read("data", f"{brand.APP_ID}.metainfo.xml")
+    pkgbuild = read("aur", "ebb", "PKGBUILD")
+    assert f'"${{pkgdir}}/usr/bin/{brand.COMMAND}"' in pkgbuild
+    assert '"${pkgdir}/usr/bin/ebb"' not in pkgbuild

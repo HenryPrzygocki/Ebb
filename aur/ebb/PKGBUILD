@@ -3,6 +3,8 @@
 #
 #   cd ~/Repository/hiresTI/aur/ebb && makepkg -f
 #   sudo pacman -U ebb-*.pkg.tar.zst     # replaces hiresti-fork / the AUR `hiresti`
+#
+# The command is ebb-player: /usr/bin/ebb belongs to texlive-basic (dvipdfmx's extractbb).
 pkgname=ebb
 _appid=io.github.henryprzygocki.Ebb
 pkgver=0.1.0.r0.g0000000
@@ -101,7 +103,7 @@ package() {
   install -Dm755 src_rust/rust_viz_core/target/release/libviz_core.so \
     "${app_dir}/src_rust/rust_viz_core/target/release/libviz_core.so"
   # The launcher crate keeps upstream's name; only the installed command is Ebb's.
-  install -Dm755 src_rust/rust_launcher/target/release/hiresti "${pkgdir}/usr/bin/ebb"
+  install -Dm755 src_rust/rust_launcher/target/release/hiresti "${pkgdir}/usr/bin/ebb-player"
 
   # The app looks its symbolic icons up in the system theme, so they go there; upstream's
   # own app icon (hiresti.png/svg) does not.

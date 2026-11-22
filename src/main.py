@@ -148,11 +148,11 @@ wire_tidal_app(TidalApp)
 if __name__ == "__main__":
     try:
         import setproctitle
-        setproctitle.setproctitle(brand.SLUG)
+        setproctitle.setproctitle(brand.COMMAND)
     except ImportError:
         try:
             import ctypes
-            ctypes.CDLL("libc.so.6").prctl(15, brand.SLUG.encode(), 0, 0, 0)
+            ctypes.CDLL("libc.so.6").prctl(15, brand.COMMAND.encode(), 0, 0, 0)
         except Exception:
             pass
     setup_logging()

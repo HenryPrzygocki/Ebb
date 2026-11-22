@@ -8,7 +8,8 @@ import os
 
 APP_NAME = "Ebb"
 APP_ID = "io.github.henryprzygocki.Ebb"  # GApplication and Wayland app ID, desktop file, app icon
-SLUG = "ebb"  # command, process name, data directories, MPRIS bus name
+SLUG = "ebb"  # data directories, MPRIS bus name, package name
+COMMAND = "ebb-player"  # command and process name: /usr/bin/ebb is TeX Live's (dvipdfmx extractbb)
 VERSION = "0.1.0"
 TAGLINE = "A TIDAL player for Linux, built for lossless and hi-res audio"
 MAINTAINER = "HenryPrzygocki"

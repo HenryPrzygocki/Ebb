@@ -75,7 +75,8 @@ The complete list is the git history after `v1.9.12`.
 cd aur/ebb && makepkg -si
 ```
 
-This replaces `hiresti` and `hiresti-fork`. On first start Ebb moves hiresTI's login, settings,
+This replaces `hiresti` and `hiresti-fork` (answer `y` when pacman offers to remove them). Start
+Ebb from your app launcher, or run `ebb-player`: plain `ebb` is a TeX Live tool. On first start Ebb moves hiresTI's login, settings,
 history and caches from `~/.config/hiresti`, `~/.cache/hiresti`, `~/.local/share/hiresti` and
 `~/.local/state/hiresti` to the matching `ebb` directories, leaving symlinks at the old names.
 
