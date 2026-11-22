@@ -1,0 +1,60 @@
+# Fork #14: the test suite, on every change that can affect it.
+#
+# Arch Linux, as Ebb is packaged. pacman installs the PKGBUILD's own runtime dependencies
+# (GTK 4, libadwaita, GStreamer, PyGObject, tidalapi, ...) plus pytest, so this list can't
+# drift from the package's. Then `make test`, which runs the suite headless and isolated
+# (tools/test.sh). Nothing is built: the tests fake the Rust audio engine and pass with no
+# librust_audio_core.so anywhere.
+name: Tests
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "screenshots/**"
+      - "flatpak/**"
+      - "LICENSE"
+  pull_request:
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "screenshots/**"
+      - "flatpak/**"
+      - "LICENSE"
+  workflow_dispatch:
+
+# A newer push to the same branch supersedes a run that is still going.
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    timeout-minutes: 15
+    steps:
+      # The keyring first, so the upgrade can check the signatures of newer packagers.
+      - name: Update Arch, with git for the checkout
+        run: |
+          pacman -Sy --noconfirm --needed archlinux-keyring
+          pacman -Su --noconfirm --needed git
+
+      - uses: actions/checkout@v7
+
+      - name: Install Ebb's dependencies (from the PKGBUILD), pytest and make
+        run: |
+          source aur/ebb/PKGBUILD
+          pacman -S --noconfirm --needed "${depends[@]}" python-pytest make
+
+      - name: make test
+        run: make test
