@@ -58,7 +58,8 @@ def load_cover_art(app, cover_id_or_url):
             pass
 
     if hasattr(app, "art_img"):
-        utils.load_img(app.art_img, url, app.cache_dir, 80)
+        # Fork: at the window tier's size (ui/builders.py set_bar_cover_size), not always 80.
+        utils.load_img(app.art_img, url, app.cache_dir, int(getattr(app, "_bar_art_px", 80) or 80))
     from ui import mini_player
 
     mini_player.load_cover(app)

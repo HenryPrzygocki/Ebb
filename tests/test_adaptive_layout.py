@@ -29,6 +29,7 @@ class _W:
         self.halign = None
         self.start_child = "unset"
         self.overlays = []
+        self.pixel_size = -1
 
     def set_visible(self, value):
         self.visible = bool(value)
@@ -38,6 +39,12 @@ class _W:
 
     def set_size_request(self, w, h):
         self.size = (w, h)
+
+    def set_pixel_size(self, px):
+        self.pixel_size = px
+
+    def get_pixel_size(self):
+        return self.pixel_size
 
     def add_css_class(self, name):
         self.css.add(name)
@@ -110,6 +117,8 @@ def test_narrow_tier_shrinks_the_bar_and_floats_the_sidebar():
     assert app.timeline_box.size == (220, -1)
     assert not app.vol_box.visible and not app.tech_box.visible
     assert app.lbl_album.visible
+    # Fork: the cover shrinks too; its pixel size used to stay at the 80 px it loaded at.
+    assert app.art_img.size == (64, 64) and app.art_img.pixel_size == 64
     assert app._sidebar_collapsed is True
     assert app.paned.start_child is None
     assert app.body_overlay.overlays == [app._sidebar_backdrop, app.sidebar_box]

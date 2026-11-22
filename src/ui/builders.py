@@ -1420,6 +1420,7 @@ def build_player_bar(app, container):
     app.art_img.set_margin_start(6)
     app.art_img.set_margin_bottom(6)
     app.art_img.add_css_class("playback-art")
+    app.art_img.set_valign(Gtk.Align.CENTER)  # fork: square at every tier's size (its background shows)
     gest = Gtk.GestureClick()
     gest.connect("pressed", app.on_player_art_clicked)
     app.art_img.add_controller(gest)
@@ -1651,9 +1652,29 @@ def apply_layout_tier(app, tier):
                 widget.set_visible(show)
         if getattr(app, "art_img", None) is not None:
             app.art_img.set_size_request(cover, cover)
+            set_bar_cover_size(app, cover)
         if getattr(app, "player_text_box", None) is not None:
             app.player_text_box.set_size_request(text, -1)
     _set_sidebar_collapsed(app, collapse)
+
+
+def set_bar_cover_size(app, px):
+    """Fork: the tiers' smaller covers never showed. load_img pins a Gtk.Image's pixel size to
+    the size it loads at (80), and the pixel size beats the size request, so the cover stayed
+    80 px in every tier. The cover now loads at the tier's size (load_cover_art reads
+    _bar_art_px), and a tier change reloads it from the disk cache at the new size, so a
+    widening window does not stretch a smaller bitmap."""
+    art = app.art_img
+    if getattr(app, "_bar_art_px", 80) == px and art.get_pixel_size() == px:
+        return
+    app._bar_art_px = px
+    art.set_pixel_size(px)
+    ref = getattr(app, "_bar_cover_ref", None)
+    url = app._get_tidal_image_url(ref) if ref and hasattr(app, "_get_tidal_image_url") else None
+    if url:
+        import utils
+
+        utils.load_img(art, url, app.cache_dir, px)
 
 
 def reconcile_layout_tier(app, force=False):
