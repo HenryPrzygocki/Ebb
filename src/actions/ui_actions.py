@@ -1959,6 +1959,10 @@ def populate_tracks(app, tracks):
         and not getattr(app, "current_playlist_id", None)
     )
     tracks = hires_filter.for_track_page(app, tracks, album_page)
+    # Fork: and when every track is by the album's artist, each row's artist cell repeats the header.
+    from ui.track_table import one_artist_album
+
+    artist_hidden = album_page and one_artist_album(_cur, tracks)
     app.current_track_list = tracks
     if app.playing_track_id:
         found_idx = -1
@@ -2039,7 +2043,8 @@ def populate_tracks(app, tracks):
         lbl_alb.set_max_width_chars(16)
         lbl_alb.set_margin_end(LAYOUT["cell_margin_end"])
         box.append(lbl_alb)
-        adapt_track_row(app, lbl_title, lbl_art, lbl_alb, album_hidden=album_page, track=t)
+        adapt_track_row(app, lbl_title, lbl_art, lbl_alb, album_hidden=album_page, track=t,
+                        artist_hidden=artist_hidden)
 
         dur_sec = getattr(t, "duration", 0)
         if dur_sec:

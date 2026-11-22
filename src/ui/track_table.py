@@ -249,14 +249,20 @@ def quality_badge(track):
     return Gtk.Label(label=text, valign=Gtk.Align.CENTER, css_classes=["track-quality", css], tooltip_text=tip)
 
 
-def adapt_track_row(app, title_widget, artist_widget, album_widget, album_hidden=False, track=None):
+def adapt_track_row(app, title_widget, artist_widget, album_widget, album_hidden=False, track=None,
+                    artist_hidden=False):
     """Bind a built row's artist/album cells to the column state and give the title an artist line.
 
     album_hidden: the page itself is one album, so the album cell would only repeat its title.
     track: makes the artist and album names links to their pages and badges the title with
         the track's quality (fork).
+    artist_hidden (fork): every track on the page is by the album's own artist, whom the header
+        names, so neither the artist cell nor the title's artist line is shown.
     """
-    bind_track_column(app, artist_widget, "artist-column")
+    if artist_hidden:
+        artist_widget.set_visible(False)
+    else:
+        bind_track_column(app, artist_widget, "artist-column")
     if album_hidden:
         album_widget.set_visible(False)
     else:
@@ -288,13 +294,32 @@ def adapt_track_row(app, title_widget, artist_widget, album_widget, album_hidden
         line.append(title_widget)
         line.append(badge)
         cell.append(line)
-    artist_text = artist_widget.get_label() if isinstance(artist_widget, Gtk.Label) else ""
-    sub = Gtk.Label(label=artist_text or "", xalign=0, ellipsize=3, css_classes=["dim-label", "track-subtitle"])
-    bind_track_column(app, sub, "artist-column", invert=True)
-    if has_artist:
-        link_label(sub, lambda: go_artist(track))
-    cell.append(sub)
+    if not artist_hidden:
+        artist_text = artist_widget.get_label() if isinstance(artist_widget, Gtk.Label) else ""
+        sub = Gtk.Label(label=artist_text or "", xalign=0, ellipsize=3, css_classes=["dim-label", "track-subtitle"])
+        bind_track_column(app, sub, "artist-column", invert=True)
+        if has_artist:
+            link_label(sub, lambda: go_artist(track))
+        cell.append(sub)
     parent.insert_child_after(cell, prev)
+
+
+def _same_artist(a, b):
+    if a is None or b is None:
+        return False
+    ida, idb = getattr(a, "id", None), getattr(b, "id", None)
+    if ida is not None and idb is not None:
+        return str(ida) == str(idb)
+    na, nb = str(getattr(a, "name", "") or "").strip(), str(getattr(b, "name", "") or "").strip()
+    return bool(na) and na.casefold() == nb.casefold()
+
+
+def one_artist_album(album, tracks):
+    """Fork: True when every track is by the album's own artist (not a compilation, not a
+    playlist), so its track rows need no artist cell."""
+    artist = getattr(album, "artist", None)
+    tracks = list(tracks or [])
+    return bool(tracks) and all(_same_artist(getattr(t, "artist", None), artist) for t in tracks)
 
 
 def clear_track_rows(listbox):
