@@ -204,6 +204,14 @@ def on_playlist_card_clicked(self, playlist_id):
     from actions import ui_actions
 
     ui_actions.open_grid_page(self)  # fork: a local playlist renders into the grid too
+    # Fork: show the grid page. A local playlist opens from search results (its only way in),
+    # and it rendered behind them, so the click seemed to do nothing. Back returns to them.
+    current_view = self.right_stack.get_visible_child_name()
+    if current_view and current_view != "grid_view":
+        self.nav_history.append(current_view)
+        self.right_stack.set_visible_child_name("grid_view")
+        if hasattr(self, "_remember_last_view"):
+            self._remember_last_view("grid_view")
     self.current_remote_playlist = None
     if self.remote_playlist_edit_btn is not None:
         self.remote_playlist_edit_btn.set_visible(False)

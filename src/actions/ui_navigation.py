@@ -492,6 +492,12 @@ def on_back_clicked(app, btn):
         app.current_playlist_id = None
         app.playlist_edit_mode = False
         app.playlist_rename_mode = False
+        if app.nav_history:  # fork: back where it was opened from (search: on_playlist_card_clicked)
+            target_view = app.nav_history.pop()
+            app.right_stack.set_visible_child_name(target_view)
+            if hasattr(app, "_remember_last_view"):
+                app._remember_last_view(target_view)
+            return
         app.render_playlists_home()
         btn.set_sensitive(bool(getattr(app, "current_playlist_folder_stack", []) or []))
         return

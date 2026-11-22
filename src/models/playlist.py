@@ -383,6 +383,39 @@ class PlaylistManager:
             return True
         return False
 
+    def get_cover_refs(self, playlist, limit=4):
+        """Up to `limit` covers for a playlist's collage, one per album, newest first.
+
+        Fork: upstream's move into src/ (786bbe4) dropped this method but kept its callers, so
+        opening a local playlist (its page, or a search result card) raised AttributeError.
+        Restored as it was in src/models.py."""
+        if not playlist:
+            return []
+
+        tracks = list(playlist.get("tracks", []))
+        if not tracks:
+            return []
+
+        refs = []
+        seen_albums = set()
+        # Newest tracks first so newly added albums affect the cover immediately.
+        for e in reversed(tracks):
+            c = e.get("cover")
+            if not c:
+                continue
+            alb_id = e.get("album_id")
+            alb_name = (e.get("album_name") or "").strip().lower()
+            key = str(alb_id) if alb_id is not None else alb_name
+            if not key:
+                key = f"cover:{c}"
+            if key in seen_albums:
+                continue
+            seen_albums.add(key)
+            refs.append(c)
+            if len(refs) >= limit:
+                break
+        return refs
+
     def get_tracks(self, playlist_id):
         p = self.get_playlist(playlist_id)
         if not p:
