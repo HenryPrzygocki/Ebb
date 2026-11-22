@@ -799,7 +799,7 @@ def test_render_artists_dashboard_moves_total_count_to_grid_subtitle(monkeypatch
 
     ui_actions.render_artists_dashboard(app)
 
-    assert app.grid_subtitle_label.text == "100 Artists you follow and love"
+    assert app.grid_subtitle_label.text == "100 artists you follow and love"  # fork: lower case mid-sentence
     assert content.children[1].visible is False
 
 

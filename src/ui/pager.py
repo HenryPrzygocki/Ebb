@@ -49,9 +49,30 @@ def arrows(prev_btn, next_btn):
 
 
 def sync(prev_btn, next_btn, page, pages):
-    """Sensitivity, and both hidden when everything fits on one page."""
+    """Sensitivity and "2 / 5", all hidden when everything fits on one page."""
     pages = max(0, int(pages or 0))
     for button in (prev_btn, next_btn):
         button.set_visible(pages > 1)
     prev_btn.set_sensitive(page > 0)
     next_btn.set_sensitive(page < pages - 1)
+    show_page(prev_btn, page, pages)
+
+
+def show_page(prev_btn, page, pages):
+    """"2 / 5" between a pair of arrows (arrows()), as on Liked Songs: the Albums and Artists
+    pagers were two bare arrows. The label goes in once the arrows are in their box, and shows
+    only when there are several pages."""
+    get_parent = getattr(prev_btn, "get_parent", None)
+    parent = get_parent() if callable(get_parent) else None
+    if parent is None or not hasattr(parent, "insert_child_after"):
+        return
+    label = getattr(prev_btn, "_ebb_pager_label", None)
+    if label is None:
+        label = Gtk.Label(css_classes=["dim-label", "ebb-pager-label"], valign=Gtk.Align.CENTER)
+        prev_btn._ebb_pager_label = label
+        parent.insert_child_after(label, prev_btn)
+    pages = max(0, int(pages or 0))
+    label.set_visible(pages > 1)
+    if pages > 1:
+        label.set_text(f"{page + 1} / {pages}")
+        label.set_tooltip_text(f"Page {page + 1} of {pages}")

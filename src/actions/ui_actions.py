@@ -2377,7 +2377,16 @@ def render_mixes_dashboard(app):
             child.set_valign(Gtk.Align.START)
             child.set_can_focus(False)
             flow.append(child)
-        status_lbl.set_text(f"{len(mixes)} mixes & radio")
+        # Fork: the count is the page's subtitle, as on Albums ("15 saved albums"); it was a
+        # second line under "Mixes and radio stations you've favorited".
+        status_bar.set_visible(False)
+        subtitle = getattr(app, "grid_subtitle_label", None)
+        if subtitle is not None:
+            n = len(mixes)
+            subtitle.set_text(
+                "1 mix or radio station you've favorited" if n == 1
+                else f"{n} mixes and radio stations you've favorited"
+            )
         return False
 
     def _fetch():
@@ -2499,7 +2508,7 @@ def render_artists_dashboard(app):
             subtitle_label.set_text("Artists you follow and love")
             return
         total = max(0, int(total_count or 0))
-        noun = "Artist" if total == 1 else "Artists"
+        noun = "artist" if total == 1 else "artists"  # fork: mid-sentence
         subtitle_label.set_text(f"{total} {noun} you follow and love")
 
     def _update_pager(total_count, page_count, status_message="", subtitle_total_count=None):
@@ -2508,6 +2517,7 @@ def render_artists_dashboard(app):
         next_btn.set_sensitive(pages > 0 and app.artists_page < pages - 1)
         for button in (prev_btn, next_btn):  # fork: no pager when everything is on one page
             button.set_visible(pages != 1)
+        ui_pager.show_page(prev_btn, app.artists_page, pages)
         if subtitle_total_count is not None:
             app._artists_total_count = max(0, int(subtitle_total_count or 0))
             app._artists_total_count_known = True
@@ -3745,6 +3755,13 @@ def render_history_dashboard(app):
     recent_albums = app.history_mgr.get_albums() if hasattr(app, "history_mgr") else []
     top_tracks = app.history_mgr.get_top_tracks(limit=100) if hasattr(app, "history_mgr") else []
     recent_tracks = app.history_mgr.get_recent_tracks(limit=100) if hasattr(app, "history_mgr") else []
+    if not (recent_albums or top_tracks or recent_tracks):
+        # Fork: a first run (or a cleared history) showed three tabs over nothing at all.
+        app.collection_content_box.append(Gtk.Label(
+            label="Nothing played yet. The tracks and albums you play show up here, most played first.",
+            xalign=0, wrap=True, css_classes=["dim-label"], margin_top=4,
+        ))
+        return
 
     tabs_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
     history_stack = Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE)
@@ -3781,6 +3798,13 @@ def render_history_dashboard(app):
     sec_recent.append(flow_recent)
     history_stack.add_titled(sec_recent, "history-recent", "Recent Albums")
 
+    for section, items, text in (  # fork: say so on a tab with nothing in it
+        (sec_top, top_tracks, "Your most played tracks show up here."),
+        (sec_recent_tracks, recent_tracks, "Tracks you play show up here."),
+        (sec_recent, recent_albums, "Albums you play show up here."),
+    ):
+        if not items:
+            section.append(Gtk.Label(label=text, xalign=0, css_classes=["dim-label"]))
     history_stack.set_visible_child_name("history-top100")
     app.collection_content_box.append(tabs_box)
 
@@ -6061,7 +6085,12 @@ def render_uploads_dashboard(app, tracks=None):
 
     head = Gtk.Box(spacing=8, css_classes=["home-section-head"], margin_bottom=8)
     head.append(Gtk.Label(label="My Uploads", xalign=0, hexpand=True, css_classes=["home-section-title"]))
-    head.append(Gtk.Label(label=f"{len(all_tracks)} tracks", css_classes=["home-section-count"]))
+    # Fork: "1 track", and no "0 tracks" with greyed Play and Shuffle over the empty state.
+    n_uploads = len(all_tracks)
+    head.append(Gtk.Label(
+        label="1 track" if n_uploads == 1 else f"{n_uploads} tracks",
+        css_classes=["home-section-count"], visible=bool(all_tracks),
+    ))
 
     def _upload_ready(t):
         # Freshly uploaded files are transcoded server-side before they can
@@ -6081,13 +6110,13 @@ def render_uploads_dashboard(app, tracks=None):
 
     play_all_btn = Gtk.Button(icon_name="media-playback-start-symbolic", css_classes=["flat", "playlist-tool-btn"])
     play_all_btn.set_tooltip_text("Play All")
-    play_all_btn.set_sensitive(bool(all_tracks))
+    play_all_btn.set_visible(bool(all_tracks))
     play_all_btn.connect("clicked", lambda _b: _play_uploads(shuffle=False))
     head.append(play_all_btn)
 
     shuffle_btn = Gtk.Button(icon_name="media-playlist-shuffle-symbolic", css_classes=["flat", "playlist-tool-btn"])
     shuffle_btn.set_tooltip_text("Shuffle All")
-    shuffle_btn.set_sensitive(bool(all_tracks))
+    shuffle_btn.set_visible(bool(all_tracks))
     shuffle_btn.connect("clicked", lambda _b: _play_uploads(shuffle=True))
     head.append(shuffle_btn)
 
