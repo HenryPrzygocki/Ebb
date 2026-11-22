@@ -1255,6 +1255,9 @@ def _build_now_playing_left_panel(self, layout):
     layout.append(left)
 
     self.now_playing_art_img = Gtk.DrawingArea(css_classes=["now-playing-cover"])
+    # Fork #24: right-click on the cover or the title is the playing track's menu, as on the
+    # player bar.
+    context_menu.tag(self.now_playing_art_img, lambda: getattr(self, "playing_track", None), "track")
     self.now_playing_art_img.set_hexpand(True)
     self.now_playing_art_img.set_vexpand(True)
     self.now_playing_art_img.set_draw_func(_draw_now_playing_cover)
@@ -1311,12 +1314,12 @@ def _build_now_playing_left_panel(self, layout):
     # Fork: one vertical flow: where it plays from, title, artist, album, then the tool row,
     # the timeline and the transport. The source label and the tool row used to float as
     # overlays over the title's band, so a long title ran under "Playing from ...".
-    track_meta_box = Gtk.Box(
+    track_meta_box = context_menu.tag(Gtk.Box(
         orientation=Gtk.Orientation.VERTICAL,
         spacing=6,
         hexpand=True,
         halign=Gtk.Align.FILL,
-    )
+    ), lambda: getattr(self, "playing_track", None), "track")
     info_card.append(track_meta_box)
 
     self.now_playing_source_label = Gtk.Label(label="", xalign=0, ellipsize=3, css_classes=["now-playing-source"])

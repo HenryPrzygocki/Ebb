@@ -373,6 +373,16 @@ def build_tracks_view(app):
     album_header_actions.append(app.album_primary_actions_box)
     album_header_actions.append(app.album_action_btns_box)
     app.album_header_box.append(album_header_actions)
+    # Fork #24: right-click on the header is the menu of what the page shows (an album, a mix
+    # or a playlist: context_menu reads the kind off the object); on the artist's name, the
+    # artist's menu.
+    from ui import context_menu
+
+    context_menu.tag(
+        app.album_header_box,
+        lambda: getattr(app, "current_remote_playlist", None) or getattr(app, "current_album", None),
+    )
+    context_menu.tag(app.header_artist, lambda: getattr(getattr(app, "current_album", None), "artist", None), "artist")
 
     app.album_header_overlay.add_overlay(app.album_header_box)
     # By default Gtk.Overlay sizes to its main child only; without this the
