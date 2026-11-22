@@ -20,6 +20,7 @@ from core.executor import submit_daemon
 from utils.helpers import download_to_cache
 from ui import config as ui_config
 from ui import context_menu
+from actions import up_next  # fork #25
 
 logger = logging.getLogger(__name__)
 
@@ -2261,6 +2262,7 @@ def _render_now_playing_queue_body(self, queue_tracks, win_start=None, win_end=N
         track = queue_tracks[idx]
         row = _build_now_playing_track_row(track, idx)
         row.queue_track_index = idx
+        up_next.mark_row(self, row, track)  # fork #25
         self.now_playing_queue_list.append(row)
 
     tail = total - win_end

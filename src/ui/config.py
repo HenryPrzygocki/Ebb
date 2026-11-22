@@ -1677,6 +1677,9 @@ flowboxchild { background-color: transparent; padding: 0; margin: 0; }
 .tech-label.tech-state-warn { color: @warning_color; background-color: alpha(@warning_color, 0.14); }
 /* fork: numbered steps in the browser sign-in dialog (ui/account.py) */
 .ebb-signin-status { min-height: 42px; }
+/* fork #25: queue rows waiting in Up Next */
+.track-row.queue-up-next { box-shadow: inset 3px 0 alpha(@accent_color, 0.85); }
+.queue-up-next-pill { font-size: 10px; font-weight: 700; padding: 1px 7px; border-radius: 999px; color: @accent_color; background-color: alpha(@accent_bg_color, 0.16); }
 .ebb-step-badge { min-width: 26px; min-height: 26px; border-radius: 999px; font-weight: 700; font-size: 12px; color: @accent_color; background-color: alpha(@accent_bg_color, 0.16); }
 .settings-container { padding: 40px; }
 .settings-group { background-color: alpha(currentColor, 0.05); border-radius: 12px; padding: 6px; margin-bottom: 24px; }

@@ -6,6 +6,7 @@ from threading import Thread
 
 from gi.repository import GLib, Gtk
 
+from actions import up_next  # fork #25
 from ui import context_menu
 
 logger = logging.getLogger(__name__)
@@ -148,6 +149,7 @@ def _build_mini_queue_row(app, track, i, current_idx):
     row = Gtk.ListBoxRow(css_classes=["track-row"])
     row.queue_track_index = i
     row.track_id = getattr(track, "id", None)
+    up_next.mark_row(app, row, track)  # fork #25
     context_menu.tag(row, track, "track")
 
     box = Gtk.Box(spacing=6, margin_top=2, margin_bottom=2)
@@ -400,7 +402,7 @@ def play_tracks_next(self, tracks):
         _play_tracks_now(self, items)
         _show_play_next_notice(self, items, played_now=True)
         return
-    _insert_queue_next(self, items)
+    up_next.add(self, items, front=True)  # fork #25: before earlier queued tracks
     _show_play_next_notice(self, items, played_now=False)
 
 
@@ -413,8 +415,8 @@ def add_tracks_to_queue(self, tracks):
         _play_tracks_now(self, items)
         _show_add_to_queue_notice(self, items, played_now=True)
         return
-    base_queue = list(self._get_active_queue() if hasattr(self, "_get_active_queue") else [])
-    _insert_queue_at(self, items, len(base_queue), event_reason="queue_appended")
+    # Fork #25: after the current track and earlier queued tracks, not after the whole list.
+    up_next.add(self, items)
     _show_add_to_queue_notice(self, items, played_now=False)
 
 
@@ -508,7 +510,7 @@ def on_queue_remove_track_clicked(self, track_index):
     if idx < 0 or idx >= len(tracks):
         return
     removed_current = idx == int(getattr(self, "current_track_index", -1))
-    tracks.pop(idx)
+    up_next.forget(self, tracks.pop(idx))  # fork #25: else settle() would put it back
     self.play_queue = tracks
 
     if not tracks:
@@ -559,6 +561,7 @@ def on_queue_clear_clicked(self, _btn=None):
     if not tracks:
         return
     self.play_queue = []
+    up_next.clear(self)  # fork #25
     self.current_track_index = -1
     self.playing_track = None
     self.playing_track_id = None

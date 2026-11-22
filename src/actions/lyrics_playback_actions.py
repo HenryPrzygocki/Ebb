@@ -118,14 +118,18 @@ def _karaoke_active_idx(words, current_time):
 
 def _prefetch_next_track(app, current_index):
     try:
-        next_idx = app.get_next_index(direction=1)
-        if next_idx < 0 or next_idx == current_index:
-            return
-        queue = app._get_active_queue() if hasattr(app, "_get_active_queue") else list(getattr(app, "current_track_list", []) or [])
-        if next_idx >= len(queue):
-            return
-
-        next_track = queue[next_idx]
+        from actions import up_next  # fork #25: a queued track plays next
+        queued = None if app.play_mode == getattr(app, "MODE_ONE", 1) else up_next.peek(app)
+        if queued is not None:
+            next_track = queued
+        else:
+            next_idx = app.get_next_index(direction=1)
+            if next_idx < 0 or next_idx == current_index:
+                return
+            queue = app._get_active_queue() if hasattr(app, "_get_active_queue") else list(getattr(app, "current_track_list", []) or [])
+            if next_idx >= len(queue):
+                return
+            next_track = queue[next_idx]
         if isinstance(next_track, PlaylistQueueTrack):
             next_track = next_track.resolve()
             if hasattr(app, "_refresh_queue_views"):
@@ -333,6 +337,8 @@ def play_track(app, index, from_history=False):
     app.current_track_index = index
     app.playing_track = track
     app.playing_track_id = track.id
+    from actions import up_next  # fork #25: queued tracks follow whatever plays now
+    up_next.settle(app)
     if hasattr(app, "_mpris_sync_metadata"):
         app._mpris_sync_metadata()
     if hasattr(app, "_mpris_sync_playback"):

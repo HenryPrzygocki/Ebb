@@ -17,6 +17,7 @@ import utils.helpers as utils
 from _rust.viz import RustVizCore
 from ui import config as ui_config
 from ui import context_menu
+from actions import up_next  # fork #25
 from ui.track_table import LAYOUT, build_tracks_header, append_header_action_spacers
 from ui.track_table import adapt_track_row, clear_track_rows, set_track_rows_hidden, track_columns  # fork
 from core.errors import classify_exception, user_message
@@ -815,6 +816,10 @@ def _build_queue_track_row(app, track, i, current_idx, compact):
             box.append(d)
         else:
             box.append(Gtk.Box(width_request=LAYOUT["time_width"]))
+
+    if up_next.mark_row(app, row, track):  # fork #25
+        box.append(Gtk.Label(label="Up Next", valign=Gtk.Align.CENTER, css_classes=["queue-up-next-pill"],
+                             tooltip_text=up_next.ROW_TOOLTIP))
 
     fav_btn = app.create_track_fav_button(track)
     if compact:

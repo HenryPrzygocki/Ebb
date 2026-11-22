@@ -83,7 +83,7 @@ def _wire_player_callbacks(self):
 
 def _init_audio_and_data_services(self):
     self.player = create_audio_engine(
-        on_eos_callback=self.on_next_track,
+        on_eos_callback=lambda: self.on_next_track(auto=True),  # fork: repeat-one needs to know
         on_tag_callback=self.update_tech_label,
         on_spectrum_callback=self.on_spectrum_data,
         on_viz_sync_offset_update=self.on_viz_sync_offset_update,

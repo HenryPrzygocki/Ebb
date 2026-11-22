@@ -194,7 +194,8 @@ def on_play_pause(app, btn):
             app._remote_publish_playback_event("resumed")
 
 
-def on_next_track(app, btn=None):
+def on_next_track(app, btn=None, auto=False):
+    """Play the next track. `auto`: the previous one ended (only then does repeat-one repeat)."""
     queue = app._get_active_queue() if hasattr(app, "_get_active_queue") else list(getattr(app, "current_track_list", []) or [])
     if not queue:
         return
@@ -212,8 +213,22 @@ def on_next_track(app, btn=None):
     mode_normal = getattr(app, "MODE_NORMAL", 4)
     mode_loop = getattr(app, "MODE_LOOP", 0)
 
+    # Fork #25: queued tracks play first in every mode; repeat-one repeats until Next is pressed.
+    if not (app.play_mode == app.MODE_ONE and auto):
+        from actions import up_next
+        queued = up_next.next_index(app)
+        if queued >= 0:
+            if _shuffle_like(app):
+                # Build the shuffle order now, so the queued track is crossed off it as it starts.
+                # Built later, it would include the track and play it a second time this cycle.
+                _shuffle_order(app, _active_queue(app), getattr(app, "current_track_index", -1))
+            app.play_track(queued)
+            return
+
     if app.play_mode == app.MODE_ONE:
-        if btn is None:
+        # Fork: only the end of a track repeats it. Every Next button, Ctrl+Right and MPRIS call
+        # this without `btn`, so upstream's "btn is None" test made Next restart the track.
+        if auto:
             next_idx = current
         else:
             next_idx = (current + 1) % total
@@ -324,6 +339,14 @@ def get_next_index(app, direction=1):
 
     if app.play_mode == app.MODE_ONE:
         return current
+
+    if direction == 1:  # fork #25: a queued track plays next (read-only: no settle here)
+        from actions import up_next
+        queued = up_next.peek(app)
+        if queued is not None:
+            for i, entry in enumerate(queue):
+                if entry is queued:
+                    return i
 
     if app.play_mode in [app.MODE_SHUFFLE, app.MODE_SMART]:
         if direction == 1:
