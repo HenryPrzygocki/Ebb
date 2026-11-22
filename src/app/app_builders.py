@@ -3092,13 +3092,29 @@ def _build_volume_popover(self, scale_attr="vol_scale"):
 
     # Shown in place of all sliders when the active DAC has no UAC volume
     # control. Toggled by `_update_volume_device_label`.
+    # Fork #19: say why there is no slider, and offer the trade-off. Upstream showed "Hardware
+    # volume not supported" on a button that was greyed out, so it could not even be opened.
     unsupported_label_attr = scale_attr.replace("vol_scale", "vol_unsupported_label")
-    unsupported_label = Gtk.Label(label="Hardware volume\nnot supported")
-    unsupported_label.add_css_class("dim-label")
-    unsupported_label.set_justify(Gtk.Justification.CENTER)
-    unsupported_label.set_xalign(0.5)
-    unsupported_label.set_margin_top(8)
-    unsupported_label.set_margin_bottom(8)
+    unsupported_label = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin_top=4, margin_bottom=4)
+    unsupported_label.append(Gtk.Label(label="Volume is fixed in Bit\u2011Perfect mode", wrap=True, max_width_chars=26,
+                                       justify=Gtk.Justification.CENTER, css_classes=["heading"]))
+    unsupported_label.append(Gtk.Label(
+        label="Ebb sends the audio to your device untouched, so it can't turn it down. "
+        "Use the volume on your DAC or amplifier, or turn Bit\u2011Perfect off to set it here.",
+        wrap=True, max_width_chars=26, justify=Gtk.Justification.CENTER, css_classes=["dim-label", "caption"]))
+    bp_off_btn = Gtk.Button(label="Turn Off Bit-Perfect", halign=Gtk.Align.CENTER, margin_top=2, css_classes=["pill"])
+
+    def _turn_off_bit_perfect(btn):
+        pop = btn.get_ancestor(Gtk.Popover)
+        if pop is not None:
+            pop.popdown()
+        switch = getattr(self, "bp_switch", None)
+        if switch is not None:
+            switch.set_active(False)  # the Settings switch: the same path as flipping it there
+        _update_volume_device_label(self)
+
+    bp_off_btn.connect("clicked", _turn_off_bit_perfect)
+    unsupported_label.append(bp_off_btn)
     unsupported_label.set_visible(False)
     setattr(self, unsupported_label_attr, unsupported_label)
     vbox.append(unsupported_label)
@@ -3497,7 +3513,7 @@ def _nudge_volume(self, delta):
     notice = getattr(self, "show_output_notice", None)
     if _volume_locked(self):
         if callable(notice):
-            notice("Volume is fixed at 100 % in bit-perfect mode", "warn", 1800)
+            notice("Volume is fixed in Bit-Perfect mode: use your DAC's volume", "warn", 2400)
         return True
     value = int(max(0, min(100, round(float(scale.get_value()) + delta))))
     scale.set_value(value)  # on_volume_changed_ui applies, saves and tells MPRIS
@@ -3795,8 +3811,9 @@ def _lock_volume_controls(self, locked):
         if btn is None:
             continue
         if locked:
-            btn.set_sensitive(False)
-            btn.set_tooltip_text("Volume locked in Bit-Perfect/Exclusive mode")
+            # Fork #19: stays clickable; its popover says why and offers the way out.
+            btn.set_sensitive(True)
+            btn.set_tooltip_text("Volume is fixed in Bit-Perfect mode")
             btn.set_icon_name("hiresti-volume-high-symbolic")
         else:
             btn.set_sensitive(True)
