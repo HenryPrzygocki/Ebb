@@ -244,3 +244,102 @@ def test_alt_left_in_a_text_field_is_left_to_the_field():
     assert _press(app, Gdk.KEY_Left, ALT) is False
     assert app.calls == []
 
+
+
+# --- Fork: Shift+Left/Right seek, Ctrl+Up/Down volume -------------------------------------------
+
+class _Player:
+    def __init__(self, pos=60.0, dur=200.0, hw_volume=False):
+        self.pos, self.dur, self.seeks, self.hw = pos, dur, [], hw_volume
+
+    def get_position(self):
+        return self.pos, self.dur
+
+    def seek(self, target):
+        self.seeks.append(target)
+
+    def usb_hw_volume_supported(self):
+        return self.hw
+
+
+@pytest.fixture
+def timers(monkeypatch):
+    """Collects GLib timeouts instead of running a main loop."""
+    pending = []
+    monkeypatch.setattr(ab.GLib, "timeout_add", lambda ms, fn, *a: pending.append((fn, a)) or len(pending))
+    monkeypatch.setattr(ab.GLib, "source_remove", lambda _sid: None)
+    return pending
+
+
+def _player_app(focus=None, **player):
+    app = _app(focus if focus is not None else _Row(parent=_Node()))
+    app.player = _Player(**player)
+    app.playing_track = object()
+    app.lbl_current_time = SimpleNamespace(text="", set_text=lambda t: setattr(app.lbl_current_time, "text", t))
+    app._mpris_emit_seeked = lambda t: app.calls.append(("seeked", t))
+    app._mpris_sync_position = lambda force=False: app.calls.append(("sync", force))
+    return app
+
+
+def test_shift_arrows_seek_ten_seconds_once_the_held_key_settles(timers):
+    app = _player_app()
+    for _ in range(3):  # key repeat while held
+        assert _press(app, Gdk.KEY_Right, SHIFT) is True
+    assert app.player.seeks == [] and app.lbl_current_time.text == "1:30"
+    fn, args = timers[-1]
+    fn(*args)
+    assert app.player.seeks == [90.0]
+    assert ("seeked", 90.0) in app.calls and ("sync", True) in app.calls
+    _press(app, Gdk.KEY_Left, SHIFT)
+    timers[-1][0](*timers[-1][1])
+    assert app.player.seeks[-1] == 50.0  # from the real position (60 s in this fake)
+
+
+def test_seeking_stops_short_of_the_end_and_at_zero(timers):
+    app = _player_app(pos=195.0, dur=200.0)
+    _press(app, Gdk.KEY_Right, SHIFT)
+    timers[-1][0](*timers[-1][1])
+    app.player.pos = 4.0
+    _press(app, Gdk.KEY_Left, SHIFT)
+    timers[-1][0](*timers[-1][1])
+    assert app.player.seeks == [199.0, 0.0]
+
+
+def test_shift_arrows_still_select_text_and_do_nothing_without_a_track(timers):
+    app = _player_app(focus=_Text())
+    assert _press(app, Gdk.KEY_Right, SHIFT) is False
+    app = _player_app()
+    app.playing_track = None
+    assert _press(app, Gdk.KEY_Right, SHIFT) is False and timers == []
+
+
+def _volume_app(value=50.0, bit_perfect=False, hw_volume=False, focus=None):
+    app = _player_app(focus=focus, hw_volume=hw_volume)
+    app.settings = {"bit_perfect": bit_perfect}
+    app.vol_scale = SimpleNamespace(value=value, get_value=lambda: app.vol_scale.value,
+                                    set_value=lambda v: setattr(app.vol_scale, "value", v))
+    app.show_output_notice = lambda text, state="idle", ms=0, icon=None: app.calls.append((text, icon))
+    return app
+
+
+def test_ctrl_up_down_change_the_volume_in_fives_and_say_so():
+    app = _volume_app(value=50.0)
+    assert _press(app, Gdk.KEY_Up, CTRL) is True
+    assert app.vol_scale.value == 55 and app.calls[-1] == ("Volume 55 %", "hiresti-volume-medium-symbolic")
+    app.vol_scale.value = 2.0
+    _press(app, Gdk.KEY_Down, CTRL)
+    assert app.vol_scale.value == 0 and app.calls[-1] == ("Volume 0 %", "hiresti-volume-muted-symbolic")
+
+
+def test_bit_perfect_volume_stays_put_unless_the_dac_has_hardware_volume():
+    app = _volume_app(value=100.0, bit_perfect=True)
+    _press(app, Gdk.KEY_Down, CTRL)
+    assert app.vol_scale.value == 100.0 and "bit-perfect" in app.calls[-1][0]
+    app = _volume_app(value=100.0, bit_perfect=True, hw_volume=True)
+    _press(app, Gdk.KEY_Down, CTRL)
+    assert app.vol_scale.value == 95
+
+
+def test_ctrl_up_down_are_left_to_text_fields():
+    app = _volume_app(focus=_Text())
+    assert _press(app, Gdk.KEY_Up, CTRL) is False and app.vol_scale.value == 50.0

@@ -3406,6 +3406,17 @@ def on_global_key_pressed(self, controller, keyval, keycode, state):
         else:
             self.on_prev_track()
         return True
+    # Fork: Shift+Left/Right seek and Ctrl+Up/Down change the volume (Spotify's keys, like
+    # Ctrl+Left/Right above). Text fields keep them for selecting text and moving the caret.
+    shift = bool(state & Gdk.ModifierType.SHIFT_MASK)
+    if not mods and shift and keyval in _SEEK_KEYS:
+        if _focus_in_text_input(self):
+            return False
+        return _seek_by(self, _SEEK_STEP_S * _SEEK_KEYS[keyval])
+    if mods == Gdk.ModifierType.CONTROL_MASK and not shift and keyval in _VOLUME_KEYS:
+        if _focus_in_text_input(self):
+            return False
+        return _nudge_volume(self, _VOLUME_STEP * _VOLUME_KEYS[keyval])
     if keyval == Gdk.KEY_Escape and not mods and _focus_in_text_input(self):
         # The field still gets Esc (search entries clear themselves); then focus leaves it, so
         # Space is play/pause again instead of typing into a field you've finished with.
@@ -3420,6 +3431,79 @@ def on_global_key_pressed(self, controller, keyval, keycode, state):
         return keynav.on_tab(getattr(self, "win", None), backward=keyval == Gdk.KEY_ISO_Left_Tab
                              or bool(state & Gdk.ModifierType.SHIFT_MASK))
     return False
+
+
+_SEEK_KEYS = {Gdk.KEY_Left: -1, Gdk.KEY_KP_Left: -1, Gdk.KEY_Right: 1, Gdk.KEY_KP_Right: 1}
+_VOLUME_KEYS = {Gdk.KEY_Up: 1, Gdk.KEY_KP_Up: 1, Gdk.KEY_Down: -1, Gdk.KEY_KP_Down: -1}
+_SEEK_STEP_S = 10.0
+_VOLUME_STEP = 5
+_SEEK_SETTLE_MS = 180
+
+
+def _seek_by(self, delta):
+    """Seek `delta` seconds from the playing position, like dragging the timeline.
+
+    Held keys repeat ~30 times a second, so the target accumulates and the seek runs once
+    the key settles, as the timeline's drag commit does. The time label moves at once."""
+    player = getattr(self, "player", None)
+    if player is None or getattr(self, "playing_track", None) is None:
+        return False
+    try:
+        pos, dur = player.get_position()
+    except Exception:
+        return False
+    pending = getattr(self, "_key_seek_target", None)
+    target = max(0.0, float(pending if pending is not None else (pos or 0.0)) + float(delta))
+    if dur and float(dur) > 0:
+        target = min(target, max(0.0, float(dur) - 1.0))  # past the end would skip the track
+    self._key_seek_target = target
+    label = getattr(self, "lbl_current_time", None)
+    if label is not None:
+        label.set_text(f"{int(target // 60)}:{int(target % 60):02d}")
+    source = getattr(self, "_key_seek_source", 0)
+    if source:
+        GLib.source_remove(source)
+    self._key_seek_source = GLib.timeout_add(_SEEK_SETTLE_MS, _commit_key_seek, self)
+    return True
+
+
+def _commit_key_seek(self):
+    self._key_seek_source = 0
+    target, self._key_seek_target = getattr(self, "_key_seek_target", None), None
+    if target is None or getattr(self, "player", None) is None:
+        return False
+    self.player.seek(float(target))
+    for hook, args in (("_mpris_emit_seeked", (float(target),)),
+                       ("_mpris_sync_position", (True,)),
+                       ("_remote_publish_playback_event", ("seek",))):
+        fn = getattr(self, hook, None)
+        if callable(fn):
+            fn(*args)
+    return False
+
+
+def _volume_locked(self):
+    """Bit-perfect output pins software volume at 100 % unless the USB DAC has hardware volume."""
+    if not bool((getattr(self, "settings", None) or {}).get("bit_perfect", False)):
+        return False
+    hw = getattr(getattr(self, "player", None), "usb_hw_volume_supported", None)
+    return not (callable(hw) and hw())
+
+
+def _nudge_volume(self, delta):
+    scale = getattr(self, "vol_scale", None)
+    if scale is None:
+        return False
+    notice = getattr(self, "show_output_notice", None)
+    if _volume_locked(self):
+        if callable(notice):
+            notice("Volume is fixed at 100 % in bit-perfect mode", "warn", 1800)
+        return True
+    value = int(max(0, min(100, round(float(scale.get_value()) + delta))))
+    scale.set_value(value)  # on_volume_changed_ui applies, saves and tells MPRIS
+    if callable(notice):
+        notice(f"Volume {value} %", "idle", 1200, icon=_volume_icon_name(value))
+    return True
 
 
 def _go_back(self):
@@ -3466,6 +3550,8 @@ _SHORTCUT_SECTIONS = (
         ("Play / Pause", "space"),
         ("Next track", "<Control>Right"),
         ("Previous track (restarts after 3 s)", "<Control>Left"),
+        ("Seek back / forward 10 s", "<Shift>Left <Shift>Right"),
+        ("Volume up / down", "<Control>Up <Control>Down"),
     )),
     ("Panels", (
         ("Search", "<Control>f"),

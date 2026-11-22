@@ -68,7 +68,7 @@ def show_diag_events(self, _btn=None):
     self._diag_pop.popup()
 
 
-def show_output_notice(self, text, state="idle", timeout_ms=2600):
+def show_output_notice(self, text, state="idle", timeout_ms=2600, icon=None):
     if not text or self.output_notice_revealer is None or self.output_notice_label is None:
         return
     self.output_notice_label.set_text(str(text))
@@ -85,7 +85,7 @@ def show_output_notice(self, text, state="idle", timeout_ms=2600):
         "idle": "hiresti-tech-symbolic",
     }
     if self.output_notice_icon is not None:
-        self.output_notice_icon.set_from_icon_name(icon_map.get(state, "hiresti-tech-symbolic"))
+        self.output_notice_icon.set_from_icon_name(icon or icon_map.get(state, "hiresti-tech-symbolic"))  # fork: icon=
     chip = self.output_notice_revealer.get_child()
     if chip is not None:
         for cls in ("output-notice-ok", "output-notice-warn", "output-notice-error", "output-notice-switching"):
