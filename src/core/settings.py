@@ -106,6 +106,10 @@ DEFAULT_SETTINGS = {
     "output_bit_depth": "Auto",
     "volume": 80,
     "play_mode": 4,
+    # Fork: the fork's own settings (ui/glass.py, ui/card_grid.py, ui/viz_panel.py).
+    "window_transparency": 0.25,
+    "card_size": "medium",
+    "show_spectrum": False,
     "last_nav": "home",
     "last_view": "grid_view",
     "viz_expanded": False,
@@ -458,6 +462,17 @@ def normalize_settings(raw: Optional[dict[str, Any]]) -> dict[str, Any]:
     normalized["scrobble_lastfm_session_key"] = raw.get("scrobble_lastfm_session_key", "") if isinstance(raw.get("scrobble_lastfm_session_key"), str) else ""
     normalized["scrobble_listenbrainz_enabled"] = _as_bool(raw.get("scrobble_listenbrainz_enabled"), False)
     normalized["scrobble_listenbrainz_token"] = raw.get("scrobble_listenbrainz_token", "") if isinstance(raw.get("scrobble_listenbrainz_token"), str) else ""
+    # Fork: normalized starts from DEFAULT_SETTINGS and takes only the keys handled here, so a
+    # fork setting missing from this list was dropped on every save: Window Transparency and
+    # Card Size went back to their defaults at each start.
+    try:
+        transparency = float(raw.get("window_transparency", DEFAULT_SETTINGS["window_transparency"]))
+    except (TypeError, ValueError):
+        transparency = DEFAULT_SETTINGS["window_transparency"]
+    normalized["window_transparency"] = max(0.0, min(0.6, transparency))
+    card_size = _as_str(raw.get("card_size"), DEFAULT_SETTINGS["card_size"])
+    normalized["card_size"] = card_size if card_size in ("small", "medium", "large") else DEFAULT_SETTINGS["card_size"]
+    normalized["show_spectrum"] = _as_bool(raw.get("show_spectrum"), DEFAULT_SETTINGS["show_spectrum"])
     normalized["settings_version"] = CURRENT_SETTINGS_VERSION
 
     # Exclusive lock requires bit-perfect mode.
