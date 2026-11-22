@@ -34,3 +34,6 @@ target/
 # Profiling captures
 perf.data
 perf.data.old
+
+# tools/test.sh (make test): the dev venv
+.venv/
