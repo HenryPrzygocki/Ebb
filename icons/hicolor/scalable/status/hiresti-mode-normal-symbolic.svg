@@ -1,5 +1,6 @@
-<?xml version="1.0" encoding="UTF-8"?>
 <svg height="16px" viewBox="0 0 16 16" width="16px" xmlns="http://www.w3.org/2000/svg">
+  <!-- fork: the arrowhead ran 1 px above the canvas; scaled to fit 0.75..15.25, centred -->
+  <g transform="matrix(0.867 0 0 0.867 2.1 1.636)">
     <path d="m 6.2 2.1
              c 3.75 0 6.8 3.05 6.8 6.8
              c 0 3.75 -3.05 6.8 -6.8 6.8
@@ -21,4 +22,5 @@
              c 0.39 0.39 0.39 1.03 0 1.42
              l -1.42 1.41
              z" fill="currentColor"/>
+</g>
 </svg>
