@@ -109,6 +109,12 @@ def _configure_icon_theme(display):
 
 def do_shutdown(self):
     logger.info("Shutting down application...")
+    # Fork: send a playlist removal that is still inside its Undo window.
+    if hasattr(self, "_flush_pending_playlist_removal"):
+        try:
+            self._flush_pending_playlist_removal(wait=True)
+        except Exception:
+            logger.exception("Sending a pending playlist removal at shutdown failed")
     if hasattr(self, "_stop_remote_api"):
         self._stop_remote_api(show_notice=False)
     self._stop_mpris_service()

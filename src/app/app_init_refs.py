@@ -105,6 +105,7 @@ def _init_widget_refs(self):
     self.output_notice_revealer = None
     self.output_notice_icon = None
     self.output_notice_label = None
+    self.output_notice_action_btn = None  # fork
     self.network_status_label = None
     self.decoder_status_label = None
     self.events_btn = None

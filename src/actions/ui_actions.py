@@ -18,7 +18,7 @@ from _rust.viz import RustVizCore
 from ui import config as ui_config
 from ui import context_menu
 from ui.track_table import LAYOUT, build_tracks_header, append_header_action_spacers
-from ui.track_table import adapt_track_row, clear_track_rows, track_columns  # fork
+from ui.track_table import adapt_track_row, clear_track_rows, set_track_rows_hidden, track_columns  # fork
 from core.errors import classify_exception, user_message
 
 logger = logging.getLogger(__name__)
@@ -1988,6 +1988,7 @@ def populate_tracks(app, tracks):
         stack.add_css_class("track-index-stack")
         lbl = Gtk.Label(label=str(i + 1), css_classes=["dim-label"])
         stack.add_named(lbl, "num")
+        row.track_number_label = lbl  # fork: renumbered while a removal hides a row
         icon = Gtk.Image(icon_name="media-playback-start-symbolic")
         icon.add_css_class("accent")
         stack.add_named(icon, "icon")
@@ -2046,6 +2047,11 @@ def populate_tracks(app, tracks):
 
         row.set_child(box)
         app.track_list.append(row)
+
+    # Fork: a removal waiting out its Undo window stays hidden across re-renders (paging, sorting).
+    pending = getattr(app, "_pending_playlist_removal", None)
+    if pending and pending.get("pl") is getattr(app, "current_remote_playlist", None):
+        set_track_rows_hidden(app.track_list, pending.get("track_id"), True)
 
     if hasattr(app, "_update_track_list_icon"):
         app._update_track_list_icon()

@@ -66,6 +66,12 @@ class TidalApp(Adw.Application):
     def show_output_notice(self, text, state="idle", timeout_ms=2600):
         return app_diagnostics.show_output_notice(self, text, state, timeout_ms)
 
+    def show_undo_notice(self, text, on_undo, timeout_ms=5000, action_label="Undo"):  # fork
+        return app_diagnostics.show_undo_notice(self, text, on_undo, timeout_ms, action_label)
+
+    def on_output_notice_action(self, _btn=None):  # fork
+        return app_diagnostics.on_output_notice_action(self, _btn)
+
     def on_output_state_transition(self, prev_state, state, detail=None):
         return app_diagnostics.on_output_state_transition(self, prev_state, state, detail)
 

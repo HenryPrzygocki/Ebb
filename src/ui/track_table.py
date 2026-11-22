@@ -205,3 +205,21 @@ def clear_track_rows(listbox):
     get_first_child() (or calling remove_all()) also removes and drops the placeholder."""
     while (row := listbox.get_row_at_index(0)) is not None:
         listbox.remove(row)
+
+
+def set_track_rows_hidden(listbox, track_id, hidden):
+    """Fork: hide (or show again) every row for track_id, then renumber the visible rows.
+
+    Hidden rows keep their index, so row.get_index() still matches app.current_track_list."""
+    if listbox is None or track_id is None:
+        return
+    i = shown = 0
+    while (row := listbox.get_row_at_index(i)) is not None:
+        i += 1
+        if getattr(row, "track_id", None) == track_id:
+            row.set_visible(not hidden)
+        if row.get_visible():
+            shown += 1
+            label = getattr(row, "track_number_label", None)
+            if label is not None:
+                label.set_text(str(shown))

@@ -5,7 +5,8 @@ Contains playlist creation, editing and management methods.
 import logging
 from gi.repository import Gtk, GLib
 from core.executor import submit_daemon
-from ui.track_table import clear_track_rows  # fork
+import copy
+from ui.track_table import clear_track_rows, set_track_rows_hidden  # fork
 
 logger = logging.getLogger(__name__)
 
@@ -319,6 +320,22 @@ def on_remote_playlist_card_clicked(self, playlist_obj):
         count = total if total > 0 else loaded
         self.header_meta.set_text(f"{count} Track" if count == 1 else f"{count} Tracks")
         self.load_album_tracks(list(state["tracks"]))
+
+    # Fork: a confirmed removal updates this page in place (_after_playlist_removal) instead of
+    # reloading it from the top.
+    def _drop_track(track_id):
+        if int(getattr(self, "_remote_pl_render_token", 0) or 0) != render_token:
+            return
+        if state["loading"]:
+            # A page is in flight with pre-removal offsets: reload rather than guess.
+            self.on_remote_playlist_card_clicked(playlist_obj)
+            return
+        kept = [tr for tr in state["tracks"] if getattr(tr, "id", None) != track_id]
+        state["offset"] = max(0, int(state["offset"]) - (len(state["tracks"]) - len(kept)))
+        state["tracks"] = kept
+        _apply_loaded_tracks()
+
+    self._remote_pl_view = {"pl": playlist_obj, "drop": _drop_track}
 
     def _get_track_scroller():
         try:
@@ -726,27 +743,108 @@ def on_remote_playlist_move_to_folder_clicked(self, playlist_obj=None):
     dialog.present()
 
 
+# Fork: removing a track from your own TIDAL playlist hides it at once and offers Undo. The
+# removal is sent once the notice has gone (it used to be sent at once, with no way back, and
+# then reloaded the page from the top). Removal is by track id, so waiting can't hit the wrong row.
+_UNDO_NOTICE_MS = 5000
+_UNDO_COMMIT_MS = 5300  # after the notice, so Undo can't be clicked once the request is out
+
+
+def _track_title(track):
+    if isinstance(track, dict):
+        return str(track.get("title") or track.get("name") or "track")
+    return str(getattr(track, "name", None) or getattr(track, "title", None) or "track")
+
+
 def on_remove_single_track_from_remote_playlist(self, track):
     pl = getattr(self, "current_remote_playlist", None)
-    if pl is None or track is None:
+    track_id = getattr(track, "id", None) if track is not None else None
+    if pl is None or track_id is None:
         return
+    _flush_pending_playlist_removal(self)
+    pending = {"pl": pl, "track": track, "track_id": track_id, "source": 0}
+
+    def _due():
+        pending["source"] = 0
+        _commit_playlist_removal(self, pending)
+        return False
+
+    pending["source"] = GLib.timeout_add(_UNDO_COMMIT_MS, _due)
+    self._pending_playlist_removal = pending
+    set_track_rows_hidden(self.track_list, track_id, True)
+    self.show_undo_notice(
+        f"Removed \u201c{_track_title(track)}\u201d", lambda: _undo_playlist_removal(self, pending), _UNDO_NOTICE_MS
+    )
+
+
+def _undo_playlist_removal(self, pending):
+    if getattr(self, "_pending_playlist_removal", None) is not pending:
+        return  # already sent
+    self._pending_playlist_removal = None
+    if pending.get("source"):
+        GLib.source_remove(pending["source"])
+        pending["source"] = 0
+    if getattr(self, "current_remote_playlist", None) is pending["pl"]:
+        set_track_rows_hidden(self.track_list, pending["track_id"], False)
+
+
+def _flush_pending_playlist_removal(self, wait=False):
+    """Send a removal still inside its Undo window now (another removal, or the app quitting)."""
+    pending = getattr(self, "_pending_playlist_removal", None)
+    if pending is None:
+        return
+    if pending.get("source"):
+        GLib.source_remove(pending["source"])
+        pending["source"] = 0
+    _commit_playlist_removal(self, pending, wait=wait)
+
+
+def _commit_playlist_removal(self, pending, wait=False):
+    if getattr(self, "_pending_playlist_removal", None) is pending:
+        self._pending_playlist_removal = None
 
     def task():
-        res = self.backend.remove_tracks_from_cloud_playlist(pl, [track])
+        try:
+            res = self.backend.remove_tracks_from_cloud_playlist(pending["pl"], [pending["track"]])
+            ok = bool((res or {}).get("ok"))
+        except Exception:
+            logger.exception("Removing a track from a cloud playlist failed")
+            ok = False
+        if not wait:
+            GLib.idle_add(_after_playlist_removal, self, pending, ok)
+        return ok
 
-        def apply():
-            if bool(res.get("ok")):
-                removed = int(res.get("removed", 0) or 0)
-                self.show_output_notice(f"Removed {removed} track", "ok", 2200)
-                # Refresh current remote playlist view
-                self.on_remote_playlist_card_clicked(pl)
-            else:
-                self.show_output_notice("Failed to remove track from playlist.", "warn", 2800)
-            return False
+    if wait:
+        task()  # at shutdown a daemon worker would die with the process
+    else:
+        submit_daemon(task)
 
-        GLib.idle_add(apply)
 
-    submit_daemon(task)
+def _decrement_track_count(pl):
+    for attr in ("num_tracks", "number_of_tracks", "numberOfTracks"):
+        try:
+            count = int(getattr(pl, attr, 0) or 0)
+            if count > 0:
+                setattr(pl, attr, count - 1)
+        except Exception:
+            pass
+
+
+def _after_playlist_removal(self, pending, ok):
+    pl, track_id = pending["pl"], pending["track_id"]
+    on_page = getattr(self, "current_remote_playlist", None) is pl
+    if not ok:
+        if on_page:
+            set_track_rows_hidden(self.track_list, track_id, False)
+        self.show_output_notice(
+            f"Couldn't remove \u201c{_track_title(pending['track'])}\u201d from the playlist.", "warn", 3200
+        )
+        return False
+    _decrement_track_count(pl)
+    view = getattr(self, "_remote_pl_view", None)
+    if on_page and view is not None and view.get("pl") is pl:
+        view["drop"](track_id)
+    return False
 
 
 def on_playlist_track_selected(self, box, row):
@@ -1065,8 +1163,25 @@ def on_playlist_delete_clicked(self, playlist_id):
 
 
 def on_playlist_remove_track_clicked(self, playlist_id, track_index):
-    self.playlist_mgr.remove_track(playlist_id, track_index)
+    # Fork: keep a copy of the entry so the notice can offer Undo.
+    entry = None
+    try:
+        tracks = list((self.playlist_mgr.get_playlist(playlist_id) or {}).get("tracks") or [])
+        if 0 <= int(track_index) < len(tracks):
+            entry = copy.deepcopy(tracks[int(track_index)])
+    except Exception:
+        entry = None
+    removed = self.playlist_mgr.remove_track(playlist_id, track_index)
     self.render_playlist_detail(playlist_id)
+    if not removed or entry is None:
+        return
+
+    def _undo():
+        if self.playlist_mgr.insert_track_entry(playlist_id, track_index, entry):
+            if str(getattr(self, "current_playlist_id", "") or "") == str(playlist_id):
+                self.render_playlist_detail(playlist_id)
+
+    self.show_undo_notice(f"Removed \u201c{_track_title(entry)}\u201d", _undo, _UNDO_NOTICE_MS)
 
 
 def on_playlist_move_track_clicked(self, playlist_id, track_index, direction):

@@ -1953,6 +1953,25 @@ flowboxchild { background-color: transparent; padding: 0; margin: 0; }
 .playback-art { background-color: alpha(currentColor, 0.06); border-radius: 8px; }
 .track-list-placeholder label { font-size: 1.05em; }
 .search-carousel, .search-carousel viewport { background: none; }
+/* Fork: the output notice chip had no style rules, so its text sat straight on the page. */
+.output-notice-chip {
+    background-color: @popover_bg_color;
+    color: @popover_fg_color;
+    border-radius: 999px;
+    padding: 6px 14px;
+    margin: 8px;
+    box-shadow: 0 2px 10px alpha(black, 0.35), 0 0 0 1px alpha(currentColor, 0.08);
+}
+.output-notice-chip.output-notice-ok .output-notice-icon { color: @success_color; }
+.output-notice-chip.output-notice-warn .output-notice-icon { color: @warning_color; }
+.output-notice-chip.output-notice-error .output-notice-icon { color: @error_color; }
+.output-notice-action {
+    font-weight: bold;
+    color: @accent_color;
+    min-height: 24px;
+    padding: 0 10px;
+    border-radius: 999px;
+}
 """
 
 

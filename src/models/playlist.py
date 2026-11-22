@@ -368,6 +368,21 @@ class PlaylistManager:
             self._save(playlists)
         return changed
 
+    def insert_track_entry(self, playlist_id, index, entry):
+        """Fork: put back an entry taken out with remove_track (Undo)."""
+        if not isinstance(entry, dict):
+            return False
+        playlists = self._load()
+        for p in playlists:
+            if str(p.get("id")) != str(playlist_id):
+                continue
+            tracks = p.setdefault("tracks", [])
+            tracks.insert(max(0, min(int(index), len(tracks))), dict(entry))
+            p["updated_at"] = int(time.time())
+            self._save(playlists)
+            return True
+        return False
+
     def get_tracks(self, playlist_id):
         p = self.get_playlist(playlist_id)
         if not p:

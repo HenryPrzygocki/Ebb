@@ -72,6 +72,11 @@ def show_output_notice(self, text, state="idle", timeout_ms=2600):
     if not text or self.output_notice_revealer is None or self.output_notice_label is None:
         return
     self.output_notice_label.set_text(str(text))
+    # Fork: a new notice replaces any action button the previous one had.
+    self._output_notice_action = None
+    _action_btn = getattr(self, "output_notice_action_btn", None)
+    if _action_btn is not None:
+        _action_btn.set_visible(False)
     icon_map = {
         "switching": "hiresti-tech-symbolic",
         "ok": "emblem-ok-symbolic",
@@ -101,11 +106,36 @@ def show_output_notice(self, text, state="idle", timeout_ms=2600):
 
     def _hide_notice():
         self._output_notice_source = 0
+        self._output_notice_action = None  # fork: an Undo that has gone does nothing
         if self.output_notice_revealer is not None:
             self.output_notice_revealer.set_reveal_child(False)
         return False
 
     self._output_notice_source = GLib.timeout_add(int(timeout_ms), _hide_notice)
+
+
+def show_undo_notice(self, text, on_undo, timeout_ms=5000, action_label="Undo"):
+    """Fork: a notice with an action button. on_undo runs if it is clicked before the notice goes."""
+    self.show_output_notice(text, "ok", timeout_ms)
+    btn = getattr(self, "output_notice_action_btn", None)
+    if btn is None or on_undo is None:
+        return
+    self._output_notice_action = on_undo
+    btn.set_label(str(action_label))
+    btn.set_visible(True)
+
+
+def on_output_notice_action(self, _btn=None):
+    action = getattr(self, "_output_notice_action", None)
+    self._output_notice_action = None
+    source = getattr(self, "_output_notice_source", 0)
+    if source:
+        GLib.source_remove(source)
+        self._output_notice_source = 0
+    if self.output_notice_revealer is not None:
+        self.output_notice_revealer.set_reveal_child(False)
+    if action is not None:
+        action()
 
 
 def on_output_state_transition(self, prev_state, state, detail=None):

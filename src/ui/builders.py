@@ -956,6 +956,11 @@ def build_body(app, container):
     app.output_notice_label = Gtk.Label(label="", xalign=0, css_classes=["output-notice-text"])
     notice_box.append(app.output_notice_icon)
     notice_box.append(app.output_notice_label)
+    # Fork: optional action ("Undo") on the chip; see app_diagnostics.show_undo_notice.
+    app.output_notice_action_btn = Gtk.Button(label="Undo", css_classes=["flat", "output-notice-action"])
+    app.output_notice_action_btn.set_visible(False)
+    app.output_notice_action_btn.connect("clicked", lambda b: app.on_output_notice_action(b))
+    notice_box.append(app.output_notice_action_btn)
     app.output_notice_revealer.set_child(notice_box)
     app.body_overlay.add_overlay(app.output_notice_revealer)
 
