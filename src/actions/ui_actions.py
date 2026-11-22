@@ -17,6 +17,7 @@ import utils.helpers as utils
 from _rust.viz import RustVizCore
 from ui import config as ui_config
 from ui import context_menu
+from ui import hires_filter  # fork
 from actions import up_next  # fork #25
 from ui.track_table import LAYOUT, build_tracks_header, append_header_action_spacers
 from ui.track_table import adapt_track_row, clear_track_rows, set_track_rows_hidden, track_columns  # fork
@@ -1940,6 +1941,16 @@ def retry_track_view(app):
 
 
 def populate_tracks(app, tracks):
+    # Fork: on an album's own page every row's album cell repeats the page title, and the
+    # Hi-Res filter has nothing to sort out (ui/hires_filter.py).
+    _cur = getattr(app, "current_album", None)
+    album_page = (
+        _cur is not None
+        and type(_cur).__name__ == "Album"
+        and getattr(app, "current_remote_playlist", None) is None
+        and not getattr(app, "current_playlist_id", None)
+    )
+    tracks = hires_filter.for_track_page(app, tracks, album_page)
     app.current_track_list = tracks
     if app.playing_track_id:
         found_idx = -1
@@ -1962,14 +1973,6 @@ def populate_tracks(app, tracks):
             selected_ids -= stale
             app.track_list_selected_track_ids = selected_ids
 
-    # Fork: on an album's own page every row's album cell repeats the page title.
-    _cur = getattr(app, "current_album", None)
-    album_page = (
-        _cur is not None
-        and type(_cur).__name__ == "Album"
-        and getattr(app, "current_remote_playlist", None) is None
-        and not getattr(app, "current_playlist_id", None)
-    )
     _update_track_list_placeholder(app, tracks)
     for i, t in enumerate(tracks):
         row = Gtk.ListBoxRow()
@@ -6189,6 +6192,15 @@ def render_liked_songs_dashboard(app, tracks=None):
     search_entry.set_placeholder_text("Search in liked songs")
     search_entry.set_text(app.liked_tracks_query or "")
     toolbar.append(search_entry)
+
+    def _on_hires_chip_changed():
+        app.liked_tracks_page = 0
+        apply_fn = getattr(app, "_liked_tracks_apply_fn", None)
+        if apply_fn is not None:
+            apply_fn()
+
+    hires_chip = hires_filter.Chip(app, _on_hires_chip_changed)  # fork: ui/hires_filter.py
+    toolbar.append(hires_chip)
     sort_label = Gtk.Label(label="Sort by", css_classes=["dim-label"], valign=Gtk.Align.CENTER)
     toolbar.append(sort_label)
     sort_dd = Gtk.DropDown(model=Gtk.StringList.new(["Recent", "Title", "Artist", "Album", "Duration"]))
@@ -6592,6 +6604,8 @@ def render_liked_songs_dashboard(app, tracks=None):
             # recent => keep backend order
 
         filtered = [all_tracks[i] for i in filtered_indices]
+        filtered = hires_filter.apply(app, filtered, scope=app.liked_tracks_data)
+        hires_chip.sync(app.liked_tracks_data)
 
         _clear_container(list_box)
         list_box.liked_tracks = filtered

@@ -338,6 +338,15 @@ def build_tracks_view(app):
     app.track_list_select_btn.connect("toggled", app.on_track_list_select_mode_toggled)
 
     app.album_action_btns_box = Gtk.Box(spacing=4, valign=Gtk.Align.CENTER, halign=Gtk.Align.END, css_classes=["album-action-btns"])
+    # Fork: "Hi-Res only" for playlists, mixes and search results (ui/hires_filter.py); it shows
+    # only on lists that mix qualities, so never on an album.
+    from ui import hires_filter
+
+    app.hires_chip = hires_filter.Chip(
+        app, lambda: app.populate_tracks(list(getattr(app, "_hires_source", None) or []))
+    )
+    app.hires_chip.set_margin_end(4)
+    app.album_action_btns_box.append(app.hires_chip)
     app.album_action_btns_box.append(app.remote_playlist_more_btn)
     app.album_action_btns_box.append(app.fav_btn)
     app.album_action_btns_box.append(app.track_list_select_btn)

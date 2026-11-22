@@ -1627,6 +1627,15 @@ flowboxchild { background-color: transparent; padding: 0; margin: 0; }
 .album-action-btns button image {
     -gtk-icon-size: 28px;
 }
+/* fork: the Hi-Res chip keeps its own size among the header's round icon buttons */
+.album-action-btns button.hires-filter-chip {
+    min-width: 0;
+    min-height: 26px;
+    padding: 0 12px;
+}
+.album-action-btns button.hires-filter-chip image {
+    -gtk-icon-size: 12px;
+}
 
 /* Album / playlist detail header — dimmed cover background + Tidal-style
  * primary action pills on the left. */
@@ -1708,6 +1717,23 @@ flowboxchild { background-color: transparent; padding: 0; margin: 0; }
 .track-quality { font-size: 10px; font-weight: 800; padding: 0 5px; border-radius: 4px; }
 .track-quality-hires { color: @warning_color; background-color: alpha(@warning_color, 0.15); }
 .track-quality-lossy { color: alpha(currentColor, 0.62); background-color: alpha(currentColor, 0.09); }
+/* fork: the "Hi-Res only" switch (ui/hires_filter.py): the Hi-Res badge, as a chip */
+.hires-filter-chip {
+    min-height: 24px;
+    padding: 0 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 800;
+    color: alpha(@warning_color, 0.85);
+    background-color: transparent;
+    box-shadow: inset 0 0 0 1px alpha(@warning_color, 0.35);
+}
+.hires-filter-chip:hover { background-color: alpha(@warning_color, 0.10); }
+.hires-filter-chip:checked {
+    color: @warning_color;
+    background-color: alpha(@warning_color, 0.20);
+    box-shadow: inset 0 0 0 1px alpha(@warning_color, 0.60);
+}
 /* fork: artist and album names in track rows are links (ui/track_table.link_label) */
 label.track-link-hot { text-decoration: underline; }
 label.dim-label.track-link-hot { opacity: 1; }
