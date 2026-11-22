@@ -9,6 +9,7 @@ import gi
 
 gi.require_version("Gdk", "4.0")
 from gi.repository import GLib
+from core import brand  # fork
 
 try:
     import pystray
@@ -24,9 +25,9 @@ _SRC_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 def _get_tray_icon_path(self):
     candidates = [
-        os.path.join(_SRC_DIR, "icons", "hicolor", "64x64", "apps", "hiresti.png"),
-        os.path.join(_SRC_DIR, "icons", "hicolor", "128x128", "apps", "hiresti.png"),
-        os.path.join(_SRC_DIR, "icons", "hicolor", "32x32", "apps", "hiresti.png"),
+        os.path.join(_SRC_DIR, "icons", "hicolor", "64x64", "apps", f"{brand.APP_ID}.png"),
+        os.path.join(_SRC_DIR, "icons", "hicolor", "128x128", "apps", f"{brand.APP_ID}.png"),
+        os.path.join(_SRC_DIR, "icons", "hicolor", "32x32", "apps", f"{brand.APP_ID}.png"),
     ]
     for p in candidates:
         if os.path.exists(p):
@@ -86,7 +87,7 @@ def _init_tray_icon(self):
             pystray.MenuItem("Copy Track Link", self._copy_track_link_from_tray),
             pystray.MenuItem("Quit", self._quit_from_tray),
         )
-        self._tray_icon = pystray.Icon("hiresti", image, "HiresTI", menu)
+        self._tray_icon = pystray.Icon(brand.SLUG, image, brand.APP_NAME, menu)
         self._tray_icon.run_detached()
         self._tray_ready = True
     except Exception as e:

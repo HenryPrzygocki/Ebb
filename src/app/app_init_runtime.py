@@ -16,6 +16,7 @@ from services.scrobbler import ScrobblerService
 from services.update_check import init_update_check_state
 from ui import config as ui_config
 from utils.paths import get_cache_dir, get_config_dir
+from core import brand  # fork
 
 logger = logging.getLogger(__name__)
 
@@ -331,8 +332,8 @@ def _init_runtime_state(self):
 
 
 def init_runtime(self):
-    GLib.set_application_name("HiresTI")
-    GLib.set_prgname("HiresTI")
+    GLib.set_application_name(brand.APP_NAME)
+    GLib.set_prgname(brand.APP_ID)
     self.app_version = self._detect_app_version()
     _init_paths_and_settings(self)
     _init_audio_and_data_services(self)

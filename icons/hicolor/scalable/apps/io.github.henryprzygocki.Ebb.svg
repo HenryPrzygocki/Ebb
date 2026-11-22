@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="sea" x1="0" y1="0" x2="0.35" y2="1">
+      <stop offset="0" stop-color="#1a8fb5"/>
+      <stop offset="1" stop-color="#0b2b5e"/>
+    </linearGradient>
+    <linearGradient id="foam" x1="0" y1="36" x2="0" y2="92" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f4fbff"/>
+      <stop offset="1" stop-color="#9fe6f0"/>
+    </linearGradient>
+    <linearGradient id="shade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0.82" stop-color="#000" stop-opacity="0"/>
+      <stop offset="1" stop-color="#000" stop-opacity="0.22"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="112" height="112" rx="28" fill="url(#sea)"/>
+  <rect x="8" y="8" width="112" height="112" rx="28" fill="url(#shade)"/>
+  <g fill="none" stroke="url(#foam)" stroke-width="10" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M32 43 Q40 36.2 48 43 T64 43 T80 43 T96 43"/>
+    <path d="M32 64 Q40 57.2 48 64 T64 64"/>
+    <path d="M32 85 Q40 78.2 48 85 T64 85 T80 85 T96 85"/>
+  </g>
+</svg>

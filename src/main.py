@@ -19,6 +19,7 @@ gi.require_version('Gtk', '4.0')
 gi.require_version('Adw', '1')
 from gi.repository import Adw
 from core.logging import setup_logging
+from core import brand  # fork
 from core.constants import PlayMode, LyricsSettings, AudioLatency, AlsaMmapRealtimePriority, VisualizerSettings
 from app import app_bootstrap
 from app import app_diagnostics
@@ -85,7 +86,7 @@ class TidalApp(Adw.Application):
         return app_storage_scope._apply_account_scope(self, force)
 
     def __init__(self):
-        super().__init__(application_id="com.hiresti.player")
+        super().__init__(application_id=brand.APP_ID)
         app_init_runtime.init_runtime(self)
 
     def _detect_app_version(self):
@@ -147,11 +148,11 @@ wire_tidal_app(TidalApp)
 if __name__ == "__main__":
     try:
         import setproctitle
-        setproctitle.setproctitle("hiresti")
+        setproctitle.setproctitle(brand.SLUG)
     except ImportError:
         try:
             import ctypes
-            ctypes.CDLL("libc.so.6").prctl(15, b"hiresti", 0, 0, 0)
+            ctypes.CDLL("libc.so.6").prctl(15, brand.SLUG.encode(), 0, 0, 0)
         except Exception:
             pass
     setup_logging()
@@ -166,5 +167,6 @@ if __name__ == "__main__":
         )
     except Exception:
         git_rev = "unknown"
-    logger.info("Starting HiresTI build: git_rev=%s", git_rev)
+    logger.info("Starting %s %s (based on %s %s): git_rev=%s", brand.APP_NAME, brand.VERSION,
+                brand.UPSTREAM_NAME, brand.upstream_version(), git_rev)
     TidalApp().run(None)

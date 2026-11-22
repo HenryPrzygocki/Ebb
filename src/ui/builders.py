@@ -13,6 +13,7 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 gi.require_version("Gdk", "4.0")
 from gi.repository import Gtk, Adw, Pango, GLib, Gdk
+from core import brand  # fork
 
 from background_viz import BackgroundVisualizer
 from visualizer import HybridVisualizer as _HybridVisualizer
@@ -104,7 +105,7 @@ def _present_community_window(app):
     title_box.append(title_icon)
     title_label = Gtk.Label(label="Community", xalign=0, css_classes=["album-title-large"])
     subtitle_label = Gtk.Label(
-        label="Join the Discord server, support development, and help more listeners discover HiresTI.",
+        label=f"{brand.APP_NAME} is built on {brand.UPSTREAM_NAME} by {brand.UPSTREAM_AUTHOR}.",
         xalign=0,
         wrap=True,
         wrap_mode=Pango.WrapMode.WORD_CHAR,
@@ -117,35 +118,36 @@ def _present_community_window(app):
     links_list = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE, css_classes=["boxed-list"])
     links_list.append(
         _build_community_action_row(
-            "network-workgroup-symbolic",
-            "Join Discord",
-            "Talk with other users, share device setups, and send feedback directly.",
-            "Join",
-            "https://discord.gg/t9wm2q2H",
+            "dialog-warning-symbolic",
+            "Report a Problem",
+            f"Bugs and ideas for {brand.APP_NAME} go to its own issue tracker.",
+            "Open",
+            brand.ISSUES_URL,
         )
     )
     links_list.append(
         _build_community_action_row(
             "emblem-favorite-symbolic",
-            "Sponsor HiresTI",
-            "Support development and help fund more time on playback quality and UI polish.",
+            f"Sponsor {brand.UPSTREAM_AUTHOR}",
+            f"{brand.APP_NAME} runs on {brand.UPSTREAM_NAME}'s playback engine; sponsoring its author funds that work.",
             "Sponsor",
-            "https://github.com/sponsors/yelanxin",
+            brand.UPSTREAM_SPONSOR_URL,
         )
     )
     links_list.append(
         _build_community_action_row(
             "starred-symbolic",
-            "Star on GitHub",
-            "If HiresTI is useful to you, a GitHub star helps more people discover the project.",
+            f"Star {brand.UPSTREAM_NAME} on GitHub",
+            f"A star helps more people find the project {brand.APP_NAME} is built on.",
             "Star",
-            "https://github.com/yelanxin/hiresTI",
+            brand.UPSTREAM_URL,
         )
     )
     root.append(links_list)
 
     note_label = Gtk.Label(
-        label="A GitHub star is the simplest way to help the project grow, even if you are not ready to sponsor yet.",
+        label=f"Please report {brand.APP_NAME} problems here rather than to {brand.UPSTREAM_NAME}: "
+              f"its author can't fix what {brand.APP_NAME} changed.",
         xalign=0,
         wrap=True,
         wrap_mode=Pango.WrapMode.WORD_CHAR,
@@ -167,7 +169,7 @@ def present_update_window(app):
     current_version = str(state.get("current_version") or getattr(app, "app_version", "dev") or "dev").strip()
     latest_version = str(state.get("latest_version") or "").strip()
     latest_name = str(state.get("latest_name") or latest_version or "").strip()
-    latest_url = str(state.get("latest_url") or "https://github.com/yelanxin/hiresTI/releases").strip()
+    latest_url = str(state.get("latest_url") or brand.RELEASES_URL).strip()
     published_at = str(state.get("latest_published_at") or "").strip()
     latest_notes = str(state.get("latest_notes") or "").strip()
     error_text = str(state.get("error") or "").strip()

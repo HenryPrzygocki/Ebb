@@ -1518,6 +1518,8 @@ class RustVizCore:
                 here.parent.parent / "src_rust" / "rust_viz_core" / "target" / "release" / "libviz_core.so",
                 here.parent.parent / "src_rust" / "rust_viz_core" / "target" / "release" / "libviz_core.dylib",
                 here.parent.parent / "src_rust" / "rust_viz_core" / "target" / "release" / "viz_core.dll",
+                # Fork: Ebb's system install
+                Path("/usr/share/ebb/src_rust/rust_viz_core/target/release/libviz_core.so"),
                 # Flatpak
                 Path("/app/share/hiresti/src_rust/rust_viz_core/target/release/libviz_core.so"),
                 # System install

@@ -65,7 +65,7 @@ def _on_token_received(self, token, connect_btn):
         heading="Authorize Last.fm",
         body=(
             "A browser window has been opened.\n\n"
-            "Please authorize hiresTI on Last.fm, then click Confirm."
+            "Approve access on the Last.fm page that just opened, then click Confirm."
         ),
     )
     dialog.add_response("cancel", "Cancel")

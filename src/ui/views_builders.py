@@ -5,6 +5,7 @@ gi.require_version("Adw", "1")
 from gi.repository import Gtk, Adw, Pango
 
 from app.app_remote_control import REMOTE_ACCESS_MODES
+from core import brand  # fork
 import utils
 from ui.track_table import build_tracks_header, append_header_action_spacers
 
@@ -70,7 +71,7 @@ def build_grid_view(app):
     # restored width) can otherwise trigger GtkStack measure warnings.
     prompt_card.set_size_request(-1, -1)
     prompt_icon = Gtk.Image(
-        icon_name="hiresti",
+        icon_name=brand.APP_ID,
         pixel_size=104,
         css_classes=["dim-label", "login-hero-icon"],
         halign=Gtk.Align.CENTER,
@@ -556,7 +557,7 @@ def build_settings_page(app):
         "session rate, so this path is not bit-perfect.\n\n"
         "• <b>ALSA (auto)/ALSA (mmap) + Exclusive mode:</b> bypasses the system mixer and is treated as "
         "true bit-perfect playback.\n\n"
-        "• <b>USB Rawlink v2:</b> bypasses the kernel USB audio driver and lets hiresTI "
+        "• <b>USB Rawlink v2:</b> bypasses the kernel USB audio driver and lets Ebb "
         "talk directly to a compatible external USB DAC. With Bit-Perfect Mode on, "
         "Rawlink uses the app's most direct player-to-device playback path."
     )
@@ -660,10 +661,10 @@ def build_settings_page(app):
     drv_pop_content = Gtk.Label(wrap=True, max_width_chars=44, xalign=0)
     drv_pop_content.set_markup(
         "<b>Audio Driver Modes</b>\n\n"
-        "• <b>ALSA (auto):</b> Recommended for most setups. hiresTI chooses the most compatible ALSA path for your device automatically.\n\n"
+        "• <b>ALSA (auto):</b> Recommended for most setups. Ebb chooses the most compatible ALSA path for your device automatically.\n\n"
         "• <b>ALSA (mmap):</b> A zero-copy ALSA path with a more direct handoff to the device. Best for users who want a leaner playback path or prefer MMAP on their hardware.\n\n"
         "• <b>PipeWire:</b> Routes through the PipeWire shared graph (ALSA→PipeWire bridge). Shared with other apps and resampled to PipeWire's session rate — convenient, but not bit-perfect.\n\n"
-        "• <b>USB Rawlink v2:</b> Bypasses the kernel USB audio driver and lets hiresTI talk directly to the USB device for playback. Best for users who want the most direct player-to-DAC path on a compatible external USB DAC."
+        "• <b>USB Rawlink v2:</b> Bypasses the kernel USB audio driver and lets Ebb talk directly to the USB device for playback. Best for users who want the most direct player-to-DAC path on a compatible external USB DAC."
     )
     drv_pop_box = Gtk.Box(margin_top=12, margin_bottom=12, margin_start=12, margin_end=12)
     drv_pop_box.append(drv_pop_content)

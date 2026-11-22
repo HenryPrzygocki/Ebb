@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.henryprzygocki.Ebb</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <name>Ebb</name>
+  <summary>Listen to TIDAL in lossless and hi-res</summary>
+  <description>
+    <p>
+      Ebb is a TIDAL player for Linux built for lossless and hi-res audio: bit-perfect and
+      exclusive output paths, a parametric equalizer, synced lyrics and a real-time visualizer.
+      A TIDAL subscription is required.
+    </p>
+    <p>
+      Ebb is based on hiresTI by yelanxin. It is an independent project, not affiliated with
+      or endorsed by TIDAL.
+    </p>
+  </description>
+  <launchable type="desktop-id">io.github.henryprzygocki.Ebb.desktop</launchable>
+  <url type="homepage">https://github.com/HenryPrzygocki/Ebb</url>
+  <url type="bugtracker">https://github.com/HenryPrzygocki/Ebb/issues</url>
+  <developer id="io.github.henryprzygocki">
+    <name>HenryPrzygocki</name>
+  </developer>
+  <provides>
+    <binary>ebb</binary>
+  </provides>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.1.0" date="2026-11-22">
+      <description>
+        <p>First release under the Ebb name, based on hiresTI 1.9.12.</p>
+      </description>
+    </release>
+  </releases>
+</component>

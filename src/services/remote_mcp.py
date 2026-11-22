@@ -10,7 +10,7 @@ import urllib.request
 
 
 MCP_PROTOCOL_VERSION = "2025-06-18"
-MCP_SERVER_INFO = {"name": "hiresTI Remote MCP", "version": "1.0"}
+MCP_SERVER_INFO = {"name": "Ebb Remote MCP", "version": "1.0"}
 
 TOOLS = [
     {
@@ -368,7 +368,7 @@ def _handle_request(client: RemoteRPCClient, request: dict):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="hiresTI MCP bridge")
+    parser = argparse.ArgumentParser(description="Ebb MCP bridge")
     parser.add_argument("--endpoint", required=True, help="Remote JSON-RPC endpoint, e.g. http://192.168.1.10:18473/rpc")
     parser.add_argument("--api-key", required=True, help="Bearer API key for the remote JSON-RPC endpoint")
     parser.add_argument("--timeout", type=float, default=10.0)

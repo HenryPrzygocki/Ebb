@@ -11,6 +11,7 @@ gi.require_version('Adw', '1')
 from gi.repository import Gtk, Adw, GLib, Gdk
 
 from ui import config as ui_config
+from core import brand  # fork
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +48,8 @@ def detect_app_version(self):
     env_ver = str(os.environ.get("HIRESTI_VERSION", "")).strip()
     if env_ver:
         return env_ver
+    if brand.VERSION:  # fork: Ebb's own version; version.txt names the hiresTI release it's based on
+        return brand.VERSION
     try:
         root = os.path.dirname(os.path.abspath(__file__))
         src_root = os.path.dirname(root)
@@ -269,7 +272,7 @@ def do_activate(self):
 
     self.win = Adw.ApplicationWindow(
         application=self,
-        title="hiresTI Desktop",
+        title=brand.APP_NAME,
         default_width=startup_width,
         default_height=startup_height,
     )

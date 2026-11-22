@@ -78,6 +78,7 @@ class _RustAudioCore:
             installed_root / "debug" / "librust_audio_core.so",
         ]
         installed_candidates = [
+            Path("/usr/share/ebb/src_rust/rust_audio_core/target/release/librust_audio_core.so"),  # fork
             Path("/app/share/hiresti/src_rust/rust_audio_core/target/release/librust_audio_core.so"),
             Path("/usr/share/hiresti/src_rust/rust_audio_core/target/release/librust_audio_core.so"),
         ]

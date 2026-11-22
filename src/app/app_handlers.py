@@ -83,19 +83,25 @@ def get_sorted_playlist_tracks(self, playlist_id):
 
 
 def on_about_clicked(self, _btn=None):
+    from core import brand  # fork
+
+    upstream = f"{brand.UPSTREAM_NAME} {brand.upstream_version()}".strip()
     info_lines = [
-        "A desktop TIDAL client focused on audio quality and visual experience.",
+        f"{brand.TAGLINE}.",
+        f"Based on {upstream} by {brand.UPSTREAM_AUTHOR}.",
         f"Python: {platform.python_version()}",
     ]
     about = Adw.AboutWindow(
         transient_for=getattr(self, "win", None),
         modal=True,
-        application_name="HiresTI",
-        application_icon="hiresti",
+        application_name=brand.APP_NAME,
+        application_icon=brand.APP_ID,
         version=str(getattr(self, "app_version", "dev")),
-        developers=["Yelanxin"],
-        website="https://github.com/yelanxin/hiresTI",
-        issue_url="https://github.com/yelanxin/hiresTI/issues",
+        developer_name=f"Based on {brand.UPSTREAM_NAME} by {brand.UPSTREAM_AUTHOR}",
+        developers=[f"{brand.MAINTAINER} ({brand.APP_NAME}) {brand.PROJECT_URL}",
+                    f"Yelanxin ({brand.UPSTREAM_NAME}) {brand.UPSTREAM_URL}"],
+        website=brand.PROJECT_URL,
+        issue_url=brand.ISSUES_URL,
         license_type=Gtk.License.GPL_3_0,
         comments="\n".join(info_lines),
     )

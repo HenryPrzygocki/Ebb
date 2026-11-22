@@ -21,7 +21,8 @@ def test_system_package_builds_declare_opengl_dependency():
     package_sh = (REPO_ROOT / "package.sh").read_text()
     pkgbuild = (REPO_ROOT / "aur" / "hiresti" / "PKGBUILD").read_text()
     srcinfo = (REPO_ROOT / "aur" / "hiresti" / ".SRCINFO").read_text()
-    readme = (REPO_ROOT / "README.md").read_text()
+    readme = (REPO_ROOT / "docs" / "upstream" / "README.md").read_text()  # fork: hiresTI's README moved
+    ebb_pkgbuild = (REPO_ROOT / "aur" / "ebb" / "PKGBUILD").read_text()  # fork
     test_ui = (REPO_ROOT / "test_ui.sh").read_text()
     pyinstaller = (REPO_ROOT / "tools" / "build_py_binary.sh").read_text()
 
@@ -29,6 +30,7 @@ def test_system_package_builds_declare_opengl_dependency():
     assert "python3-pyopengl" in package_sh
     assert "depend = python-opengl" in package_sh
     assert "'python-opengl'" in pkgbuild
+    assert "'python-opengl'" in ebb_pkgbuild
     assert "depends = python-opengl" in srcinfo
     assert "`PyOpenGL`" in readme
     assert "python3-opengl" in test_ui

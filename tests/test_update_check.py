@@ -81,6 +81,7 @@ def test_init_update_check_state_recomputes_cached_beta_visibility():
                 "latest_name": "1.9.1 Beta 1",
                 "latest_url": "https://example.invalid/beta",
                 "last_checked_at": 123,
+                "source": mod._RELEASES_URL,  # fork: only a cache from Ebb's own feed is used
             }
         },
     )

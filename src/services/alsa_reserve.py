@@ -68,7 +68,7 @@ class AlsaDeviceReservation:
         res.release()               # PipeWire reclaims the device
     """
 
-    def __init__(self, card_num: int, app_name: str = "hiresTI"):
+    def __init__(self, card_num: int, app_name: str = "Ebb"):
         self._card_num = int(card_num)
         self._app_name = str(app_name)
         self._bus: "Gio.DBusConnection | None" = None

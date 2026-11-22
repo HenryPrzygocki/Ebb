@@ -911,7 +911,7 @@ def on_create_playlist_clicked(self, _btn=None):
         dialog_title="Create playlist",
         save_label="Create",
         initial_title=default_name,
-        initial_desc="Created from HiresTI",
+        initial_desc="Created with Ebb",
         initial_public=False,
         playlist_obj=None,
         folder_options=folder_options,
@@ -937,7 +937,7 @@ def _prompt_playlist_pick(self, on_pick):
     def _create_and_pick(use_dedupe):
         def _task():
             created = self.backend.create_cloud_playlist(
-                self._next_playlist_name(), "Created from HiresTI"
+                self._next_playlist_name(), "Created with Ebb"
             )
 
             def _apply():

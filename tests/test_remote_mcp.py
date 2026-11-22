@@ -13,7 +13,7 @@ def test_handle_mcp_initialize_returns_server_info():
     )
 
     assert response["result"]["protocolVersion"] == MCP_PROTOCOL_VERSION
-    assert response["result"]["serverInfo"]["name"] == "hiresTI Remote MCP"
+    assert response["result"]["serverInfo"]["name"] == "Ebb Remote MCP"  # fork: renamed
     assert response["result"]["capabilities"]["tools"]["listChanged"] is False
 
 

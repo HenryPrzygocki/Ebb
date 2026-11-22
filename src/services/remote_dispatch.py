@@ -211,7 +211,7 @@ def _resolve_tracks_by_ids(app, track_ids):
 def _rpc_ping(app, _params):
     return {
         "ok": True,
-        "app": "hiresTI",
+        "app": "Ebb",
         "version": str(getattr(app, "app_version", "dev") or "dev"),
         "logged_in": _get_login_state(app),
     }

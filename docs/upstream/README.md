@@ -1,0 +1,232 @@
+# hiresTI Music Player
+
+![Python](https://img.shields.io/badge/Python-3.10%2B-blue)
+![Rust](https://img.shields.io/badge/Rust-1.70%2B-orange?logo=rust)
+![GTK4](https://img.shields.io/badge/UI-GTK4%20%2B%20Libadwaita-green)
+![License](https://img.shields.io/badge/License-GPL--3.0-purple)
+
+`hiresTI` is a native Linux TIDAL client built for audiophiles, combining high-fidelity playback, rock-solid stability, and a modern GTK4/Libadwaita user experience. 
+
+> [!TIP]
+> **Try [OxiTide](https://github.com/yelanxin/OxiTide)** — a ground-up **pure-Rust rewrite** of hiresTI by the same author: native UI, no Python runtime, faster startup, lower memory. Free download.
+
+> [!IMPORTANT]
+> **Re-login required for FLAC / Hi-Res quality.**
+> The legacy OAuth (device-code) login that previous versions used is now capped by TIDAL at 320 kbps AAC. A new **PKCE** login flow (added in `v1.9.5`) restores access to full FLAC CD-quality and Hi-Res Lossless streams.
+>
+> If you're still on the old OAuth session, open **Account**, sign out, and sign back in — the login dialog will use PKCE automatically and your library will resume at the higher tiers.
+
+## Highlights
+
+- A high performance Rust audio engine core
+- Bit-perfect playback flow with optional exclusive output controls
+- Built-in USB rawlink driver enables direct USB passthrough, bypassing OS drivers and mixing for purer sound.
+- High-flexibility DSP workspace with reorderable processing, PEQ, convolution, tube/tape color, stereo widening, limiter, and resampler
+- TIDAL PKCE login (recommended for FLAC / Hi-Res) with legacy OAuth fallback, account-scoped library access
+- TIDAL Max Hi-Res Lossless streaming up to 24-bit / 192kHz
+- Built-in queue drawer, lyrics support, and visualizer modules
+- MPRIS support (`org.mpris.MediaPlayer2.hiresti`) for desktop media controls
+- Built-in remote control with HTTP JSON-RPC, MCP endpoint.
+
+Audio Optimization Guide: [audio-optimization-guide.md](audio-optimization-guide.md)
+
+## Screenshots
+### Main Window
+![Main Window](screenshots/1.8.0-2.png)
+![Main Window](screenshots/1.4.5-2.png)
+![Main Window](screenshots/1.6.0-1.png)
+![Main Window](screenshots/1.8.0-1.png)
+![Main Window](screenshots/1.6.5-1.png)
+
+
+### Mini Mode
+<img src="screenshots/1.0.4-5.png" width="400">
+
+
+## Tech Stack
+
+- Python 3.10+
+- GTK4 + Libadwaita (PyGObject)
+- Rust audio engine core (`rust_audio_core`) — symphonia decode + native ALSA mmap / USB rawlink output
+- Rust visualizer core (`rust_viz_core`) — FFT + spectrum draw helpers
+- `tidalapi` (TIDAL integration)
+
+## Audio Engine Note
+
+Starting from `v1.2.0`, playback is driven by the Rust audio engine core by default.
+Python remains the UI/application layer, while transport/output routing and core playback runtime run through Rust.
+
+## Runtime Requirements
+
+Install these system packages first:
+
+- Python 3.10+
+- GTK4
+- Libadwaita
+- PyGObject bindings
+- WebKitGTK 6.0 (for the embedded PKCE login flow; optional — paste-URL fallback works without it)
+
+Bundled Python dependencies used by packaging:
+
+- `tidalapi`
+- `requests`
+- `urllib3`
+- `PyOpenGL`
+- `pystray`
+- `pillow`
+
+## Quick Start (Source)
+
+```bash
+python3 -m pip install -r requirements.txt
+cargo build --manifest-path src_rust/rust_audio_core/Cargo.toml --release
+cargo build --manifest-path src_rust/rust_viz_core/Cargo.toml --release
+python3 src/main.py
+```
+
+`hiresTI` loads the Rust audio and visualizer cores from `src_rust/*/target/release`, so the `--release` build step is required before running from source.
+
+## Install Prebuilt Packages
+Please download prebuilt package from release page.
+
+### Debian / Ubuntu (DEB)
+
+```bash
+sudo apt install ./hiresti_<version>_amd64.deb
+```
+
+### Fedora (RPM)
+
+```bash
+sudo dnf install ./hiresti-<version>-1.fedora.<arch>.rpm
+```
+
+### EL9 (Rocky / Alma / RHEL 9)
+
+```bash
+sudo dnf install ./hiresti-<version>-1.el9.<arch>.rpm
+```
+
+### Arch Linux
+
+**AUR** (builds from source; recommended for rolling updates):
+
+```bash
+# yay
+yay -S hiresti
+
+# paru
+paru -S hiresti
+```
+
+Package page: https://aur.archlinux.org/packages/hiresti
+
+**Prebuilt** (from the GitHub release page):
+
+```bash
+sudo pacman -U ./hiresti-<version>-1-<arch>.pkg.tar.zst
+```
+
+### Nix / NixOS
+
+`hiresTI` ships a flake that exposes `packages.default`, so users on Nix or NixOS can run / install directly from the GitHub repo with no manual dependency setup:
+
+```bash
+# One-shot run (no install)
+nix run github:yelanxin/hiresTI
+
+# Install into your user profile
+nix profile install github:yelanxin/hiresTI
+```
+
+The flake builds the Rust audio + visualizer cores via `rustPlatform.buildRustPackage` and wraps the Python tree with `wrapGAppsHook4`, pulling all GTK4 / WebKit / GStreamer / PipeWire / ALSA dependencies from nixpkgs — no system packages need to be pre-installed.
+
+### Flatpak
+
+```bash
+flatpak install ./hiresti-<version>.flatpak
+```
+
+Run:
+
+```bash
+flatpak run com.hiresti.player
+```
+
+> **Note:** Requires GNOME Platform runtime 48. If not already installed:
+> ```bash
+> flatpak install flathub org.gnome.Platform//48 org.gnome.Sdk//48
+> ```
+>
+> User data is stored under `~/.var/app/com.hiresti.player/`.
+
+> ⚠️ **Flatpak limitations:** Due to sandbox restrictions, some audio features (such as automatic Pro-Audio profile switching, exclusive mode) may have reduced functionality compared to native packages. For the best experience, it is recommended to use the native package for your distribution (RPM, DEB, or Arch).
+
+
+## Upgrade Guide
+
+### Playlist migration note
+
+Starting from `v1.1.0`, local playlists are removed.
+Only cloud playlists are supported.
+
+### Fedora / EL9 RPM upgrades
+
+Use upgrade mode when moving to a newer version:
+
+```bash
+sudo dnf upgrade ./hiresti-<version>-1.fedora.<arch>.rpm
+```
+
+or:
+
+```bash
+sudo rpm -Uvh ./hiresti-<version>-1.fedora.<arch>.rpm
+```
+
+For EL9 packages, replace `fedora` with `el9`.
+
+Do not use `rpm -i` for upgrades, because it installs side-by-side and can cause file conflict errors.
+
+## Support
+
+If you run into issues, have feature requests, or want to report bugs, please open a GitHub issue:
+
+- https://github.com/yelanxin/hiresTI/issues
+
+## Troubleshooting With Logs
+
+If you hit a problem, please start the app from terminal and attach logs in your issue:
+
+```bash
+hiresti 2>&1 | tee /tmp/hiresti.log
+```
+
+For GTK debug output:
+
+```bash
+G_MESSAGES_DEBUG=all hiresti 2>&1 | tee /tmp/hiresti-gtk.log
+```
+
+When reporting, include:
+
+- your distro and desktop environment
+- app version
+- steps to reproduce
+- relevant log snippets (or the full log file path above)
+
+## Acknowledgements
+
+Special thanks to everyone who shares feedback. In particular, [ilijagosp](https://github.com/ilijagosp) has provided feedback and suggestions with every new release.
+
+## Sponsors
+
+Thanks to those supporting hiresTI ❤
+
+<a href="https://github.com/AriZone"><img src="https://github.com/AriZone.png" width="60" height="60" alt="AriZone" /></a>
+
+If you'd like to support development, you can sponsor via [GitHub Sponsors](https://github.com/sponsors/yelanxin).
+
+## License
+
+GPL-3.0

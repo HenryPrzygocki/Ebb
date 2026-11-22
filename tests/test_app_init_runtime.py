@@ -450,8 +450,8 @@ def test_init_runtime_calls_stages_in_order(monkeypatch):
 
     assert app.app_version == "1.2.3"
     assert calls == [
-        ("app_name", "HiresTI"),
-        ("prg", "HiresTI"),
+        ("app_name", "Ebb"),  # fork: renamed
+        ("prg", "io.github.henryprzygocki.Ebb"),
         "paths",
         "audio",
         "state",

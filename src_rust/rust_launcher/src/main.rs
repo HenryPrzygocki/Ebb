@@ -3,6 +3,12 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 
 fn resolve_app_dir() -> PathBuf {
+    // Fork: Ebb installs to /usr/share/ebb (main.py at its top level).
+    let ebb_packaged = PathBuf::from("/usr/share/ebb");
+    if ebb_packaged.join("main.py").is_file() || ebb_packaged.join("src/main.py").is_file() {
+        return ebb_packaged;
+    }
+
     // Check for src/main.py in new directory structure
     let flatpak_packaged = PathBuf::from("/app/share/hiresti");
     if flatpak_packaged.join("src/main.py").is_file() {
@@ -73,7 +79,7 @@ fn main() -> ExitCode {
             },
             Err(err) => {
                 eprintln!(
-                    "hiresti launcher error: failed to spawn bundled binary {}: {err}",
+                    "ebb launcher error: failed to spawn bundled binary {}: {err}",
                     bundled_bin.display()
                 );
                 ExitCode::from(1)
@@ -87,7 +93,7 @@ fn main() -> ExitCode {
     } else if app_dir.join("main.py").is_file() {
         app_dir.join("main.py")
     } else {
-        eprintln!("hiresti launcher error: main.py not found in {}", app_dir.display());
+        eprintln!("ebb launcher error: main.py not found in {}", app_dir.display());
         return ExitCode::from(1);
     };
 
@@ -112,7 +118,7 @@ fn main() -> ExitCode {
             None => ExitCode::from(1),
         },
         Err(err) => {
-            eprintln!("hiresti launcher error: failed to spawn python3: {err}");
+            eprintln!("ebb launcher error: failed to spawn python3: {err}");
             ExitCode::from(1)
         }
     }

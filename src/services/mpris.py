@@ -6,10 +6,11 @@ import gi
 
 gi.require_version("Gio", "2.0")
 from gi.repository import Gio, GLib
+from core import brand  # fork
 
 logger = logging.getLogger(__name__)
 
-BUS_NAME = "org.mpris.MediaPlayer2.hiresti"
+BUS_NAME = f"org.mpris.MediaPlayer2.{brand.SLUG}"
 OBJECT_PATH = "/org/mpris/MediaPlayer2"
 IFACE_ROOT = "org.mpris.MediaPlayer2"
 IFACE_PLAYER = "org.mpris.MediaPlayer2.Player"
@@ -430,9 +431,9 @@ class MPRISService:
         if name == "HasTrackList":
             return GLib.Variant("b", False)
         if name == "Identity":
-            return GLib.Variant("s", "HiresTI")
+            return GLib.Variant("s", brand.APP_NAME)
         if name == "DesktopEntry":
-            return GLib.Variant("s", "com.hiresti.player")
+            return GLib.Variant("s", brand.APP_ID)
         if name == "SupportedUriSchemes":
             return GLib.Variant("as", [])
         if name == "SupportedMimeTypes":

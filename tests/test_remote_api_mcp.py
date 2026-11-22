@@ -28,7 +28,7 @@ def test_dispatch_mcp_http_request_initialize_returns_response():
     )
 
     assert status == 200
-    assert payload["result"]["serverInfo"]["name"] == "hiresTI Remote MCP"
+    assert payload["result"]["serverInfo"]["name"] == "Ebb Remote MCP"  # fork: renamed
 
 
 def test_dispatch_mcp_http_request_notification_returns_accepted():

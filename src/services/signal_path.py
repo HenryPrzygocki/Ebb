@@ -256,7 +256,7 @@ class AudioSignalPathWindow(Adw.Window):
 
         # --- 2. Player Engine (播放器处理) ---
         self.card_engine = self.create_stage_card(
-            "preferences-system-symbolic", "HiresTI Engine", "Audio Processing"
+            "preferences-system-symbolic", "Ebb Engine", "Audio Processing"
         )
         main_box.append(self.card_engine)
 

@@ -1814,7 +1814,7 @@ class TidalBackend:
         target = self._resolve_user_playlist(cloud_playlist_id) if cloud_playlist_id else None
         created = False
         if target is None:
-            target = self.create_cloud_playlist(name, "Synced from HiresTI local playlist")
+            target = self.create_cloud_playlist(name, "Synced from a local Ebb playlist")
             created = bool(target is not None)
         if target is None:
             return {

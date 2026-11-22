@@ -12,11 +12,13 @@ from gi.repository import GLib
 
 from core.executor import submit_daemon
 from core.http_session import get_global_session
+from core import brand  # fork
 
 logger = logging.getLogger(__name__)
 
-_RELEASES_URL = "https://api.github.com/repos/yelanxin/hiresTI/releases?per_page=20"
-_RELEASES_PAGE_URL = "https://github.com/yelanxin/hiresTI/releases"
+# Fork: Ebb's own releases; hiresTI's would offer upstream builds as "updates".
+_RELEASES_URL = brand.RELEASES_API_URL
+_RELEASES_PAGE_URL = brand.RELEASES_URL
 _CACHE_TTL_SECONDS = 12 * 60 * 60
 _STAGE_RANK = {
     "alpha": 0,
@@ -145,7 +147,8 @@ def init_update_check_state(app) -> None:
     settings = getattr(app, "settings", {}) or {}
     cached = settings.get("update_check") or {}
     state = _default_update_state(getattr(app, "app_version", "dev"))
-    if isinstance(cached, dict):
+    # Fork: a cache from another release feed (hiresTI's, in migrated settings) is ignored.
+    if isinstance(cached, dict) and cached.get("source") == _RELEASES_URL:
         state["latest_version"] = _coerce_text(cached.get("latest_version"))
         state["latest_name"] = _coerce_text(cached.get("latest_name"))
         state["latest_url"] = _coerce_text(cached.get("latest_url")) or _RELEASES_PAGE_URL
@@ -178,6 +181,7 @@ def _persist_update_state(app) -> None:
         "latest_notes": _coerce_text(state.get("latest_notes")),
         "last_checked_at": int(state.get("last_checked_at", 0) or 0),
         "error": _coerce_text(state.get("error")),
+        "source": _RELEASES_URL,  # fork
     }
     saver = getattr(app, "schedule_save_settings", None)
     if callable(saver):
@@ -247,7 +251,7 @@ def _fetch_update_state(current_version: str) -> dict[str, Any]:
         timeout=(4, 10),
         headers={
             "Accept": "application/vnd.github+json",
-            "User-Agent": f"HiresTI/{state['current_version']}",
+            "User-Agent": f"{brand.APP_NAME}/{state['current_version']}",
         },
     )
     response.raise_for_status()
@@ -338,7 +342,7 @@ def check_for_updates_async(app, user_initiated: bool = False, force: bool = Fal
                 else:
                     notice = getattr(app, "show_output_notice", None)
                     if callable(notice):
-                        notice("HiresTI is up to date.", "ok", 2200)
+                        notice(f"{brand.APP_NAME} is up to date.", "ok", 2200)
             if present_result:
                 _present_update_window(app)
             return False

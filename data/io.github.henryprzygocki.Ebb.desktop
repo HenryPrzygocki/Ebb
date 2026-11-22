@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Ebb
+GenericName=Music Player
+Comment=Listen to TIDAL in lossless and hi-res
+Exec=ebb
+Icon=io.github.henryprzygocki.Ebb
+Terminal=false
+Categories=AudioVideo;Audio;Player;
+Keywords=TIDAL;music;lossless;hi-res;FLAC;streaming;hiresTI;
+StartupNotify=true
+StartupWMClass=io.github.henryprzygocki.Ebb

@@ -133,7 +133,7 @@ class _RemoteHTTPServer(ThreadingHTTPServer):
 
 
 class _RemoteRequestHandler(BaseHTTPRequestHandler):
-    server_version = "HiresTIRemoteAPI/1.0"
+    server_version = "EbbRemoteAPI/1.0"
 
     def setup(self):
         super().setup()
@@ -264,7 +264,7 @@ class _RemoteRequestHandler(BaseHTTPRequestHandler):
                 "ready",
                 {
                     "ok": True,
-                    "service": "hiresTI-remote-api",
+                    "service": "ebb-remote-api",
                     "version": str(getattr(app, "app_version", "dev") or "dev"),
                 },
                 event_id="0",
@@ -301,7 +301,7 @@ class _RemoteRequestHandler(BaseHTTPRequestHandler):
         app = getattr(self.server, "app", None)
         payload = {
             "ok": True,
-            "service": "hiresTI-remote-api",
+            "service": "ebb-remote-api",
             "version": str(getattr(app, "app_version", "dev") or "dev"),
         }
         self._write_json(200, payload)

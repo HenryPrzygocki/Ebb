@@ -1,0 +1,123 @@
+# Ebb: a TIDAL player for Linux, based on hiresTI by yelanxin (GPL-3.0-or-later).
+# Builds the committed `main` branch of the local checkout.
+#
+#   cd ~/Repository/hiresTI/aur/ebb && makepkg -f
+#   sudo pacman -U ebb-*.pkg.tar.zst     # replaces hiresti-fork / the AUR `hiresti`
+pkgname=ebb
+_appid=io.github.henryprzygocki.Ebb
+pkgver=0.1.0.r0.g0000000
+pkgrel=1
+pkgdesc="TIDAL player for Linux, built for lossless and hi-res audio (based on hiresTI)"
+arch=('x86_64')
+url="https://github.com/HenryPrzygocki/Ebb"
+license=('GPL-3.0-or-later')
+# Same as upstream: ring's cc-built objects break under -flto (undefined ring_core_* symbols).
+options=('!lto')
+depends=(
+  'alsa-lib'
+  'gst-plugin-pipewire'
+  'gst-plugins-bad'
+  'gst-plugins-good'
+  'gst-plugins-ugly'
+  'gst-python'
+  'gstreamer'
+  'gtk4'
+  'libadwaita'
+  'libpulse'  # also provides pactl, used by the PipeWire sink watch
+  'pipewire'
+  'python'
+  'python-cairo'
+  'python-dateutil'
+  'python-gobject'
+  'python-isodate'
+  'python-mpegdash'
+  'python-opengl'
+  'python-pyaes'
+  'python-requests'
+  'python-six'
+  'python-tidalapi'
+  'python-typing_extensions'
+  'python-setproctitle'
+  'libusb'
+  'mesa'
+  'libglvnd'
+  'webkitgtk-6.0'
+  'polkit'
+  'acl'
+)
+makedepends=(
+  'cargo'
+  'clang'
+  'git'
+  'pkgconf'
+  'rust'
+)
+optdepends=(
+  'python-pillow: tray icon image loading'
+  'python-pystray: system tray integration'
+  'python-qrcode: QR-code login flow'
+)
+# hiresTI's packages install the same symbolic icons and udev rule.
+conflicts=(
+  'hiresti'
+  'hiresti-bin'
+  'hiresti-git'
+  'hiresti-fork'
+)
+replaces=('hiresti-fork')
+source=("ebb::git+file://${HOME}/Repository/hiresTI#branch=main")
+sha256sums=('SKIP')
+
+pkgver() {
+  cd ebb
+  # Ebb's own tags only: upstream's v1.9.x tags live in the same history.
+  git describe --long --tags --match 'ebb-v*' --abbrev=7 | sed 's/^ebb-v//;s/\([^-]*-g\)/r\1/;s/-/./g'
+}
+
+build() {
+  cd ebb
+
+  cargo build --manifest-path src_rust/rust_audio_core/Cargo.toml --release
+  cargo build --manifest-path src_rust/rust_viz_core/Cargo.toml --release
+  cargo build --manifest-path src_rust/rust_launcher/Cargo.toml --release
+}
+
+package() {
+  cd ebb
+
+  local app_dir="${pkgdir}/usr/share/ebb"
+
+  install -d "${app_dir}"
+  cp -a src/. "${app_dir}/"
+  cp -a icons "${app_dir}/"
+  # icons/source/ is an unused 7.3 MB copy of upstream's old bloated SVG; nothing loads it.
+  rm -rf "${app_dir}/icons/source"
+
+  install -Dm644 version.txt "${app_dir}/version.txt"  # the hiresTI release Ebb is based on
+  install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+
+  install -Dm755 src_rust/rust_audio_core/target/release/librust_audio_core.so \
+    "${app_dir}/src_rust/rust_audio_core/target/release/librust_audio_core.so"
+  install -Dm755 src_rust/rust_viz_core/target/release/libviz_core.so \
+    "${app_dir}/src_rust/rust_viz_core/target/release/libviz_core.so"
+  # The launcher crate keeps upstream's name; only the installed command is Ebb's.
+  install -Dm755 src_rust/rust_launcher/target/release/hiresti "${pkgdir}/usr/bin/ebb"
+
+  # The app looks its symbolic icons up in the system theme, so they go there; upstream's
+  # own app icon (hiresti.png/svg) does not.
+  install -d "${pkgdir}/usr/share/icons/hicolor"
+  cp -a icons/hicolor/. "${pkgdir}/usr/share/icons/hicolor/"
+  find "${pkgdir}/usr/share/icons/hicolor" -path '*/apps/hiresti.*' -delete
+
+  install -Dm644 "data/${_appid}.desktop" "${pkgdir}/usr/share/applications/${_appid}.desktop"
+  install -Dm644 "data/${_appid}.metainfo.xml" "${pkgdir}/usr/share/metainfo/${_appid}.metainfo.xml"
+
+  # USB Rawlink access, as upstream's deb/rpm ship it. The rule keeps hiresTI's file name: the
+  # app's "Fix USB Permissions" looks for it there. Numbered before 73-seat-late.rules, where
+  # systemd turns TAG+="uaccess" into ACLs.
+  install -d "${pkgdir}/usr/lib/udev/rules.d"
+  cat > "${pkgdir}/usr/lib/udev/rules.d/70-hiresti-usb-audio.rules" <<'RULE'
+# Ebb (hiresTI) USB Rawlink - grant logged-in user access to USB audio devices
+SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ENV{ID_USB_INTERFACES}=="*:01????:*", TAG+="uaccess"
+RULE
+}
