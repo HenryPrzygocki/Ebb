@@ -3575,7 +3575,7 @@ _SHORTCUT_SECTIONS = (
         ("Queue", "q"),
         ("Move the focused queue track up / down (or drag it)", "<Alt>Up <Alt>Down"),
         ("Now Playing", "w"),
-        ("Lyrics, visualizer & DSP", "e"),
+        ("Lyrics & DSP panel", "e"),
     )),
     ("General", (
         ("Back: close Now Playing, the queue or Settings, else the previous page", "<Alt>Left"),

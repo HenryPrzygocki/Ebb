@@ -581,6 +581,9 @@ def build_settings_page(app):
     app.card_size_dd.connect("notify::selected", _on_card_size)
     row_cards.append(app.card_size_dd)
     group_cfg.append(row_cards)
+    from ui import viz_panel  # fork: the visualizer is opt-in
+
+    group_cfg.append(viz_panel.settings_row(app))
     settings_vbox.append(group_cfg)
 
     settings_vbox.append(Gtk.Label(label="Streaming", xalign=0, css_classes=["section-title"], margin_top=10))

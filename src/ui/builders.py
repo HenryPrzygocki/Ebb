@@ -1039,7 +1039,8 @@ def build_body(app, container):
     app.viz_handle_box.set_margin_end(0)
     app.viz_handle_box.set_margin_bottom(2)
     app.viz_handle_box.append(app.viz_btn)
-    app.body_overlay.add_overlay(app.viz_handle_box)
+    # Fork (ui/viz_panel.py): the floating handle is built (other code shows and hides it) but
+    # not placed. The panel opens from the DSP button and with E, and closes from its header.
 
     app.viz_root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
     app.viz_root.set_hexpand(True)
@@ -1132,6 +1133,9 @@ def build_body(app, container):
     right_ctrl_box.add_css_class("viz-right-controls")
     right_ctrl_box.set_halign(Gtk.Align.END)
     theme_row.append(right_ctrl_box)
+    from ui import viz_panel  # fork: the panel's own way out, now that the handle is gone
+
+    theme_row.append(viz_panel.close_button(app))
     right_ctrl_box.append(app.viz_freq_scale_dd)
     right_ctrl_box.append(app.viz_bars_dd)
     right_ctrl_box.append(app.viz_profile_dd)
@@ -1245,6 +1249,7 @@ def build_body(app, container):
     if hasattr(app, "_sync_viz_height_to_window"):
         app._sync_viz_height_to_window()
     app.on_viz_page_changed(app.viz_stack, None)
+    viz_panel.apply(app)  # fork: the Spectrum tab only when turned on in Settings
     _body_mark("viz-shell-finalized")
 
     app.sidebar_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, css_classes=["sidebar-shell"])
