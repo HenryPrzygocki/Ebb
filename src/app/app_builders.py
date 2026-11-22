@@ -3659,6 +3659,9 @@ def toggle_mini_mode(self, btn):
 
         self.header.set_visible(False)
         self.paned.set_visible(False)
+        # Fork: the quality banner too, or it fills the mini window instead of the player.
+        if getattr(self, "lossless_banner", None) is not None:
+            self.lossless_banner.set_visible(False)
 
         self.bottom_bar.add_css_class("mini-state")
         self.mini_controls.set_visible(True)
@@ -3688,6 +3691,8 @@ def toggle_mini_mode(self, btn):
         self.close_mini_queue()
         self.header.set_visible(True)
         self.paned.set_visible(True)
+        if getattr(self, "lossless_banner", None) is not None:
+            self.lossless_banner.set_visible(True)
         self.mini_controls.set_visible(False)
         if getattr(self, "mini_queue_arrow", None) is not None:
             self.mini_queue_arrow.set_visible(False)
