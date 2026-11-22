@@ -7,6 +7,7 @@ from gi.repository import Gtk, Adw, GObject, Pango
 from app.app_remote_control import REMOTE_ACCESS_MODES
 from core import brand  # fork
 from ui import account  # fork
+from ui import offline  # fork
 import utils
 from ui.track_table import build_tracks_header, append_header_action_spacers
 
@@ -112,21 +113,21 @@ def build_grid_view(app):
         halign=Gtk.Align.CENTER,
     )
     prompt_label = Gtk.Label(
-        label="Please login to access your TIDAL collection",
+        label=offline.SIGN_IN_TITLE,
         css_classes=["heading", "login-hero-title"],
         wrap=True,
         justify=Gtk.Justification.CENTER,
         xalign=0.5,
     )
     prompt_sub = Gtk.Label(
-        label="Open TIDAL authentication to load your personalized home, library, and mixes.",
+        label=offline.SIGN_IN_TEXT,
         css_classes=["dim-label", "login-hero-subtitle"],
         wrap=True,
         justify=Gtk.Justification.CENTER,
         xalign=0.5,
     )
     prompt_btn = Gtk.Button(
-        label="Login to Tidal",
+        label="Sign In",
         css_classes=["pill", "suggested-action", "login-hero-btn"],
         halign=Gtk.Align.CENTER,
     )
@@ -136,6 +137,17 @@ def build_grid_view(app):
     prompt_card.append(prompt_label)
     prompt_card.append(prompt_sub)
     prompt_card.append(prompt_btn)
+    # Fork: the same card when TIDAL can't be reached at startup (ui/offline.py).
+    retry_btn = Gtk.Button(label="Try Again", css_classes=["pill", "suggested-action", "login-hero-btn"],
+                           halign=Gtk.Align.CENTER, visible=False)
+    retry_btn.set_size_request(220, 46)
+    retry_btn.connect("clicked", lambda _b: offline.retry(app))
+    again_btn = Gtk.Button(label="Sign In Again", css_classes=["flat"], halign=Gtk.Align.CENTER, visible=False)
+    again_btn.connect("clicked", lambda b: offline.sign_in_again(app, b))
+    prompt_card.append(retry_btn)
+    prompt_card.append(again_btn)
+    app.login_prompt_title, app.login_prompt_text = prompt_label, prompt_sub
+    app.login_prompt_btn, app.login_retry_btn, app.login_again_btn = prompt_btn, retry_btn, again_btn
     app.login_prompt_box.append(prompt_card)
     grid_vbox.append(app.login_prompt_box)
 
@@ -173,7 +185,7 @@ def toggle_login_view(app, logged_in):
         account.show_signed_out(app)  # fork
         app.grid_title_label.set_text("Welcome")
         if hasattr(app, "grid_subtitle_label") and app.grid_subtitle_label is not None:
-            app.grid_subtitle_label.set_text("Sign in to load your personalized mixes and library picks")
+            app.grid_subtitle_label.set_text(offline.page_subtitle(app))
         return
 
     display_name = "User"

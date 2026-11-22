@@ -11,6 +11,24 @@ import requests.adapters
 from datetime import datetime
 from urllib.parse import urlparse
 from core.errors import classify_exception
+
+try:
+    from tidalapi.exceptions import AuthenticationError as _TidalAuthError
+except ImportError:  # older tidalapi
+    _TidalAuthError = ()
+
+
+def restore_failure_kind(exc):
+    """Fork: why restoring the saved login failed. "auth" only when TIDAL refused it (a token
+    refresh it turned down, or HTTP 400/401/403); anything else (no network, DNS, a timeout, a
+    server error, a captive portal's page) is "offline": the login may well be fine, and
+    ui/offline.py retries it instead of asking to sign in again."""
+    if _TidalAuthError and isinstance(exc, _TidalAuthError):
+        return "auth"
+    status = getattr(getattr(exc, "response", None), "status_code", None)
+    if isinstance(status, int) and status in (400, 401, 403):
+        return "auth"
+    return "offline"
 from core.http_session import get_global_session
 from utils.paths import get_cache_dir, get_config_dir
 
@@ -57,6 +75,7 @@ class TidalBackend:
         self.fav_track_ids = set()
         self.fav_mix_ids = set()
         self.fav_playlist_ids = set()  # fork #24
+        self.restore_failure = None  # fork: see restore_failure_kind
         self._cached_albums = []
         self._cached_albums_ts = 0.0
         self._albums_cache_ttl = 0.0
@@ -490,6 +509,7 @@ class TidalBackend:
             )
             if not new_session.check_login():
                 logger.warning("Session %s failed: check_login returned false.", reason)
+                self.restore_failure = "auth"
                 return False
 
             self.session = new_session
@@ -504,6 +524,7 @@ class TidalBackend:
             return True
         except Exception as e:
             logger.warning("Session %s error [%s]: %s", reason, classify_exception(e), e)
+            self.restore_failure = restore_failure_kind(e)
             return False
 
     def recover_session(self, reason="api"):
@@ -537,6 +558,7 @@ class TidalBackend:
             return fn()
 
     def try_load_session(self):
+        self.restore_failure = None  # fork: set when a saved login couldn't be restored
         try:
             data = self._read_saved_session_data()
             if not data:

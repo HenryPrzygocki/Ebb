@@ -9,6 +9,7 @@ gi.require_version('Adw', '1')
 from gi.repository import Adw, GLib
 
 from core.executor import submit_daemon
+from ui import offline  # fork
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +19,8 @@ def _restore_session_async(self):
         ok = self.backend.try_load_session()
         if ok:
             GLib.idle_add(self.on_login_success)
+        elif getattr(self.backend, "restore_failure", None) == "offline":
+            GLib.idle_add(offline.show, self)  # fork: offline, not signed out
         else:
             GLib.idle_add(self._toggle_login_view, False)
 
