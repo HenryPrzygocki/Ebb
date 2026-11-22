@@ -81,7 +81,9 @@ def _queue(app):
 
 def expected_next(app):
     """(index, queue entry) of the track that plays when this one ends, or (-1, None)."""
-    if getattr(app, "play_mode", None) == getattr(app, "MODE_ONE", 1):
+    from actions import play_modes
+
+    if play_modes.repeat(app) == play_modes.REPEAT_ONE:
         return -1, None  # repeat-one restarts the track: a reload, as before
     queue = _queue(app)
     get_next = getattr(app, "get_next_index", None)

@@ -67,6 +67,8 @@ def test_play_mode_mapping():
     assert play_mode_to_loop_shuffle(1) == ("Track", False)
     assert play_mode_to_loop_shuffle(2) == ("Playlist", True)
     assert play_mode_to_loop_shuffle(3) == ("Playlist", True)
+    assert play_mode_to_loop_shuffle(5) == ("None", True)
+    assert play_mode_to_loop_shuffle(6) == ("Track", True)
 
 
 def test_mpris_metadata_and_playback_status_snapshot():
@@ -100,20 +102,26 @@ def test_mpris_property_setters_update_play_mode_and_volume():
     app = _make_app()
     svc = MPRISService(app)
 
+    # Fork: Shuffle and LoopStatus are independent, as MPRIS defines them (actions/play_modes.py).
     svc._apply_shuffle(True)
-    assert app.play_mode == app.MODE_SHUFFLE
+    assert app.play_mode == 5  # shuffle on, repeat still off
+    assert svc._loop_shuffle() == ("None", True)
+
+    svc._apply_loop_status("Playlist")
+    assert app.play_mode == app.MODE_SHUFFLE  # shuffle kept
+    svc._apply_loop_status("Track")
+    assert app.play_mode == 6
+    assert svc._loop_shuffle() == ("Track", True)
 
     svc._apply_shuffle(False)
-    assert app.play_mode == app.MODE_NORMAL
-
-    svc._apply_loop_status("Track")
-    assert app.play_mode == app.MODE_ONE
+    assert app.play_mode == app.MODE_ONE  # repeat kept
 
     svc._apply_loop_status("None")
     assert app.play_mode == app.MODE_NORMAL
 
     svc._apply_loop_status("Playlist")
     assert app.play_mode == app.MODE_LOOP
+    assert app.settings["play_mode"] == app.MODE_LOOP
 
     svc._apply_volume(0.35)
     assert int(round(app.settings.get("volume", 0))) == 35

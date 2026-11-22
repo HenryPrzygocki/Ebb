@@ -83,7 +83,8 @@ def _init_widget_refs(self):
     self.dsp_widener_status_label = None
     self.eq_btn = None
     self.eq_pop = None
-    self.mode_btn = None
+    self.shuffle_btn = None
+    self.repeat_btn = None
     self.playback_status_btn = None
     self.track_fav_btn = None
     self.track_list = None
@@ -141,7 +142,8 @@ def _init_widget_refs(self):
     self.now_playing_meta_panel = None
     self.now_playing_tool_row = None
     self.now_playing_track_fav_btn = None
-    self.now_playing_mode_btn = None
+    self.now_playing_shuffle_btn = None
+    self.now_playing_repeat_btn = None
     self.now_playing_status_btn = None
     self.now_playing_dsp_btn = None
     self.now_playing_eq_btn = None

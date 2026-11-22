@@ -4,8 +4,11 @@ class PlayMode:
     LOOP = 0
     ONE = 1
     SHUFFLE = 2
-    SMART = 3
+    SMART = 3  # was Shuffle under another name; read as SHUFFLE (actions/play_modes.py)
     NORMAL = 4
+    # Fork: Shuffle and Repeat are separate controls; these two complete the pairs.
+    SHUFFLE_NO_REPEAT = 5
+    SHUFFLE_REPEAT_ONE = 6
 
     CYCLE_ORDER = (NORMAL, LOOP, ONE, SHUFFLE, SMART)
 

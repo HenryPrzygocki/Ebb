@@ -59,9 +59,9 @@ def _init_paths_and_settings(self):
     else:
         self.settings["viz_sync_device_offsets"] = {}
 
-    self.play_mode = self.settings.get("play_mode", self.MODE_NORMAL)
-    if self.play_mode not in self.MODE_ICONS:
-        self.play_mode = self.MODE_NORMAL
+    from actions import play_modes  # fork: Shuffle and Repeat are separate controls
+
+    self.play_mode = play_modes.normalize(self.settings.get("play_mode", self.MODE_NORMAL))
     self.shuffle_indices = []  # 用来存随机播放的顺序列表
 
 

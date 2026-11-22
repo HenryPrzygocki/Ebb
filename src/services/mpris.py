@@ -107,14 +107,14 @@ def track_id_to_object_path(track_id):
 
 
 def play_mode_to_loop_shuffle(play_mode, mode_normal=4, mode_loop=0, mode_one=1, mode_shuffle=2, mode_smart=3):
-    mode = _safe_int(play_mode, mode_normal)
-    if mode == _safe_int(mode_normal, 4):
-        return "None", False
-    if mode == _safe_int(mode_one, 1):
-        return "Track", False
-    if mode in (_safe_int(mode_shuffle, 2), _safe_int(mode_smart, 3)):
-        return "Playlist", True
-    return "Playlist", False
+    """(LoopStatus, Shuffle) for a play mode. Fork: Shuffle and Repeat are independent
+    (actions/play_modes.py), as in MPRIS. The mode_* arguments are kept for callers; the
+    values are fixed (core.constants.PlayMode)."""
+    from actions import play_modes
+
+    shuffled, repeat = play_modes.split(play_mode)
+    loop = {play_modes.REPEAT_OFF: "None", play_modes.REPEAT_ALL: "Playlist", play_modes.REPEAT_ONE: "Track"}[repeat]
+    return loop, shuffled
 
 
 class MPRISService:
@@ -547,64 +547,26 @@ class MPRISService:
         return play_mode_to_loop_shuffle(play_mode, mode_normal, mode_loop, mode_one, mode_shuffle, mode_smart)
 
     def _set_play_mode(self, new_mode):
-        mode = _safe_int(new_mode, getattr(self.app, "MODE_NORMAL", 4))
-        self.app.play_mode = mode
-        mode_btn = getattr(self.app, "mode_btn", None)
-        mode_icons = getattr(self.app, "MODE_ICONS", {})
-        mode_tips = getattr(self.app, "MODE_TOOLTIPS", {})
-        if mode_btn is not None:
-            try:
-                mode_btn.set_icon_name(mode_icons.get(mode, "hiresti-mode-normal-symbolic"))
-                mode_btn.set_tooltip_text(mode_tips.get(mode, "Normal Playback"))
-            except Exception:
-                pass
-        mode_shuffle = _safe_int(getattr(self.app, "MODE_SHUFFLE", 2), 2)
-        mode_smart = _safe_int(getattr(self.app, "MODE_SMART", 3), 3)
-        if mode in (mode_shuffle, mode_smart):
-            gen = getattr(self.app, "_generate_shuffle_list", None)
-            if callable(gen):
-                try:
-                    gen()
-                except Exception:
-                    pass
-        else:
-            self.app.shuffle_indices = []
-        settings = getattr(self.app, "settings", None)
-        if isinstance(settings, dict):
-            settings["play_mode"] = mode
-        saver = getattr(self.app, "schedule_save_settings", None)
-        if callable(saver):
-            try:
-                saver()
-            except Exception:
-                pass
+        from actions import play_modes
+
+        play_modes.set_mode(self.app, new_mode, announce=False)
         self.sync_metadata()
 
     def _apply_loop_status(self, loop_status):
-        loop = str(loop_status or "Playlist")
-        mode_normal, mode_loop, mode_one, mode_shuffle, mode_smart = self._mode_constants()
-        cur_mode = _safe_int(getattr(self.app, "play_mode", mode_normal), mode_normal)
-        if loop == "Track":
-            self._set_play_mode(mode_one)
-            return
-        if loop == "Playlist":
-            if cur_mode in (mode_shuffle, mode_smart):
-                self._set_play_mode(mode_shuffle)
-            else:
-                self._set_play_mode(mode_loop)
-            return
-        self._set_play_mode(mode_normal)
+        """Set Repeat from MPRIS's LoopStatus, keeping Shuffle as it is."""
+        from actions import play_modes
+
+        repeat = {"Track": play_modes.REPEAT_ONE, "Playlist": play_modes.REPEAT_ALL}.get(
+            str(loop_status or "Playlist"), play_modes.REPEAT_OFF
+        )
+        self._set_play_mode(play_modes.join(play_modes.shuffle_on(self.app), repeat))
 
     def _apply_shuffle(self, enabled):
-        on = bool(enabled)
-        mode_normal, _mode_loop, _mode_one, mode_shuffle, mode_smart = self._mode_constants()
-        cur_mode = _safe_int(getattr(self.app, "play_mode", mode_normal), mode_normal)
-        if on:
-            if cur_mode not in (mode_shuffle, mode_smart):
-                self._set_play_mode(mode_shuffle)
-            return
-        if cur_mode in (mode_shuffle, mode_smart):
-            self._set_play_mode(mode_normal)
+        """Set Shuffle from MPRIS, keeping Repeat as it is."""
+        from actions import play_modes
+
+        if bool(enabled) != play_modes.shuffle_on(self.app):
+            self._set_play_mode(play_modes.join(bool(enabled), play_modes.repeat(self.app)))
 
     def _volume(self):
         scale = getattr(self.app, "vol_scale", None)

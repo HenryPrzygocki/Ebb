@@ -158,40 +158,6 @@ def on_tech_info_clicked(self, btn):
     win.present()
 
 
-def on_toggle_mode(self, btn):
-    cycle = tuple(getattr(self, "MODE_CYCLE_ORDER", ()) or ())
-    if not cycle:
-        cycle = (
-            getattr(self, "MODE_NORMAL", 4),
-            getattr(self, "MODE_LOOP", 0),
-            getattr(self, "MODE_ONE", 1),
-            getattr(self, "MODE_SHUFFLE", 2),
-            getattr(self, "MODE_SMART", 3),
-        )
-    try:
-        idx = cycle.index(self.play_mode)
-    except ValueError:
-        idx = 0
-    self.play_mode = cycle[(idx + 1) % len(cycle)]
-
-    icon = self.MODE_ICONS.get(self.play_mode, "hiresti-mode-normal-symbolic")
-    tooltip = self.MODE_TOOLTIPS.get(self.play_mode, "Normal Playback")
-
-    for btn in (getattr(self, "mode_btn", None), getattr(self, "now_playing_mode_btn", None)):
-        if btn is not None:
-            btn.set_icon_name(icon)
-            btn.set_tooltip_text(tooltip)
-
-    if self.play_mode == self.MODE_SHUFFLE or self.play_mode == self.MODE_SMART:
-        self._generate_shuffle_list()
-    else:
-        self.shuffle_indices = []
-    self.settings["play_mode"] = self.play_mode
-    self.schedule_save_settings()
-    if hasattr(self, "_mpris_sync_metadata"):
-        self._mpris_sync_metadata()
-
-
 def on_fav_clicked(self, btn):
     if not self.current_album:
         return

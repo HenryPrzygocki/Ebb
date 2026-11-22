@@ -53,8 +53,9 @@ def _index_of(queue, entry):
 
 
 def _shuffle_like(app):
-    mode = getattr(app, "play_mode", None)
-    return mode is not None and mode in (getattr(app, "MODE_SHUFFLE", 2), getattr(app, "MODE_SMART", 3))
+    from actions import play_modes
+
+    return play_modes.shuffle_on(app)
 
 
 def _shuffle_order(app, queue, current):
@@ -78,20 +79,27 @@ def _shuffle_order(app, queue, current):
     return order
 
 
-def _choose_shuffle_index(app, current, total):
-    """Next index under shuffle. Stable until that track starts, so prefetch and Next agree."""
+def _choose_shuffle_index(app, current, total, wrap=True):
+    """Next index under shuffle. Stable until that track starts, so prefetch and Next agree.
+
+    `wrap`: once every track has had its turn, start a new shuffled pass (Repeat All or One);
+    otherwise -1 (Repeat off: the end)."""
     from actions.playlist_playback import uses_shuffled_playlist_order
     if uses_shuffled_playlist_order(app):
-        return (current + 1) % total
+        if current + 1 < total:
+            return current + 1
+        return 0 if wrap else -1
     queue = _active_queue(app)
     current_entry = queue[current] if 0 <= current < len(queue) else None
-    for _cycle in range(2):
+    for _cycle in range(2 if wrap else 1):
         order = _shuffle_order(app, queue, current)
         while order:
             idx = _index_of(queue, order[0])
             if idx >= 0 and order[0] is not current_entry:
                 return idx
             del order[0]  # removed from the queue meanwhile, or it's the current track
+        if not wrap:
+            return -1  # every track had its turn; on_next_track stops and resets the order
         app._shuffle_order = None  # every track had its turn: start a new cycle
     fallback = [idx for idx in range(total) if idx != current]
     return random.choice(fallback) if fallback else current
@@ -210,11 +218,13 @@ def on_next_track(app, btn=None, auto=False):
 
     next_idx = -1
 
-    mode_normal = getattr(app, "MODE_NORMAL", 4)
-    mode_loop = getattr(app, "MODE_LOOP", 0)
+    from actions import play_modes  # fork: Shuffle and Repeat are separate controls
+
+    repeat = play_modes.repeat(app)
+    shuffled = play_modes.shuffle_on(app)
 
     # Fork #25: queued tracks play first in every mode; repeat-one repeats until Next is pressed.
-    if not (app.play_mode == app.MODE_ONE and auto):
+    if not (repeat == play_modes.REPEAT_ONE and auto):
         from actions import up_next
         queued = up_next.next_index(app)
         if queued >= 0:
@@ -225,27 +235,26 @@ def on_next_track(app, btn=None, auto=False):
             app.play_track(queued)
             return
 
-    if app.play_mode == app.MODE_ONE:
+    if repeat == play_modes.REPEAT_ONE and auto:
         # Fork: only the end of a track repeats it. Every Next button, Ctrl+Right and MPRIS call
         # this without `btn`, so upstream's "btn is None" test made Next restart the track.
-        if auto:
-            next_idx = current
-        else:
-            next_idx = (current + 1) % total
-    elif app.play_mode in [app.MODE_SHUFFLE, app.MODE_SMART]:
+        next_idx = current
+    elif shuffled:
         if total <= 1:
-            next_idx = 0
+            next_idx = 0 if repeat != play_modes.REPEAT_OFF else -1
         else:
-            next_idx = _choose_shuffle_index(app, current, total)
-    elif app.play_mode == mode_loop:
-        next_idx = (current + 1) % total
-    elif app.play_mode == mode_normal:
+            next_idx = _choose_shuffle_index(app, current, total, wrap=repeat != play_modes.REPEAT_OFF)
+    elif repeat == play_modes.REPEAT_OFF:
         if current + 1 < total:
             next_idx = current + 1
+    else:  # Repeat All, or Next pressed under Repeat One
+        next_idx = (current + 1) % total
 
     if 0 <= next_idx < total:
         app.play_track(next_idx)
-    elif app.play_mode == mode_normal:
+    elif repeat == play_modes.REPEAT_OFF:
+        if shuffled:
+            app._shuffle_order = None  # every track had its turn: the next play starts a new pass
         _stop_after_queue_end(app)
 
 
@@ -311,7 +320,9 @@ def on_prev_track(app, btn=None):
                 app.play_track(idx, from_history=True)
                 return
 
-    at_start = shuffle_like or (app.play_mode == getattr(app, "MODE_NORMAL", 4) and current == 0)
+    from actions import play_modes
+
+    at_start = shuffle_like or (play_modes.repeat(app) == play_modes.REPEAT_OFF and current == 0)
     if at_start and can_seek:
         # Nothing to step back to: restart rather than jump to an arbitrary or wrapped track.
         _restart_current(app, player, now, current, arm=False)
@@ -335,9 +346,10 @@ def get_next_index(app, direction=1):
     if current is None or current < 0 or current >= total:
         current = 0
 
-    mode_normal = getattr(app, "MODE_NORMAL", 4)
+    from actions import play_modes  # fork: Shuffle and Repeat are separate controls
 
-    if app.play_mode == app.MODE_ONE:
+    repeat = play_modes.repeat(app)
+    if repeat == play_modes.REPEAT_ONE:
         return current
 
     if direction == 1:  # fork #25: a queued track plays next (read-only: no settle here)
@@ -348,14 +360,14 @@ def get_next_index(app, direction=1):
                 if entry is queued:
                     return i
 
-    if app.play_mode in [app.MODE_SHUFFLE, app.MODE_SMART]:
+    if play_modes.shuffle_on(app):
         if direction == 1:
             # Use the same selection logic as on_next_track so that prefetch
             # actually predicts the track that will be played next.
-            return _choose_shuffle_index(app, current, total)
+            return _choose_shuffle_index(app, current, total, wrap=repeat != play_modes.REPEAT_OFF)
         return (current - 1) % total
 
-    if app.play_mode == mode_normal:
+    if repeat == play_modes.REPEAT_OFF:
         if direction == 1:
             return current + 1 if (current + 1) < total else -1
         return current - 1 if current > 0 else -1

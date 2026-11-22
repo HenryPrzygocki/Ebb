@@ -179,7 +179,7 @@ _VALIDATION_RULES = {
     "alsa_mmap_realtime_priority": (str, None, None, AlsaMmapRealtimePriority.DEFAULT_LABEL),
     "output_bit_depth": (str, None, None, "Auto"),
     "volume": (int, 0, 100, 80),
-    "play_mode": (int, 0, 4, 4),
+    "play_mode": (int, 0, 6, 4),  # fork: 5 and 6 pair Shuffle with Repeat off / One
     "last_nav": (str, None, None, "home"),
     "last_view": (str, None, None, "grid_view"),
     "viz_expanded": (bool, None, None, False),
@@ -352,7 +352,7 @@ def normalize_settings(raw: Optional[dict[str, Any]]) -> dict[str, Any]:
     )
     normalized["output_bit_depth"] = _as_str(raw.get("output_bit_depth"), DEFAULT_SETTINGS["output_bit_depth"])
     normalized["volume"] = _as_int(raw.get("volume"), DEFAULT_SETTINGS["volume"], minimum=0, maximum=100)
-    normalized["play_mode"] = _as_int(raw.get("play_mode"), DEFAULT_SETTINGS["play_mode"], minimum=0, maximum=4)
+    normalized["play_mode"] = _as_int(raw.get("play_mode"), DEFAULT_SETTINGS["play_mode"], minimum=0, maximum=6)
     normalized["last_nav"] = _as_str(raw.get("last_nav"), DEFAULT_SETTINGS["last_nav"])
     normalized["last_view"] = _as_str(raw.get("last_view"), DEFAULT_SETTINGS["last_view"])
     normalized["viz_expanded"] = _as_bool(raw.get("viz_expanded"), DEFAULT_SETTINGS["viz_expanded"])

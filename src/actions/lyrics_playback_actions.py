@@ -119,7 +119,9 @@ def _karaoke_active_idx(words, current_time):
 def _prefetch_next_track(app, current_index):
     try:
         from actions import up_next  # fork #25: a queued track plays next
-        queued = None if app.play_mode == getattr(app, "MODE_ONE", 1) else up_next.peek(app)
+        from actions import play_modes
+
+        queued = None if play_modes.repeat(app) == play_modes.REPEAT_ONE else up_next.peek(app)
         if queued is not None:
             next_track = queued
         else:

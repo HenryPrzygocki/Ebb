@@ -1745,6 +1745,25 @@ flowboxchild { background-color: transparent; padding: 0; margin: 0; }
     background-color: alpha(@warning_color, 0.20);
     box-shadow: inset 0 0 0 1px alpha(@warning_color, 0.60);
 }
+/* fork: Shuffle and Repeat beside the transport (actions/play_modes.py). Off: quieter than the
+   transport. On: accent icon on a tinted circle, so the state shows by shape, not colour alone. */
+.transport-mode-btn {
+    min-width: 28px;
+    min-height: 28px;
+    padding: 2px;
+}
+.transport-mode-btn image { opacity: 0.6; }
+.transport-mode-btn:hover image { opacity: 0.9; }
+.transport-mode-btn.on { background-color: alpha(@accent_bg_color, 0.18); }
+.transport-mode-btn.on:hover { background-color: alpha(@accent_bg_color, 0.28); }
+.transport-mode-btn.on image { opacity: 1; color: @accent_color; }
+.now-playing-controls .transport-mode-btn {
+    min-width: 36px;
+    min-height: 36px;
+    margin: 0;
+    padding: 0;
+}
+.now-playing-controls .transport-mode-btn image { -gtk-icon-size: 18px; }
 /* fork: artist and album names in track rows are links (ui/track_table.link_label) */
 label.track-link-hot { text-decoration: underline; }
 label.dim-label.track-link-hot { opacity: 1; }

@@ -1398,14 +1398,6 @@ def _build_now_playing_left_panel(self, layout):
     self.now_playing_track_fav_btn.connect("clicked", self.on_track_fav_clicked)
     tool_row.append(self.now_playing_track_fav_btn)
 
-    self.now_playing_mode_btn = Gtk.Button(
-        icon_name=self.MODE_ICONS.get(self.play_mode, "hiresti-mode-normal-symbolic"),
-        css_classes=["flat", "circular", "player-side-btn", "now-playing-tool-btn"],
-    )
-    self.now_playing_mode_btn.set_tooltip_text(self.MODE_TOOLTIPS.get(self.play_mode, "Normal Playback (Stop at End)"))
-    self.now_playing_mode_btn.connect("clicked", self.on_toggle_mode)
-    tool_row.append(self.now_playing_mode_btn)
-
     self.now_playing_status_btn = Gtk.Button(
         icon_name="hiresti-status-normal-symbolic",
         css_classes=["flat", "circular", "player-side-btn", "now-playing-tool-btn"],
@@ -1454,6 +1446,11 @@ def _build_now_playing_left_panel(self, layout):
 
     ctrls = Gtk.Box(spacing=10, halign=Gtk.Align.CENTER, css_classes=["now-playing-controls"])
     self.now_playing_controls_box = ctrls
+    # Fork: Shuffle and Repeat flank the transport here too (actions/play_modes.py).
+    from actions import play_modes
+
+    self.now_playing_shuffle_btn, self.now_playing_repeat_btn = play_modes.buttons(self)
+    ctrls.append(self.now_playing_shuffle_btn)
     btn_prev = Gtk.Button(icon_name="media-skip-backward-symbolic", css_classes=["flat", "transport-btn"])
     btn_prev.connect("clicked", self.on_prev_track)
     ctrls.append(btn_prev)
@@ -1468,6 +1465,7 @@ def _build_now_playing_left_panel(self, layout):
     btn_next = Gtk.Button(icon_name="media-skip-forward-symbolic", css_classes=["flat", "transport-btn"])
     btn_next.connect("clicked", lambda _b: self.on_next_track())
     ctrls.append(btn_next)
+    ctrls.append(self.now_playing_repeat_btn)
     controls_stack.append(ctrls)
 
     info_card.append(controls_stack)

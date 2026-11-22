@@ -1491,6 +1491,13 @@ def build_player_bar(app, container):
     ctrls = Gtk.Box(spacing=12, halign=Gtk.Align.CENTER)
     ctrls.add_css_class("player-ctrls-box")
 
+    # Fork: Shuffle and Repeat flank the transport (actions/play_modes.py); upstream had one
+    # five-mode button among the side controls.
+    from actions import play_modes
+
+    app.shuffle_btn, app.repeat_btn = play_modes.buttons(app)
+    ctrls.append(app.shuffle_btn)
+
     btn_prev = Gtk.Button(icon_name="media-skip-backward-symbolic", css_classes=["flat", "transport-btn"])
     btn_prev.connect("clicked", app.on_prev_track)
     btn_prev.set_tooltip_text("Previous Track (Ctrl+←)")
@@ -1505,6 +1512,7 @@ def build_player_bar(app, container):
     btn_next.connect("clicked", lambda b: app.on_next_track())
     btn_next.set_tooltip_text("Next Track (Ctrl+→)")
     ctrls.append(btn_next)
+    ctrls.append(app.repeat_btn)
     center_box.append(ctrls)
 
     app.timeline_box = Gtk.Box(spacing=12, orientation=Gtk.Orientation.HORIZONTAL)
@@ -1552,11 +1560,6 @@ def build_player_bar(app, container):
     app.vol_box = Gtk.Box(spacing=4, valign=Gtk.Align.CENTER)
     app.vol_box.set_hexpand(False)
     app.vol_box.set_halign(Gtk.Align.END)
-
-    app.mode_btn = Gtk.Button(icon_name=app.MODE_ICONS[app.MODE_NORMAL], css_classes=["flat", "circular", "player-side-btn"])
-    app.mode_btn.set_tooltip_text(app.MODE_TOOLTIPS[app.MODE_NORMAL])
-    app.mode_btn.connect("clicked", app.on_toggle_mode)
-    app.vol_box.append(app.mode_btn)
 
     app.playback_status_btn = Gtk.Button(
         icon_name="hiresti-status-normal-symbolic",

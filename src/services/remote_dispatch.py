@@ -116,8 +116,17 @@ def _play_mode_name(app) -> str:
         getattr(app, "MODE_ONE", 1): "one",
         getattr(app, "MODE_SHUFFLE", 2): "shuffle",
         getattr(app, "MODE_SMART", 3): "smart",
+        # Fork: Shuffle and Repeat are separate controls (actions/play_modes.py).
+        getattr(app, "MODE_SHUFFLE_NO_REPEAT", 5): "shuffle_once",
+        getattr(app, "MODE_SHUFFLE_REPEAT_ONE", 6): "shuffle_one",
     }
     return mapping.get(mode, str(mode))
+
+
+def _shuffle_repeat(app):
+    from actions import play_modes
+
+    return play_modes.split(getattr(app, "play_mode", 4))
 
 
 def _player_state_snapshot(app):
@@ -145,6 +154,8 @@ def _player_state_snapshot(app):
         "duration_seconds": round(_safe_float(duration, 0.0), 3),
         "volume_percent": _safe_int(getattr(app, "settings", {}).get("volume", 0), 0),
         "play_mode": _play_mode_name(app),
+        "shuffle": _shuffle_repeat(app)[0],
+        "repeat": _shuffle_repeat(app)[1],
         "current_index": queue_state["current_index"],
         "queue_size": len(queue_state["queue"]),
         "track": _serialize_track(current_track),

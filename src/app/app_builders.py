@@ -3567,6 +3567,8 @@ _SHORTCUT_SECTIONS = (
         ("Previous track (restarts after 3 s)", "<Control>Left"),
         ("Seek back / forward 10 s", "<Shift>Left <Shift>Right"),
         ("Volume up / down", "<Control>Up <Control>Down"),
+        ("Shuffle on / off", "<Control>s"),
+        ("Repeat: off, all, one", "<Control>r"),
     )),
     ("Panels", (
         ("Search", "<Control>f"),
@@ -3618,6 +3620,15 @@ def on_key_pressed(self, controller, keyval, keycode, state):
     # Fork: closing the window only hides it to the tray; Ctrl+Q really quits (GNOME convention).
     if ctrl and keyval in (Gdk.KEY_q, Gdk.KEY_Q):
         self._quit_from_tray()
+        return True
+    # Fork: Shuffle and Repeat (actions/play_modes.py), the keys Spotify uses.
+    if ctrl and keyval in (Gdk.KEY_s, Gdk.KEY_S, Gdk.KEY_r, Gdk.KEY_R):
+        from actions import play_modes
+
+        if keyval in (Gdk.KEY_s, Gdk.KEY_S):
+            play_modes.toggle_shuffle(self, notify=True)
+        else:
+            play_modes.cycle_repeat(self, notify=True)
         return True
     # Fork #17: card size in the cover grids, like zoom in a browser.
     if ctrl and keyval in (Gdk.KEY_equal, Gdk.KEY_plus, Gdk.KEY_KP_Add, Gdk.KEY_minus, Gdk.KEY_KP_Subtract, Gdk.KEY_0, Gdk.KEY_KP_0):
@@ -3698,6 +3709,9 @@ def toggle_mini_mode(self, btn):
 
         if self.timeline_box is not None: self.timeline_box.set_visible(False)
         if self.vol_box is not None: self.vol_box.set_visible(False)
+        for name in ("shuffle_btn", "repeat_btn"):  # fork: the mini row fits only the transport
+            if getattr(self, name, None) is not None:
+                getattr(self, name).set_visible(False)
         if self.tech_box is not None: self.tech_box.set_visible(False)
         if getattr(self, "player_left_panel", None) is not None:
             self.player_left_panel.set_size_request(-1, -1)
@@ -3730,6 +3744,9 @@ def toggle_mini_mode(self, btn):
 
         if self.timeline_box is not None: self.timeline_box.set_visible(True)
         if self.vol_box is not None: self.vol_box.set_visible(True)
+        for name in ("shuffle_btn", "repeat_btn"):
+            if getattr(self, name, None) is not None:
+                getattr(self, name).set_visible(True)
         if self.tech_box is not None: self.tech_box.set_visible(True)
         if getattr(self, "player_left_panel", None) is not None:
             self.player_left_panel.set_size_request(-1, -1)
