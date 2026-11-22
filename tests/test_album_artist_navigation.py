@@ -2,9 +2,20 @@ import os
 import sys
 from types import SimpleNamespace
 
+import pytest
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from actions import ui_actions
+
+
+@pytest.fixture(autouse=True)
+def _fake_card_grid(monkeypatch):
+    # Fork #17: grid covers come from ui/card_grid.py, which builds real widgets; these tests
+    # swap ui_actions.Gtk for fakes, so the covers become placeholders too.
+    monkeypatch.setattr(
+        ui_actions, "card_grid", SimpleNamespace(cover=lambda *_a, **_k: object(), fit_labels=lambda _card: None)
+    )
 from actions import ui_navigation
 from app import app_album
 

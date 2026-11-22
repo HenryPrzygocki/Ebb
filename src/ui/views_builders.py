@@ -554,6 +554,33 @@ def build_settings_page(app):
     app.glass_scale.connect("value-changed", lambda s: ui_glass.set_amount(app, s.get_value() / 100))
     row_glass.append(app.glass_scale)
     group_cfg.append(row_glass)
+    # Fork #17: the cover grids' card size (ui/card_grid.py).
+    from ui import card_grid
+
+    row_cards = Gtk.Box(spacing=12, margin_start=12, margin_end=12, margin_top=8, margin_bottom=8)
+    cards_info = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, valign=Gtk.Align.CENTER, hexpand=True)
+    cards_info.append(Gtk.Label(label="Card Size", xalign=0, css_classes=["settings-label"]))
+    cards_info.append(
+        Gtk.Label(
+            label="Album, artist and playlist covers fill each row; this sets how many fit. "
+            "Ctrl+= and Ctrl+\u2212 change it from any page, Ctrl+0 resets it.",
+            xalign=0,
+            wrap=True,
+            css_classes=["dim-label"],
+        )
+    )
+    row_cards.append(cards_info)
+    app.card_size_dd = Gtk.DropDown(model=Gtk.StringList.new(list(card_grid.LABELS)), valign=Gtk.Align.CENTER)
+    app.card_size_dd.set_selected(card_grid.SIZES.index(card_grid.current()))
+
+    def _on_card_size(dd, _pspec):
+        i = dd.get_selected()
+        if 0 <= i < len(card_grid.SIZES):
+            card_grid.set_size(app, card_grid.SIZES[i])
+
+    app.card_size_dd.connect("notify::selected", _on_card_size)
+    row_cards.append(app.card_size_dd)
+    group_cfg.append(row_cards)
     settings_vbox.append(group_cfg)
 
     settings_vbox.append(Gtk.Label(label="Streaming", xalign=0, css_classes=["section-title"], margin_top=10))

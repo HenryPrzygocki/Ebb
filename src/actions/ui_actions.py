@@ -18,6 +18,7 @@ from _rust.viz import RustVizCore
 from ui import config as ui_config
 from ui import context_menu
 from ui import hires_filter  # fork
+from ui import card_grid  # fork #17
 from actions import up_next  # fork #25
 from ui.track_table import LAYOUT, build_tracks_header, append_header_action_spacers
 from ui.track_table import adapt_track_row, clear_track_rows, set_track_rows_hidden, track_columns  # fork
@@ -206,22 +207,29 @@ def _build_feed_item_button(app, item_data, on_click):
     img_cls = layout["img_cls"]
     text_width_chars = layout["text_width_chars"]
     v = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, css_classes=layout["card_classes"])
-    v.set_size_request(card_width, -1)
-    img = Gtk.Picture(css_classes=[img_cls])
-    img.set_size_request(img_size, img_size)
-    img.set_can_shrink(True)
-    try:
-        img.set_content_fit(Gtk.ContentFit.COVER)
-    except Exception:
-        pass
-    media_widget = img
-    if item_data["image_url"]:
-        utils.load_img(img, item_data["image_url"], app.cache_dir, img_size)
+    # Fork #17: album, playlist, mix and artist covers fill their grid column; track cards stay fixed.
+    item_type = str(item_data.get("type") or "")
+    fit = item_type != "Track"
+    if fit:
+        icon = "avatar-default-symbolic" if item_type == "Artist" else "audio-x-generic-symbolic"
+        media = card_grid.cover(item_data["image_url"], app.cache_dir, img_size, img_cls, icon)
     else:
-        fallback = Gtk.Image(icon_name="audio-x-generic-symbolic", pixel_size=img_size, css_classes=[img_cls])
-        fallback.set_size_request(img_size, img_size)
-        media_widget = fallback
-    media = _build_feed_media_overlay(media_widget, img_size, img_cls)
+        v.set_size_request(card_width, -1)
+        img = Gtk.Picture(css_classes=[img_cls])
+        img.set_size_request(img_size, img_size)
+        img.set_can_shrink(True)
+        try:
+            img.set_content_fit(Gtk.ContentFit.COVER)
+        except Exception:
+            pass
+        media_widget = img
+        if item_data["image_url"]:
+            utils.load_img(img, item_data["image_url"], app.cache_dir, img_size)
+        else:
+            fallback = Gtk.Image(icon_name="audio-x-generic-symbolic", pixel_size=img_size, css_classes=[img_cls])
+            fallback.set_size_request(img_size, img_size)
+            media_widget = fallback
+        media = _build_feed_media_overlay(media_widget, img_size, img_cls)
     v.append(media)
     title_text = str(item_data.get("name") or "Unknown")
     title_label = Gtk.Label(
@@ -250,7 +258,10 @@ def _build_feed_item_button(app, item_data, on_click):
         subtitle_label.set_tooltip_text(subtitle_raw)
     v.append(subtitle_label)
     btn = Gtk.Button(css_classes=["flat", "history-card-btn", "home-feed-btn"])
-    btn.set_size_request(card_width, -1)
+    if fit:
+        card_grid.fit_labels(v)
+    else:
+        btn.set_size_request(card_width, -1)
     btn.set_child(v)
     btn.connect("clicked", lambda _b, d=item_data: on_click(d))
     context_menu.tag(btn, item_data.get("obj"), item_data.get("type"))
@@ -304,15 +315,7 @@ def _build_my_albums_style_button(app, album, on_click):
         spacing=6,
         css_classes=_feed_card_classes("history-card"),
     )
-    img = Gtk.Image(pixel_size=utils.COVER_SIZE, css_classes=["album-cover-img"])
-    img.set_from_icon_name("audio-x-generic-symbolic")
-    utils.load_img(
-        img,
-        lambda a=album: app.backend.get_artwork_url(a, 320),
-        app.cache_dir,
-        utils.COVER_SIZE,
-    )
-    card.append(_build_feed_media_overlay(img, utils.COVER_SIZE, "album-cover-img"))
+    card.append(card_grid.cover(lambda a=album: app.backend.get_artwork_url(a, 320), app.cache_dir, utils.COVER_SIZE))
     card.append(
         Gtk.Label(
             label=_album_title_text(album),
@@ -332,6 +335,7 @@ def _build_my_albums_style_button(app, album, on_click):
     )
     subtitle_label.set_tooltip_text(subtitle)
     card.append(subtitle_label)
+    card_grid.fit_labels(card)
     btn = Gtk.Button(css_classes=["flat", "history-card-btn", "home-feed-btn"])
     btn.set_child(card)
     btn.connect("clicked", lambda _btn, a=album: on_click(a))
@@ -2102,8 +2106,9 @@ def batch_load_artists(app, artists, batch=10, _token=None, _flow=None):
         return False
     curr, rem = artists[:batch], artists[batch:]
     for art in curr:
+        if not str(getattr(art, "name", "") or "").strip():
+            continue  # fork: nameless favourites drew a blank card (first, in A-Z); the search index drops them too
         v = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, css_classes=_artist_card_classes())
-        img = Gtk.Image(pixel_size=150, css_classes=["circular-avatar"])
         # Fast path: try to get artwork URL synchronously from in-memory cache or local
         # object attributes (no network calls). This prevents all _IMG_EXECUTOR workers
         # from being blocked on URL resolution API calls when rendering large collections.
@@ -2115,8 +2120,7 @@ def batch_load_artists(app, artists, batch=10, _token=None, _flow=None):
             if _quick_url and not app.backend._is_placeholder_artist_artwork_url(_quick_url):
                 _cached_url = _quick_url
         url_arg = _cached_url if _cached_url else (lambda a=art: app.backend.get_artist_artwork_url(a, 320))
-        utils.load_img(img, url_arg, app.cache_dir, 150)
-        v.append(_build_feed_media_overlay(img, 150, "circular-avatar"))
+        v.append(card_grid.cover(url_arg, app.cache_dir, 150, "circular-avatar", "avatar-default-symbolic"))
         v.append(
             Gtk.Label(
                 label=art.name,
@@ -2127,6 +2131,7 @@ def batch_load_artists(app, artists, batch=10, _token=None, _flow=None):
                 css_classes=["heading", "home-card-title"],
             )
         )
+        card_grid.fit_labels(v)
         c = Gtk.FlowBoxChild()
         c.set_child(v)
         c.data_item = {"obj": art, "type": "Artist"}
@@ -2230,15 +2235,7 @@ def _build_mix_tile(app, mix, on_click):
         spacing=6,
         css_classes=_feed_card_classes("history-card"),
     )
-    img = Gtk.Image(pixel_size=utils.COVER_SIZE, css_classes=["album-cover-img"])
-    img.set_from_icon_name("audio-x-generic-symbolic")
-    utils.load_img(
-        img,
-        lambda m=mix: app.backend.get_artwork_url(m, 320),
-        app.cache_dir,
-        utils.COVER_SIZE,
-    )
-    card.append(_build_feed_media_overlay(img, utils.COVER_SIZE, "album-cover-img"))
+    card.append(card_grid.cover(lambda m=mix: app.backend.get_artwork_url(m, 320), app.cache_dir, utils.COVER_SIZE))
 
     title = str(getattr(mix, "title", "") or getattr(mix, "name", "") or "Mix")
     card.append(
@@ -2266,6 +2263,7 @@ def _build_mix_tile(app, mix, on_click):
     if subtitle:
         sub_label.set_tooltip_text(subtitle)
     card.append(sub_label)
+    card_grid.fit_labels(card)
 
     btn = Gtk.Button(css_classes=["flat", "history-card-btn", "home-feed-btn"])
     btn.set_child(card)
@@ -2338,14 +2336,11 @@ def render_mixes_dashboard(app):
         }
         for mix in mixes:
             tile = _build_mix_tile(app, mix, _on_click)
-            # Wrap in a FlowBoxChild that hugs the tile's natural width,
-            # so the hit area never extends past the visible card even
-            # when the row is sparsely populated.
+            # Fork #17: the tile fills its column (the cover scales with it), so the hit area
+            # is the visible card. Upstream pinned the cell to the tile's fixed width instead.
             child = Gtk.FlowBoxChild()
             child.set_child(tile)
-            child.set_halign(Gtk.Align.START)
             child.set_valign(Gtk.Align.START)
-            child.set_hexpand(False)
             child.set_can_focus(False)
             flow.append(child)
         status_lbl.set_text(f"{len(mixes)} mixes & radio")
@@ -3434,15 +3429,15 @@ def render_artist_detail(app, artist, render_token=None):
 
         def _build_artist_card(sim_art):
             v = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, css_classes=_artist_card_classes())
-            img = Gtk.Image(pixel_size=150, css_classes=["circular-avatar"])
-            utils.load_img(img, lambda a=sim_art: app.backend.get_artist_artwork_url(a, 320), app.cache_dir, 150)
-            v.append(_build_feed_media_overlay(img, 150, "circular-avatar"))
+            v.append(card_grid.cover(lambda a=sim_art: app.backend.get_artist_artwork_url(a, 320), app.cache_dir, 150,
+                                     "circular-avatar", "avatar-default-symbolic"))
             v.append(Gtk.Label(
                 label=str(getattr(sim_art, "name", "") or ""),
                 ellipsize=2, halign=Gtk.Align.CENTER,
                 wrap=True, max_width_chars=14,
                 css_classes=["heading", "home-card-title"],
             ))
+            card_grid.fit_labels(v)
             btn = Gtk.Button(css_classes=["flat", "history-card-btn", "home-feed-btn"])
             btn.set_child(v)
             btn.connect("clicked", lambda _b, a=sim_art: app.on_artist_clicked(a))
@@ -3950,13 +3945,7 @@ def render_history_dashboard(app):
         _recent_populated[0] = True
         for alb in recent_albums:
             card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, css_classes=_feed_card_classes("history-card"))
-            img = Gtk.Image(pixel_size=utils.COVER_SIZE, css_classes=["album-cover-img"])
-            cover = app.backend.get_artwork_url(alb, 320)
-            if cover:
-                utils.load_img(img, cover, app.cache_dir, utils.COVER_SIZE)
-            else:
-                img.set_from_icon_name("audio-x-generic-symbolic")
-            card.append(_build_feed_media_overlay(img, utils.COVER_SIZE, "album-cover-img"))
+            card.append(card_grid.cover(app.backend.get_artwork_url(alb, 320), app.cache_dir, utils.COVER_SIZE))
             card.append(
                 Gtk.Label(
                     label=getattr(alb, "name", "Unknown Album"),
@@ -3969,6 +3958,7 @@ def render_history_dashboard(app):
             )
             artist_name = getattr(getattr(alb, "artist", None), "name", "Unknown")
             card.append(Gtk.Label(label=artist_name, halign=Gtk.Align.CENTER, ellipsize=3, css_classes=["dim-label", "home-card-subtitle"]))
+            card_grid.fit_labels(card)
             btn = Gtk.Button(css_classes=["flat", "history-card-btn", "home-feed-btn"])
             btn.set_child(card)
             btn.connect("clicked", lambda _b, a=alb: app.on_history_album_clicked(a))
@@ -7027,10 +7017,7 @@ def render_playlists_home(app):
 
             for p in playlists:
                 card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, css_classes=_feed_card_classes())
-                img = Gtk.Image(css_classes=["album-cover-img", "playlist-cover-img"])
-                img.set_size_request(utils.COVER_SIZE, utils.COVER_SIZE)
-                utils.load_img(img, lambda pl=p: app.backend.get_artwork_url(pl, 320), app.cache_dir, utils.COVER_SIZE)
-                card.append(_build_feed_media_overlay(img, utils.COVER_SIZE, "album-cover-img"))
+                card.append(card_grid.cover(lambda pl=p: app.backend.get_artwork_url(pl, 320), app.cache_dir, utils.COVER_SIZE))
                 card.append(
                     Gtk.Label(
                         label=getattr(p, "name", None) or "Untitled Playlist",
@@ -7041,6 +7028,7 @@ def render_playlists_home(app):
                         css_classes=["home-card-title"],
                     )
                 )
+                card_grid.fit_labels(card)
                 open_btn = Gtk.Button(css_classes=["flat", "history-card-btn", "home-feed-btn"])
                 open_btn.set_child(card)
                 open_btn.connect("clicked", lambda _b, pl=p: app.on_remote_playlist_card_clicked(pl))
@@ -7436,13 +7424,7 @@ def render_daily_mixes(app, mixes):
 
         for i, t in enumerate(tracks):
             card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, css_classes=_feed_card_classes("daily-mix-card"))
-            img = Gtk.Image(pixel_size=120, css_classes=["album-cover-img"])
-            cover_url = app.backend.get_artwork_url(t, 320)
-            if cover_url:
-                utils.load_img(img, cover_url, app.cache_dir, 120)
-            else:
-                img.set_from_icon_name("audio-x-generic-symbolic")
-            card.append(_build_feed_media_overlay(img, 120, "album-cover-img"))
+            card.append(card_grid.cover(app.backend.get_artwork_url(t, 320), app.cache_dir, 120))
 
             title_lbl = Gtk.Label(
                 label=getattr(t, "name", "Unknown Track"),
@@ -7465,6 +7447,7 @@ def render_daily_mixes(app, mixes):
                 css_classes=["dim-label", "home-card-subtitle"],
             )
             card.append(artist_lbl)
+            card_grid.fit_labels(card)
 
             child = Gtk.FlowBoxChild()
             child.daily_track_index = i

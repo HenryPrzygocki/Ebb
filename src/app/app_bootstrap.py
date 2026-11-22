@@ -245,6 +245,9 @@ def do_activate(self):
     _display_scale = _detect_display_scale(display)
     import utils.helpers as _helpers
     _helpers.set_ui_scale(_display_scale)
+    from ui import card_grid as _card_grid  # fork #17
+
+    _card_grid.install(self)
     _text_scale = _get_text_scale_factor()
     # GTK4/Adwaita already handles cross-DPI rendering correctly via logical
     # pixels — no manual font scaling needed for integer scale factors.

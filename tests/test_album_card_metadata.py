@@ -12,6 +12,15 @@ pytest.importorskip("gi")
 from actions import ui_actions
 
 
+@pytest.fixture(autouse=True)
+def _fake_card_grid(monkeypatch):
+    # Fork #17: grid covers come from ui/card_grid.py, which builds real widgets; these tests
+    # swap ui_actions.Gtk for fakes, so the covers become placeholders too.
+    monkeypatch.setattr(
+        ui_actions, "card_grid", SimpleNamespace(cover=lambda *_a, **_k: object(), fit_labels=lambda _card: None)
+    )
+
+
 class _FakeBox:
     def __init__(self, *args, **kwargs):
         self.children = []

@@ -272,8 +272,13 @@ def _get_rounded_radius(classes: set, size: int) -> int:
     return 0
 
 
-def load_img(widget: Any, url_provider: Callable[[], str] | str, cache_dir: str, size: int = 84) -> None:
-    widget.set_size_request(size, size)
+def load_img(widget: Any, url_provider: Callable[[], str] | str, cache_dir: str, size: int = 84, fit: bool = False) -> None:
+    """Load an image into `widget` (a Picture or an Image) at `size` px, in the background.
+
+    Fork #17: `fit` is for a widget its container sizes (a grid cover, ui/card_grid.py). It is not
+    pinned to `size`, and its rounded corners come from CSS rather than the bitmap."""
+    if not fit:
+        widget.set_size_request(size, size)
 
     def fetch():
         try:
@@ -295,7 +300,7 @@ def load_img(widget: Any, url_provider: Callable[[], str] | str, cache_dir: str,
 
             w_type = type(widget).__name__
             classes = set(widget.get_css_classes()) if hasattr(widget, "get_css_classes") else set()
-            radius = _get_rounded_radius(classes, size)
+            radius = 0 if fit else _get_rounded_radius(classes, size)
 
             try:
                 pb = GdkPixbuf.Pixbuf.new_from_file(f_path)
@@ -310,7 +315,8 @@ def load_img(widget: Any, url_provider: Callable[[], str] | str, cache_dir: str,
                     texture = Gdk.Texture.new_for_pixbuf(scaled or pb)
                     def apply_pic():
                         if hasattr(widget, '_target_url') and widget._target_url == u:
-                            widget.set_size_request(size, size)
+                            if not fit:
+                                widget.set_size_request(size, size)
                             widget._loaded_pixbuf = scaled or pb
                             widget.set_paintable(texture)
                     GLib.idle_add(apply_pic)

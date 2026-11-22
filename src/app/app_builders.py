@@ -3562,6 +3562,8 @@ _SHORTCUT_SECTIONS = (
         ("Back: close Now Playing, the queue or Settings, else the previous page", "<Alt>Left"),
         ("The same, and fold the bottom panel", "Escape"),
         ("Move between controls (Enter activates)", "Tab"),
+        ("Larger / smaller cards in cover grids", "<Control>equal <Control>minus"),
+        ("Default card size", "<Control>0"),
         ("Keyboard shortcuts", "<Control>question"),
         ("Quit (closing the window keeps playing in the tray)", "<Control>q"),
     )),
@@ -3599,6 +3601,15 @@ def on_key_pressed(self, controller, keyval, keycode, state):
     # Fork: closing the window only hides it to the tray; Ctrl+Q really quits (GNOME convention).
     if ctrl and keyval in (Gdk.KEY_q, Gdk.KEY_Q):
         self._quit_from_tray()
+        return True
+    # Fork #17: card size in the cover grids, like zoom in a browser.
+    if ctrl and keyval in (Gdk.KEY_equal, Gdk.KEY_plus, Gdk.KEY_KP_Add, Gdk.KEY_minus, Gdk.KEY_KP_Subtract, Gdk.KEY_0, Gdk.KEY_KP_0):
+        from ui import card_grid
+
+        if keyval in (Gdk.KEY_0, Gdk.KEY_KP_0):
+            card_grid.set_size(self, card_grid.DEFAULT)
+        else:
+            card_grid.step(self, -1 if keyval in (Gdk.KEY_minus, Gdk.KEY_KP_Subtract) else 1)
         return True
     # Fork #24: the keyboard twin of right-click. Text fields handle these keys themselves first.
     shift = bool(state & Gdk.ModifierType.SHIFT_MASK)

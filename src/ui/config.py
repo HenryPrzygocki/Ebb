@@ -1012,6 +1012,9 @@ flowboxchild { background-color: transparent; padding: 0; margin: 0; }
 .home-feed-btn { padding: 0; min-width: 0; min-height: 0; background: transparent; box-shadow: none; }
 .home-feed-media { transition: filter 0.2s; }
 .home-feed-tint { background-color: transparent; transition: background-color 0.2s; }
+/* Fork #17: grid covers (ui/card_grid.py): a faint square while the artwork loads. */
+.card-cover { background-color: alpha(currentColor, 0.06); }
+.card-cover-icon { color: alpha(currentColor, 0.35); }
 .playlist-folder-shape { border-radius: 16px; }
 .home-feed-btn:hover,
 .home-feed-btn:active,
