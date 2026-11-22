@@ -34,13 +34,14 @@ class Album:
 
 
 def _app(**kw):
-    return SimpleNamespace(
+    fields = dict(
         track_list_placeholder_label=_Text(),
         track_list_placeholder_retry=_Text(),
         current_remote_playlist=None,
         current_album=None,
-        **kw,
     )
+    fields.update(kw)
+    return SimpleNamespace(**fields)
 
 
 @pytest.mark.parametrize(
