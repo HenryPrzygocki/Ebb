@@ -165,6 +165,54 @@ def on_player_art_clicked(self, gest, n, x, y):
             self.show_album_details(track.album)
 
 
+def on_search_select_mode_toggled(self, btn):
+    """Fork: selecting search results is a mode, as on album pages: the toggle shows the
+    checkboxes and the Like / Add Selected actions; turning it off clears the selection."""
+    active = bool(btn.get_active())
+    self.search_select_mode = active
+    if not active:
+        self.search_selected_indices = set()
+    for check in list(getattr(self, "_search_row_checks", None) or []):
+        if not active and check.get_active():
+            check.set_active(False)
+        check.set_visible(active)
+    for name in ("like_selected_tracks_btn", "add_selected_tracks_btn"):
+        button = getattr(self, name, None)
+        if button is not None:
+            button.set_visible(active)
+    self._update_search_batch_add_state()
+
+
+def reset_track_list_select_mode(self):
+    """Fork: a newly opened album, mix or playlist starts out of selection mode; it used to carry
+    over from the last one, checkboxes and selection bar included. No re-render: the new page's
+    rows are about to be drawn."""
+    if not getattr(self, "track_list_select_mode", False):
+        return
+    self.track_list_select_mode = False
+    self.track_list_selected_track_ids = set()
+    btn = getattr(self, "track_list_select_btn", None)
+    if btn is not None and btn.get_active():
+        btn.set_active(False)  # on_track_list_select_mode_toggled sees the mode already off
+    self._refresh_track_list_select_ui()
+
+
+def exit_selection_modes(self):
+    """Fork: Escape ends a selection mode on the visible page (actions/layers.py). True if one
+    was on."""
+    stack = getattr(self, "right_stack", None)
+    page = stack.get_visible_child_name() if stack is not None else None
+    if page == "search_view" and getattr(self, "search_select_mode", False):
+        btn = getattr(self, "search_select_btn", None)
+        if btn is not None:
+            btn.set_active(False)  # fires on_search_select_mode_toggled
+            return True
+    if page == "tracks" and getattr(self, "track_list_select_mode", False):
+        self.exit_track_list_select_mode()
+        return True
+    return False
+
+
 def on_search_track_checkbox_toggled(self, _cb, track_index, checked):
     if not isinstance(getattr(self, "search_selected_indices", None), set):
         self.search_selected_indices = set()

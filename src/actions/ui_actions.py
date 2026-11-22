@@ -1382,15 +1382,15 @@ def render_search_tracks_page(app):
     if next_btn is not None:
         next_btn.set_sensitive(page < (total_pages - 1))
     if page_lbl is not None:
-        if total > 0:
-            page_lbl.set_text(f"Page {page + 1}/{total_pages}")
-        else:
-            page_lbl.set_text("Page 1/1")
+        page_lbl.set_text(f"{page + 1} / {total_pages}")
+        page_lbl.set_tooltip_text(f"Page {page + 1} of {total_pages}")
     for widget in (prev_btn, next_btn, page_lbl):  # fork: no pager for a single page
         if widget is not None:
             widget.set_visible(total_pages > 1)
 
     _clear_container(app.res_trk_list)
+    checks = app._search_row_checks = []  # fork: shown only in selection mode
+    selecting = bool(getattr(app, "search_select_mode", False))
     for i, pair in enumerate(page_items):
         abs_idx = int(pair[0])
         t = pair[1]
@@ -1405,6 +1405,8 @@ def render_search_tracks_page(app):
         sel_cb.set_valign(Gtk.Align.CENTER)
         sel_cb.set_active(abs_idx in (getattr(app, "search_selected_indices", set()) or set()))
         sel_cb.connect("toggled", lambda cb, idx=abs_idx: app.on_search_track_checkbox_toggled(cb, idx, cb.get_active()))
+        sel_cb.set_visible(selecting)
+        checks.append(sel_cb)
         row_box.append(sel_cb)
 
         stack = Gtk.Stack()
@@ -1744,6 +1746,8 @@ def _load_album_header_bg(app, url_provider):
 
 
 def show_album_details(app, alb):
+    if hasattr(app, "reset_track_list_select_mode"):
+        app.reset_track_list_select_mode()
     _set_track_list_placeholder(app, "Loading tracks…")
     # Invalidate any in-flight playlist page-load callbacks so they don't
     # overwrite the track list we're about to populate with album tracks.

@@ -8,6 +8,8 @@ of whatever is on top, one layer at a time:
 3. the queue drawer,
 4. Escape only: the bottom workspace (lyrics, visualizer, DSP). Back leaves it open: it is
    docked, you browse with it open, and Back is for browsing,
+   Escape only, next: a selection mode on the page (search results, an album's or a
+   playlist's tracks),
 5. Settings, back to the page it was opened from,
 6. otherwise the page history, as the header's Back always did.
 
@@ -116,6 +118,9 @@ def step_back(app, escape=False):
         app._set_visualizer_expanded(False)
         app.settings["viz_expanded"] = False  # else it reopens on the next start
         app.schedule_save_settings()
+        return True
+    exit_selecting = getattr(app, "exit_selection_modes", None)
+    if escape and not settings_open(app) and callable(exit_selecting) and exit_selecting():
         return True
     if settings_open(app):
         leave_settings(app)

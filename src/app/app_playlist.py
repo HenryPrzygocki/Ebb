@@ -228,6 +228,8 @@ def on_remote_playlist_card_clicked(self, playlist_obj):
     self.current_playlist_id = None
     self.playlist_edit_mode = False
     self.playlist_rename_mode = False
+    if hasattr(self, "reset_track_list_select_mode"):
+        self.reset_track_list_select_mode()
     self.right_stack.set_visible_child_name("tracks")
     if hasattr(self, "_remember_last_view"):
         self._remember_last_view("tracks")
