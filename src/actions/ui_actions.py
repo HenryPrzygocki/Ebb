@@ -805,7 +805,7 @@ def _build_queue_track_row(app, track, i, current_idx, compact):
         alb.set_max_width_chars(16)
         alb.set_margin_end(LAYOUT["cell_margin_end"])
         box.append(alb)
-        adapt_track_row(app, title_lbl, artist, alb)
+        adapt_track_row(app, title_lbl, artist, alb, track=track)
 
         dur = int(getattr(track, "duration", 0) or 0)
         if dur > 0:
@@ -1440,7 +1440,7 @@ def render_search_tracks_page(app):
         lbl_alb.set_max_width_chars(16)
         lbl_alb.set_margin_end(LAYOUT["cell_margin_end"])
         row_box.append(lbl_alb)
-        adapt_track_row(app, lbl_title, lbl_art, lbl_alb)
+        adapt_track_row(app, lbl_title, lbl_art, lbl_alb, track=t)
 
         dur_sec = getattr(t, "duration", 0)
         if dur_sec:
@@ -2028,7 +2028,7 @@ def populate_tracks(app, tracks):
         lbl_alb.set_max_width_chars(16)
         lbl_alb.set_margin_end(LAYOUT["cell_margin_end"])
         box.append(lbl_alb)
-        adapt_track_row(app, lbl_title, lbl_art, lbl_alb, album_hidden=album_page)
+        adapt_track_row(app, lbl_title, lbl_art, lbl_alb, album_hidden=album_page, track=t)
 
         dur_sec = getattr(t, "duration", 0)
         if dur_sec:
@@ -6117,7 +6117,7 @@ def render_uploads_dashboard(app, tracks=None):
         album_lbl.set_max_width_chars(16)
         album_lbl.set_margin_end(LAYOUT["cell_margin_end"])
         box.append(album_lbl)
-        adapt_track_row(app, title_lbl, artist_lbl, album_lbl)
+        adapt_track_row(app, title_lbl, artist_lbl, album_lbl, track=t)
 
         ready = _upload_ready(t)
         if ready:
@@ -6666,7 +6666,7 @@ def render_liked_songs_dashboard(app, tracks=None):
             album_lbl.set_max_width_chars(16)
             album_lbl.set_margin_end(LAYOUT["cell_margin_end"])
             box.append(album_lbl)
-            adapt_track_row(app, title_lbl, artist_lbl, album_lbl)
+            adapt_track_row(app, title_lbl, artist_lbl, album_lbl, track=t)
 
             dur = int(getattr(t, "duration", 0) or 0)
             m, s = divmod(max(0, dur), 60)
@@ -7247,7 +7247,7 @@ def render_playlist_detail(app, playlist_id):
         alb.set_max_width_chars(16)
         alb.set_margin_end(LAYOUT["cell_margin_end"])
         box.append(alb)
-        adapt_track_row(app, title_lbl, artist, alb)
+        adapt_track_row(app, title_lbl, artist, alb, track=t)
         dur = int(getattr(t, "duration", 0) or 0)
         if dur > 0:
             m, s = divmod(dur, 60)

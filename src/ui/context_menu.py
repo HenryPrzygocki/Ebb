@@ -150,7 +150,7 @@ def copy_link(app, kind, obj):
     ok = bool(url) and copy_text(app, url)
     if ok:
         logger.info("Copied TIDAL link %s", url)
-        _notice(app, "TIDAL link copied", "ok", 1800)
+        _notice(app, f"{link_noun(kind)} link copied", "ok", 1800)
     else:
         _notice(app, "Couldn't copy the link", "warn", 2600)
     return ok
@@ -375,6 +375,12 @@ def _artist_rows(app, obj):
     return [("Play Artist Radio", start)]
 
 
+def link_noun(kind):
+    """Fork: what a copied link points at ("Copy Album Link"), not whose link it is."""
+    return {"track": "Track", "video": "Video", "album": "Album", "artist": "Artist",
+            "playlist": "Playlist", "mix": "Mix"}.get(kind, "TIDAL")
+
+
 def actions_for(app, kind, obj, origin=None):
     """Menu rows for one item: ``(label, callback)`` tuples, with ``None`` as a separator.
 
@@ -394,7 +400,7 @@ def actions_for(app, kind, obj, origin=None):
     if favorite is not None:
         rows += [None, favorite]
     if tidal_url(kind, obj):
-        rows += [None, ("Copy TIDAL Link", lambda: copy_link(app, kind, obj))]
+        rows += [None, (f"Copy {link_noun(kind)} Link", lambda: copy_link(app, kind, obj))]
     remove = removal_action(origin) if kind == "track" else None
     if remove is not None:  # destructive, so last
         rows += [None, ("Remove from This Playlist", remove)]

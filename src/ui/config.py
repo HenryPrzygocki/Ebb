@@ -1680,6 +1680,10 @@ flowboxchild { background-color: transparent; padding: 0; margin: 0; }
 /* fork #25: queue rows waiting in Up Next */
 .track-row.queue-up-next { box-shadow: inset 3px 0 alpha(@accent_color, 0.85); }
 .queue-up-next-pill { font-size: 10px; font-weight: 700; padding: 1px 7px; border-radius: 999px; color: @accent_color; background-color: alpha(@accent_bg_color, 0.16); }
+/* fork: artist and album names in track rows are links (ui/track_table.link_label) */
+label.track-link-hot { text-decoration: underline; }
+label.dim-label.track-link-hot { opacity: 1; }
+.album-artist-medium:hover { text-decoration: underline; }
 .queue-up-next-caption { font-size: 10px; font-weight: 700; color: @accent_color; }
 .ebb-step-badge { min-width: 26px; min-height: 26px; border-radius: 999px; font-weight: 700; font-size: 12px; color: @accent_color; background-color: alpha(@accent_bg_color, 0.16); }
 .settings-container { padding: 40px; }

@@ -181,7 +181,7 @@ def test_track_menu_has_queue_navigation_favorite_and_link():
     rows = context_menu.actions_for(app, "track", t)
     assert _labels(rows) == [
         "Play Next", "Add to Queue", "Add to Playlist…", "Add to Favorites", "—",
-        "Go to Album", "Go to Artist", "Go to Track Radio", "—", "Copy TIDAL Link",
+        "Go to Album", "Go to Artist", "Go to Track Radio", "—", "Copy Track Link",
     ]
     _run(rows, "Play Next")
     _run(rows, "Go to Album")
@@ -208,9 +208,9 @@ def test_copy_link_puts_the_tidal_url_on_the_clipboard(monkeypatch):
     app = _app()
     copied = []
     monkeypatch.setattr(context_menu, "copy_text", lambda _app, text: copied.append(text) is None)
-    _run(context_menu.actions_for(app, "track", _track(123)), "Copy TIDAL Link")
+    _run(context_menu.actions_for(app, "track", _track(123)), "Copy Track Link")
     assert copied == ["https://tidal.com/browse/track/123"]
-    assert app.notices[-1] == ("TIDAL link copied", "ok")
+    assert app.notices[-1] == ("Track link copied", "ok")
 
 
 def test_album_menu_fetches_tracks_off_thread_then_queues_or_plays(monkeypatch):
@@ -222,7 +222,7 @@ def test_album_menu_fetches_tracks_off_thread_then_queues_or_plays(monkeypatch):
     alb = Album(id=5, name="Record", artist=SimpleNamespace(id=9, name="Band"))
     rows = context_menu.actions_for(app, "album", alb)
     assert _labels(rows) == [
-        "Play", "Shuffle", "Play Next", "Add to Queue", "—", "Go to Artist", "—", "Copy TIDAL Link",
+        "Play", "Shuffle", "Play Next", "Add to Queue", "—", "Go to Artist", "—", "Copy Album Link",
     ]
     _run(rows, "Add to Queue")
     _run(rows, "Shuffle")
@@ -243,7 +243,7 @@ def test_collection_without_tracks_warns_instead_of_acting(monkeypatch):
 
 
 def test_artist_menu_is_the_link():
-    assert _labels(context_menu.actions_for(_app(), "artist", SimpleNamespace(id=9))) == ["Copy TIDAL Link"]
+    assert _labels(context_menu.actions_for(_app(), "artist", SimpleNamespace(id=9))) == ["Copy Artist Link"]
 
 
 # ---------------------------------------------------------------- fork #24: favorites, artist radio
@@ -266,7 +266,7 @@ def test_album_and_mix_menus_add_to_and_remove_from_favorites(monkeypatch):
     app, toggled, hearts = _favorites_app(monkeypatch)
     app.current_album, app.fav_btn = Album(id=5, name="Record"), "album-heart"
     rows = context_menu.actions_for(app, "album", Album(id=5, name="Record"))
-    assert _labels(rows)[-3:] == ["Add to Favorites", "\u2014", "Copy TIDAL Link"]
+    assert _labels(rows)[-3:] == ["Add to Favorites", "\u2014", "Copy Album Link"]
     _run(rows, "Add to Favorites")
     assert toggled == [("toggle_album_favorite", 5, True)]
     assert app.notices[-1] == ("Added \u201cRecord\u201d to Favorites", "ok")
@@ -281,7 +281,7 @@ def test_artist_menu_follows_and_plays_the_artist_radio(monkeypatch):
     radio = [_track(1), _track(2)]
     artist = SimpleNamespace(id=9, name="Band", get_radio=lambda: radio)
     rows = context_menu.actions_for(app, "artist", artist)
-    assert _labels(rows) == ["Play Artist Radio", "\u2014", "Unfollow", "\u2014", "Copy TIDAL Link"]
+    assert _labels(rows) == ["Play Artist Radio", "\u2014", "Unfollow", "\u2014", "Copy Artist Link"]
     _run(rows, "Play Artist Radio")
     name, args, kwargs = app.calls[-1]
     assert (name, args, kwargs["source"]) == ("play_now", (radio,), {"type": "artist radio", "name": "Band", "obj": artist})
@@ -316,7 +316,7 @@ def test_secondary_click_on_an_item_claims_and_opens_its_menu(monkeypatch):
     builders._on_global_context_menu_pressed(_app(), gesture, 12, 34)
     assert gesture.state == builders.Gtk.EventSequenceState.CLAIMED
     assert shown[0][:3] == (surface, 12, 34)
-    assert "Copy TIDAL Link" in shown[0][3]
+    assert "Copy Track Link" in shown[0][3]
 
 
 def test_secondary_click_on_empty_space_is_left_to_gtk(monkeypatch):
@@ -351,7 +351,7 @@ def test_rows_with_a_trash_button_offer_removal_last(monkeypatch):
     setattr(row, context_menu.ROW_REMOVE_ATTR, lambda: removed.append(t))
     label = _Widget(parent=_Widget(parent=row))
     rows = context_menu.actions_for(app, "track", t, origin=label)
-    assert _labels(rows)[-3:] == ["Copy TIDAL Link", "—", "Remove from This Playlist"]
+    assert _labels(rows)[-3:] == ["Copy Track Link", "—", "Remove from This Playlist"]
     _run(rows, "Remove from This Playlist")
     assert removed == [t]
     assert _labels(context_menu.actions_for(app, "track", t, origin=row))[-1] == "Remove from This Playlist"

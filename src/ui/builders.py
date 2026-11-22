@@ -1431,6 +1431,7 @@ def build_player_bar(app, container):
     app.lbl_artist.set_child(_artist_lbl)
     app.lbl_artist._inner_label = _artist_lbl
     app.lbl_artist.connect("clicked", lambda _b: app.on_player_artist_clicked())
+    app.lbl_artist.set_cursor_from_name("pointer")  # fork: it's a link
 
     app.lbl_album = Gtk.Button(css_classes=["flat", "player-album-btn"])
     app.lbl_album.set_halign(Gtk.Align.START)
@@ -1441,6 +1442,7 @@ def build_player_bar(app, container):
     app.lbl_album.set_child(_album_lbl)
     app.lbl_album._inner_label = _album_lbl
     app.lbl_album.connect("clicked", lambda _b: app.on_player_album_clicked())
+    app.lbl_album.set_cursor_from_name("pointer")  # fork: it's a link
 
     title_row.append(app.lbl_title)
     title_row.append(app.track_fav_btn)

@@ -171,16 +171,74 @@ def bind_track_column(app, widget, prop, invert=False):
     return widget
 
 
-def adapt_track_row(app, title_widget, artist_widget, album_widget, album_hidden=False):
+def link_label(label, on_activate):
+    """Fork: make a label's text a link: underline and pointer over the text, click to follow.
+
+    Only the text is live, not the rest of the cell, and the click is claimed so the row
+    doesn't also start playing.
+    """
+    if not isinstance(label, Gtk.Label) or not callable(on_activate):
+        return label
+    label.add_css_class("track-link")
+
+    def over_text(x):
+        layout = label.get_layout()
+        if layout is None:
+            return False
+        _ink, logical = layout.get_pixel_extents()
+        return 0 <= x <= logical.width + 1  # xalign 0: the text starts at the left edge
+
+    def set_hot(hot):
+        if hot == getattr(label, "_link_hot", False):
+            return
+        label._link_hot = hot
+        if hot:
+            label.add_css_class("track-link-hot")
+            label.set_cursor_from_name("pointer")
+        else:
+            label.remove_css_class("track-link-hot")
+            label.set_cursor(None)
+
+    motion = Gtk.EventControllerMotion()
+    motion.connect("enter", lambda _c, x, _y: set_hot(over_text(x)))
+    motion.connect("motion", lambda _c, x, _y: set_hot(over_text(x)))
+    motion.connect("leave", lambda _c: set_hot(False))
+    label.add_controller(motion)
+
+    click = Gtk.GestureClick(button=1)
+
+    def pressed(gesture, _n_press, x, _y):
+        if over_text(x):
+            gesture.set_state(Gtk.EventSequenceState.CLAIMED)
+
+    def released(_gesture, n_press, x, _y):
+        if n_press == 1 and over_text(x):
+            on_activate()
+
+    click.connect("pressed", pressed)
+    click.connect("released", released)
+    label.add_controller(click)
+    return label
+
+
+def adapt_track_row(app, title_widget, artist_widget, album_widget, album_hidden=False, track=None):
     """Bind a built row's artist/album cells to the column state and give the title an artist line.
 
     album_hidden: the page itself is one album, so the album cell would only repeat its title.
+    track: makes the artist and album names links to their pages (fork).
     """
     bind_track_column(app, artist_widget, "artist-column")
     if album_hidden:
         album_widget.set_visible(False)
     else:
         bind_track_column(app, album_widget, "album-column")
+    go_artist = getattr(app, "go_to_artist_of", None) if track is not None else None
+    go_album = getattr(app, "go_to_album_of", None) if track is not None else None
+    has_artist = callable(go_artist) and getattr(track, "artist", None) is not None
+    if has_artist:
+        link_label(artist_widget, lambda: go_artist(track))
+    if callable(go_album) and not album_hidden and getattr(track, "album", None) is not None:
+        link_label(album_widget, lambda: go_album(track))
     parent = title_widget.get_parent()
     if parent is None:
         return
@@ -196,6 +254,8 @@ def adapt_track_row(app, title_widget, artist_widget, album_widget, album_hidden
     artist_text = artist_widget.get_label() if isinstance(artist_widget, Gtk.Label) else ""
     sub = Gtk.Label(label=artist_text or "", xalign=0, ellipsize=3, css_classes=["dim-label", "track-subtitle"])
     bind_track_column(app, sub, "artist-column", invert=True)
+    if has_artist:
+        link_label(sub, lambda: go_artist(track))
     cell.append(sub)
     parent.insert_child_after(cell, prev)
 
