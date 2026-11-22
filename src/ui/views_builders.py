@@ -120,7 +120,16 @@ def build_grid_view(app):
     app.right_stack.add_named(grid_vbox, "grid_view")
 
 
+def sync_lossless_banner(app):
+    """Fork: reveal the banner while the login type caps most tracks at AAC."""
+    banner = getattr(app, "lossless_banner", None)
+    check = getattr(getattr(app, "backend", None), "login_limits_lossless", None)
+    if banner is not None:
+        banner.set_revealed(bool(callable(check) and check()))
+
+
 def toggle_login_view(app, logged_in):
+    sync_lossless_banner(app)
     app.login_prompt_box.set_visible(not logged_in)
     app.alb_scroll.set_visible(logged_in)
     if hasattr(app, "search_entry") and app.search_entry is not None:

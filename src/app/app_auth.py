@@ -347,55 +347,43 @@ def _show_login_method_dialog(self):
         margin_start=12,
         margin_end=12,
     )
-    title = Gtk.Label(label="Select Login Method", xalign=0)
+    # Fork: HiFi (PKCE) first and highlighted. Upstream highlighted Web Login, a device-code
+    # login that TIDAL now serves AAC 320 for most tracks, so the obvious choice lost lossless.
+    title = Gtk.Label(label="Sign In to TIDAL", xalign=0)
     title.add_css_class("title-3")
-    sub = Gtk.Label(
-        label="Choose one method to continue with your TIDAL account authorization.",
-        xalign=0,
-        wrap=True,
-        css_classes=["dim-label"],
-    )
     root.append(title)
-    root.append(sub)
+
+    def _method_button(icon, heading, detail, css):
+        btn = Gtk.Button(css_classes=css)
+        row = Gtk.Box(spacing=10, margin_top=8, margin_bottom=8, margin_start=8, margin_end=8)
+        row.append(Gtk.Image.new_from_icon_name(icon))
+        text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        text.append(Gtk.Label(label=heading, xalign=0))
+        text.append(Gtk.Label(label=detail, xalign=0, wrap=True, max_width_chars=44, css_classes=["dim-label"]))
+        row.append(text)
+        btn.set_child(row)
+        return btn
 
     actions = Gtk.Box(spacing=10, orientation=Gtk.Orientation.VERTICAL)
-
-    web_btn = Gtk.Button(css_classes=["suggested-action"])
-    web_row = Gtk.Box(spacing=10, margin_top=8, margin_bottom=8, margin_start=8, margin_end=8)
-    web_row.append(Gtk.Image.new_from_icon_name("network-workgroup-symbolic"))
-    web_text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
-    web_text.append(Gtk.Label(label="Web Login", xalign=0))
-    web_text.append(Gtk.Label(label="Open browser on this device to authorize", xalign=0, css_classes=["dim-label"]))
-    web_row.append(web_text)
-    web_btn.set_child(web_row)
-
-    qr_btn = Gtk.Button(css_classes=["flat"])
-    qr_row = Gtk.Box(spacing=10, margin_top=8, margin_bottom=8, margin_start=8, margin_end=8)
-    qr_row.append(Gtk.Image.new_from_icon_name("camera-web-symbolic"))
-    qr_text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
-    qr_text.append(Gtk.Label(label="QR Login", xalign=0))
-    qr_text.append(Gtk.Label(label="Scan QR code with your phone", xalign=0, css_classes=["dim-label"]))
-    qr_row.append(qr_text)
-    qr_btn.set_child(qr_row)
-
-    pkce_btn = Gtk.Button(css_classes=["flat"])
-    pkce_row = Gtk.Box(spacing=10, margin_top=8, margin_bottom=8, margin_start=8, margin_end=8)
-    pkce_row.append(Gtk.Image.new_from_icon_name("audio-x-generic-symbolic"))
-    pkce_text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
-    pkce_text.append(Gtk.Label(label="HiFi Login (PKCE)", xalign=0))
-    pkce_text.append(Gtk.Label(
-        label="Required for full LOSSLESS / HI-RES",
+    pkce_btn = _method_button(
+        "audio-x-generic-symbolic", "HiFi Login",
+        "Lossless and Hi-Res. Sign in on TIDAL's own page.", ["suggested-action"],
+    )
+    web_btn = _method_button(
+        "network-workgroup-symbolic", "Web Login", "Approve this device in your browser", ["flat"],
+    )
+    qr_btn = _method_button("camera-web-symbolic", "QR Login", "Scan a code with your phone", ["flat"])
+    other = Gtk.Label(
+        label="TIDAL limits these two to AAC 320 for most tracks:",
         xalign=0,
-        css_classes=["dim-label"],
         wrap=True,
-        max_width_chars=44,
-    ))
-    pkce_row.append(pkce_text)
-    pkce_btn.set_child(pkce_row)
-
+        margin_top=6,
+        css_classes=["dim-label", "caption"],
+    )
+    actions.append(pkce_btn)
+    actions.append(other)
     actions.append(web_btn)
     actions.append(qr_btn)
-    actions.append(pkce_btn)
     root.append(actions)
 
     cancel_btn = Gtk.Button(label="Cancel", css_classes=["flat"])

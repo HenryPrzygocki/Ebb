@@ -1904,7 +1904,10 @@ def update_tech_label(self, info):
     src_rate = _pick_int("source_rate", "rate", "output_rate")
     src_depth = _pick_int("source_depth", "depth", "output_depth")
 
-    if src_rate > 0 and src_depth > 0:
+    lossy = display_codec == "AAC"
+    if lossy and src_rate > 0:
+        rate_depth = f"{(src_rate / 1000.0):g}kHz"  # fork: "16-bit" read as CD quality on AAC
+    elif src_rate > 0 and src_depth > 0:
         rate_depth = f"{src_depth}-bit/{(src_rate / 1000.0):g}kHz"
     else:
         rate_depth = fmt_norm
@@ -1953,13 +1956,23 @@ def update_tech_label(self, info):
 
     # Full detail remains available on hover.
     dev_name = getattr(self, "current_device_name", "Default")
-    self.lbl_tech.set_tooltip_text(
-        f"{display_codec} | {rate_depth} | {bitrate//1000}kbps | {dev_name} | output={output_state}"
-    )
+    tooltip = f"{display_codec} | {rate_depth} | {bitrate//1000}kbps | {dev_name} | output={output_state}"
+    # Fork: say so when TIDAL sent AAC although lossless was asked for, and why.
+    backend = getattr(self, "backend", None)
+    downgraded = lossy and "LOSSLESS" in str(getattr(backend, "quality", "") or "").upper()
+    if downgraded:
+        limited = getattr(backend, "login_limits_lossless", None)
+        why = (
+            "TIDAL limits this login type to AAC for most tracks; sign in again with HiFi Login."
+            if callable(limited) and limited()
+            else "TIDAL has no lossless version of this track."
+        )
+        tooltip = f"AAC instead of lossless. {why}\n{tooltip}"
+    self.lbl_tech.set_tooltip_text(tooltip)
 
     for cls in ("tech-state-ok", "tech-state-mixed", "tech-state-warn"):
         self.lbl_tech.remove_css_class(cls)
-    if output_state in ("fallback", "error"):
+    if output_state in ("fallback", "error") or downgraded:
         self.lbl_tech.add_css_class("tech-state-warn")
     elif is_bp:
         self.lbl_tech.add_css_class("tech-state-ok")

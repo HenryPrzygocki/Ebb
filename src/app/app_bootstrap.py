@@ -280,6 +280,14 @@ def do_activate(self):
     self.win.set_content(self.main_vbox)
 
     self._build_header(self.main_vbox)
+    # Fork: shown while the login type caps most tracks at AAC (backend.login_limits_lossless).
+    self.lossless_banner = Adw.Banner(
+        title="This TIDAL login gets AAC, not lossless, for most tracks",
+        button_label="Sign In for Lossless",
+        revealed=False,
+    )
+    self.lossless_banner.connect("button-clicked", lambda _b: self._start_pkce_login_flow())
+    self.main_vbox.append(self.lossless_banner)
     self.content_window_handle = Gtk.WindowHandle()
     self.content_window_handle.set_hexpand(True)
     self.content_window_handle.set_vexpand(True)

@@ -350,9 +350,12 @@ class TidalBackend:
         # unlocks LOSSLESS at the legacy `playbackinfopostpaywall` endpoint.
         self._normalize_tls_ca_env()
         self._set_last_login_error("")
-        self.session = tidalapi.Session()
-        self._apply_global_config()
-        url = self.session.pkce_login_url()
+        # Fork: build the new login on a side session and swap it in only once it succeeds.
+        # Upstream replaced self.session here, so cancelling a re-login (the "lossless is off"
+        # banner starts one while signed in) left the app signed out until a restart.
+        self._pkce_session = tidalapi.Session()
+        self._apply_global_config(self._pkce_session)
+        url = self._pkce_session.pkce_login_url()
         logger.info("PKCE login URL prepared.")
         return {"url": url}
 
@@ -361,10 +364,12 @@ class TidalBackend:
         # page back into our login dialog.  Extracts the auth code, swaps
         # it for an access/refresh token pair, and marks the session as
         # PKCE so save_session preserves the `is_pkce` flag.
+        pending = getattr(self, "_pkce_session", None) or self.session
         try:
-            token_json = self.session.pkce_get_auth_token(redirect_url)
-            self.session.process_auth_token(token_json, is_pkce_token=True)
-            if self.session.check_login():
+            token_json = pending.pkce_get_auth_token(redirect_url)
+            pending.process_auth_token(token_json, is_pkce_token=True)
+            if pending.check_login():
+                self.session, self._pkce_session = pending, None
                 self.user = self.session.user
                 self._tune_http_pool()
                 self.save_session()
@@ -4004,6 +4009,14 @@ class TidalBackend:
         # Enforce cache size limit: remove oldest entries from beginning
         while len(self.lyrics_cache) > self.max_lyrics_cache:
             self.lyrics_cache.popitem(last=False)
+
+    def login_limits_lossless(self):
+        """Fork: True when signed in with a device-code (Web/QR) token. TIDAL now answers those
+        with AAC 320 whenever lossless is asked for; only tracks with a hi-res master still come
+        through as FLAC. A PKCE (HiFi Login) token gets lossless for everything."""
+        session = getattr(self, "session", None)
+        return bool(getattr(self, "user", None) is not None and session is not None
+                    and not getattr(session, "is_pkce", False))
 
     def logout(self):
         for token_path in (self.token_file, self.legacy_token_file):

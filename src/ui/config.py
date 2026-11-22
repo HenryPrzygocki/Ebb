@@ -1673,6 +1673,8 @@ flowboxchild { background-color: transparent; padding: 0; margin: 0; }
 .login-hero-subtitle { font-size: 13px; margin-bottom: 8px; }
 .login-hero-btn { min-width: 220px; min-height: 46px; padding: 0 16px; }
 .tech-label { font-family: "Monospace"; font-size: 10px; font-weight: bold; color: @accent_color; background-color: alpha(@accent_bg_color, 0.12); padding: 3px; border-radius: 4px; margin-top: 0; }
+/* fork: upstream set tech-state-warn (output fallback, error) but never styled it */
+.tech-label.tech-state-warn { color: @warning_color; background-color: alpha(@warning_color, 0.14); }
 .settings-container { padding: 40px; }
 .settings-group { background-color: alpha(currentColor, 0.05); border-radius: 12px; padding: 6px; margin-bottom: 24px; }
 .settings-row { padding: 12px 16px; border-bottom: 1px solid alpha(currentColor, 0.05); }
