@@ -101,9 +101,23 @@ class FakeApp:
         gapless.on_gapless_advance(self, uri)
 
 
+class Timeouts:
+    """The GLib timeouts the module starts, run by hand: tick() fires each once."""
+
+    def __init__(self):
+        self.active = []
+
+    def add(self, _ms, fn, *args):
+        self.active.append((fn, args))
+        return len(self.active)
+
+    def tick(self):
+        self.active = [(fn, args) for fn, args in self.active if fn(*args)]
+
+
 @pytest.fixture(autouse=True)
 def inline(monkeypatch):
-    """The resolve thread and main-loop callbacks run inline."""
+    """The resolve thread and main-loop callbacks run inline; timeouts run on tick()."""
 
     class InlineThread:
         def __init__(self, target=None, args=(), daemon=None):
@@ -112,10 +126,13 @@ def inline(monkeypatch):
         def start(self):
             self.target(*self.args)
 
+    timeouts = Timeouts()
     monkeypatch.setattr(gapless, "Thread", InlineThread)
     monkeypatch.setattr(gapless.GLib, "idle_add", lambda fn, *args: fn(*args))
+    monkeypatch.setattr(gapless.GLib, "timeout_add", timeouts.add)
     monkeypatch.delenv("HIRESTI_DISABLE_GAPLESS", raising=False)
     monkeypatch.delenv("HIRESTI_LOCAL_URI", raising=False)
+    return timeouts
 
 
 def test_the_next_track_is_handed_to_the_engine_before_this_one_ends():
@@ -166,13 +183,76 @@ def test_shuffle_hands_over_the_track_it_then_plays():
     assert len({name for name, _ in app.played}) == 6, "no repeats within a shuffle cycle"
 
 
-def test_a_queue_change_after_the_hand_over_loads_the_right_track():
+def test_a_queue_change_after_the_hand_over_replaces_the_engines_next_track(inline):
+    app = FakeApp()
+    app.end_of_track_soon()  # t1 is handed over...
+    app_queue.add_tracks_to_queue(app, [Track("X")])  # ...then X is queued to play next
+    inline.tick()
+    assert app.player.queued == [mpd("t1"), None, mpd("X")], "t1 cleared, X handed over"
+    app.engine_advances()
+    assert app.played[-1] == ("X", True) and app.reloads == 0
+
+
+def test_a_queue_change_too_close_to_the_end_still_plays_the_right_track():
     app = FakeApp()
     app.end_of_track_soon()  # t1 is handed over...
     app_queue.add_tracks_to_queue(app, [Track("X")])  # ...then X is queued
-    app.engine_advances()  # the engine went on to t1 regardless
+    app.engine_advances()  # the engine went on to t1 before the app re-checked
     assert app.reloads == 1
     assert app.played[-1] == ("X", False), "X plays, loaded the usual way"
+
+
+def test_switching_to_repeat_one_clears_the_engines_next_track_and_back_restores_it(inline):
+    app = FakeApp()
+    app.end_of_track_soon()
+    app.play_mode = FakeApp.MODE_ONE
+    inline.tick()
+    assert app.player.queued == [mpd("t1"), None]
+    app.play_mode = FakeApp.MODE_NORMAL
+    inline.tick()
+    assert app.player.queued == [mpd("t1"), None, mpd("t1")]
+
+
+def test_a_refreshed_queue_with_the_same_next_track_changes_nothing(inline):
+    app = FakeApp()
+    app.end_of_track_soon()
+    app.play_queue[1] = Track("t1")  # the same track as a new object (a refreshed playlist)
+    inline.tick()
+    app.engine_advances()
+    assert app.player.queued == [mpd("t1")] and app.reloads == 0
+    assert app.played[-1] == ("t1", True)
+
+
+def test_a_declined_hand_over_is_not_retried(inline):
+    app = FakeApp()
+
+    def declined(uri):
+        app.player.queued.append(uri)
+        return -5  # e.g. an output driver that isn't the native transport
+
+    app.player.queue_next = declined
+    app.end_of_track_soon()
+    inline.tick()
+    inline.tick()
+    assert app.backend.resolved == ["t1"]
+
+
+def test_the_re_checks_end_with_the_track_or_after_a_long_pause(inline, monkeypatch):
+    app = FakeApp()
+    app.end_of_track_soon()
+    app.end_of_track_soon()  # asked again (a seek near the end): still one re-check
+    assert len(inline.active) == 1
+    app.engine_advances()
+    inline.tick()
+    assert inline.active == []
+
+    app.end_of_track_soon()  # the next track's window
+    later = time.monotonic() + gapless.WATCH_LIMIT_S + 1
+    monkeypatch.setattr(gapless, "_now", lambda: later)
+    inline.tick()
+    assert inline.active == []
+    app.end_of_track_soon()  # resuming restarts the decoder, which asks again
+    assert len(inline.active) == 1
 
 
 def test_no_hand_over_on_repeat_one_at_the_end_of_the_queue_or_when_unavailable(monkeypatch):
