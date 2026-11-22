@@ -405,6 +405,10 @@ def build_tracks_view(app):
     app.track_list_select_count_label = Gtk.Label(
         label="0 selected", xalign=0, hexpand=True, css_classes=["dim-label"],
     )
+    # Fork: the closed (slide) revealer still counts this bar's width; an unshrinkable count label
+    # pushed the album page 14 px past a 460 px window.
+    app.track_list_select_count_label.set_ellipsize(Pango.EllipsizeMode.END)
+    app.track_list_select_count_label.set_width_chars(4)
     select_bar.append(app.track_list_select_count_label)
     app.track_list_select_all_btn = Gtk.Button(label="Select All", css_classes=["flat", "pill"])
     app.track_list_select_all_btn.connect("clicked", app.on_track_list_select_all_clicked)

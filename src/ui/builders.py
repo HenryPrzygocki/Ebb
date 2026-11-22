@@ -1641,6 +1641,7 @@ def _install_content_breakpoints(app):
     680 - 819       title over artist | time            full
     580 - 679       title over artist | time            tighter margins
     < 580           title over artist | time            action icons below Play/Shuffle
+    < 520           (same), selection bar uses plain buttons instead of 32 px-padded pills
 
     The cover keeps its size request: the scrolled page sizes the hero to its *minimum* height,
     so a smaller request there lets the drawn cover overflow onto the track list.
@@ -1664,16 +1665,36 @@ def _install_content_breakpoints(app):
             (actions_row, "orientation", Gtk.Orientation.VERTICAL),
             (app.album_action_btns_box, "halign", Gtk.Align.START),
         ]
+    # The selection bar (Select All / Add to Playlist / Cancel) is three pills, about 433 px at
+    # minimum, and its closed slide revealer still counts that width: below ~500 px of content the
+    # album page overflowed sideways. Plain buttons and tighter spacing take it to ~280 px.
+    revealer = getattr(app, "track_list_select_revealer", None)
+    select_bar = revealer.get_child() if revealer is not None else None
+    bar_btns = [
+        b
+        for b in (getattr(app, n, None) for n in ("track_list_select_all_btn", "track_list_add_selected_btn", "track_list_select_cancel_btn"))
+        if b is not None
+    ]
+    compact = small + (
+        [(select_bar, "spacing", 6), (select_bar, "margin-start", 4), (select_bar, "margin-end", 4)]
+        if select_bar is not None
+        else []
+    )
     # Several conditions can match at once; AdwBreakpointBin applies the last matching one.
-    for condition, setters in (
-        ("max-width: 959px", no_artist),
-        ("max-width: 819px", no_album),
-        ("max-width: 679px", no_album + tight),
-        ("max-width: 579px", no_album + small),
+    for condition, setters, plain_bar in (
+        ("max-width: 959px", no_artist, False),
+        ("max-width: 819px", no_album, False),
+        ("max-width: 679px", no_album + tight, False),
+        ("max-width: 579px", no_album + small, False),
+        ("max-width: 519px", no_album + compact, True),
     ):
         bp = Adw.Breakpoint.new(Adw.BreakpointCondition.parse(condition))
         for obj, prop, value in setters:
             bp.add_setter(obj, prop, value)
+        if plain_bar and bar_btns:
+            # CSS classes aren't a breakpoint setter target, so toggle them on apply/unapply.
+            bp.connect("apply", lambda _bp: [b.remove_css_class("pill") for b in bar_btns])
+            bp.connect("unapply", lambda _bp: [b.add_css_class("pill") for b in bar_btns])
         content_bin.add_breakpoint(bp)
 
 
