@@ -3138,7 +3138,7 @@ def render_artist_detail(app, artist, render_token=None):
 
     def _append_section_header(title, count=0):
         section = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12, css_classes=["home-section", "artist-detail-section"])
-        head = Gtk.Box(spacing=8, css_classes=["home-section-head"], margin_start=6, margin_end=6, margin_bottom=8)
+        head = Gtk.Box(spacing=8, css_classes=["home-section-head"], margin_bottom=8)
         head.append(Gtk.Label(label=title, xalign=0, hexpand=True, css_classes=["home-section-title"]))
         section.append(head)
         body_box.append(section)
@@ -5948,7 +5948,7 @@ def render_queue_dashboard(app):
     tracks = app._get_active_queue() if hasattr(app, "_get_active_queue") else list(getattr(app, "current_track_list", []) or [])
     current_idx = queue_dnd.current_index(app)
 
-    head = Gtk.Box(spacing=8, css_classes=["home-section-head"], margin_start=6, margin_end=6, margin_bottom=8)
+    head = Gtk.Box(spacing=8, css_classes=["home-section-head"], margin_bottom=8)
     head.append(Gtk.Label(label="Now Playing Queue", xalign=0, hexpand=True, css_classes=["home-section-title"]))
     head.append(Gtk.Label(label=f"{len(tracks)} tracks", css_classes=["home-section-count"]))
     clear_btn = Gtk.Button(icon_name="user-trash-symbolic", css_classes=["flat", "playlist-tool-btn"])
@@ -6030,7 +6030,7 @@ def render_uploads_dashboard(app, tracks=None):
 
     all_tracks = [t for t in list(tracks or []) if t is not None]
 
-    head = Gtk.Box(spacing=8, css_classes=["home-section-head"], margin_start=6, margin_end=6, margin_bottom=8)
+    head = Gtk.Box(spacing=8, css_classes=["home-section-head"], margin_bottom=8)
     head.append(Gtk.Label(label="My Uploads", xalign=0, hexpand=True, css_classes=["home-section-title"]))
     head.append(Gtk.Label(label=f"{len(all_tracks)} tracks", css_classes=["home-section-count"]))
 
@@ -6832,7 +6832,7 @@ def render_playlists_home(app):
 
     section_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12, css_classes=["home-section", "home-generic-section"])
 
-    head = Gtk.Box(spacing=8, css_classes=["home-section-head"], margin_start=6, margin_end=6, margin_bottom=8, margin_top=6)
+    head = Gtk.Box(spacing=8, css_classes=["home-section-head"], margin_bottom=8, margin_top=6)
     stack = list(getattr(app, "current_playlist_folder_stack", []) or [])
     if stack:
         crumbs = " / ".join([str(x.get("name", "Folder")) for x in stack])

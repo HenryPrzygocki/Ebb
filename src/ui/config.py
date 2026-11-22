@@ -1234,7 +1234,7 @@ flowboxchild { background-color: transparent; padding: 0; margin: 0; }
     color: #ff3f7f;
 }
 .artist-detail-hero-content {
-    padding: 28px;
+    padding: 28px 32px;  /* fork: on the page inset, over the sections below (was 28px) */
 }
 .artist-detail-kicker {
     font-size: 12px;
@@ -1685,6 +1685,7 @@ flowboxchild { background-color: transparent; padding: 0; margin: 0; }
     padding: 10px 22px;
     font-weight: 600;
     min-height: 0;
+    margin: 0;  /* fork: .pill's 10px put Play 10px right of the cover and the tracks */
 }
 .album-pill-btn image {
     -gtk-icon-size: 18px;
@@ -1787,7 +1788,8 @@ label.dim-label.track-link-hot { opacity: 1; }
 .album-artist-medium:hover { text-decoration: underline; }
 .queue-up-next-caption { font-size: 10px; font-weight: 700; color: @accent_color; }
 .ebb-step-badge { min-width: 26px; min-height: 26px; border-radius: 999px; font-weight: 700; font-size: 12px; color: @accent_color; background-color: alpha(@accent_bg_color, 0.16); }
-.settings-container { padding: 40px; }
+.settings-container { padding: 32px; }  /* fork: the page inset every page uses (views_builders.PAGE_INSET) */
+.settings-container .section-title { margin-left: 0; margin-right: 0; }  /* fork: on its group's edge */
 .settings-group { background-color: alpha(currentColor, 0.05); border-radius: 12px; padding: 6px; margin-bottom: 24px; }
 .settings-row { padding: 12px 16px; border-bottom: 1px solid alpha(currentColor, 0.05); }
 .settings-label { font-weight: 600; }

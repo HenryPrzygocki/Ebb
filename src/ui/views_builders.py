@@ -10,16 +10,19 @@ from ui import account  # fork
 import utils
 from ui.track_table import build_tracks_header, append_header_action_spacers
 
+PAGE_INSET = 32  # fork: where every page's content starts (left and right)
+
 
 def build_grid_view(app):
     grid_vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, css_classes=["home-view"])
-    # Fork: on the content's edge (collection_content_box, 20 px). The header sat at 32 px and
-    # the title 12 px further in (.section-title's margin), three left edges in a column.
+    # Fork: every page's content starts 32 px in (PAGE_INSET): grid pages were at 20, album
+    # pages at 32, search at 32 plus a centring clamp, Settings at 40, so the left edge jumped
+    # between pages. The title also sat 12 px right of its subtitle (.section-title's margin).
     title_box = Gtk.Box(
         orientation=Gtk.Orientation.VERTICAL,
         spacing=4,
-        margin_start=20,
-        margin_end=20,
+        margin_start=PAGE_INSET,
+        margin_end=PAGE_INSET,
         margin_top=28,
         margin_bottom=10,
         css_classes=["home-topbar"],
@@ -111,13 +114,13 @@ def build_grid_view(app):
     app.collection_content_box = Gtk.Box(
         orientation=Gtk.Orientation.VERTICAL,
         spacing=20,
-        margin_start=20,
-        margin_end=20,
+        margin_start=PAGE_INSET,
+        margin_end=PAGE_INSET,
         margin_bottom=32,
         css_classes=["home-content-box"],
     )
-    app.collection_base_margin_start = 20
-    app.collection_base_margin_end = 20
+    app.collection_base_margin_start = PAGE_INSET
+    app.collection_base_margin_end = PAGE_INSET
     app.collection_base_margin_bottom = 32
     app.alb_scroll.set_child(app.collection_content_box)
     grid_vbox.append(app.alb_scroll)
@@ -214,7 +217,7 @@ def build_tracks_view(app):
 
     app.album_header_box = Gtk.Box(
         orientation=Gtk.Orientation.VERTICAL, spacing=20,
-        margin_top=32, margin_bottom=20, margin_start=32, margin_end=32,
+        margin_top=32, margin_bottom=20, margin_start=PAGE_INSET, margin_end=PAGE_INSET,
         css_classes=["album-header-box"],
     )
     album_header_top = Gtk.Box(spacing=24, css_classes=["album-header-top"])
@@ -364,7 +367,7 @@ def build_tracks_view(app):
     # Bottom row: Play / Shuffle pills on the left, secondary icons on the right.
     album_header_actions = Gtk.Box(spacing=12, css_classes=["album-header-actions"])
     app.album_primary_actions_box = Gtk.Box(
-        spacing=8, valign=Gtk.Align.CENTER, halign=Gtk.Align.START, hexpand=True,
+        spacing=12, valign=Gtk.Align.CENTER, halign=Gtk.Align.START, hexpand=True,
         css_classes=["album-primary-actions"],
     )
     album_header_actions.append(app.album_primary_actions_box)
@@ -379,7 +382,7 @@ def build_tracks_view(app):
     trk_content.append(app.album_header_overlay)
 
     # Restore horizontal margin for the rest of the page below the header.
-    trk_body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, margin_top=20, margin_start=32, margin_end=32)
+    trk_body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, margin_top=20, margin_start=PAGE_INSET, margin_end=PAGE_INSET)
     trk_content.append(trk_body)
 
     # Column header (#/Title/Artist/Album/Time) intentionally hidden:
@@ -1174,20 +1177,18 @@ def _wrap_settings_descriptions(root):
 
 
 def build_search_view(app):
-    content_max_width = 1180
     app.search_scroll = Gtk.ScrolledWindow(vexpand=True)
     vbox = Gtk.Box(
         orientation=Gtk.Orientation.VERTICAL,
         spacing=24,
         margin_top=32,
         margin_bottom=32,
-        margin_start=32,
-        margin_end=32,
+        margin_start=PAGE_INSET,
+        margin_end=PAGE_INSET,
         css_classes=["home-view", "search-view"],
     )
-    search_clamp = Adw.Clamp(maximum_size=content_max_width, tightening_threshold=920)
-    search_clamp.set_child(vbox)
-    app.search_scroll.set_child(search_clamp)
+    # Fork: no centring clamp; the results start on the same edge as every other page.
+    app.search_scroll.set_child(vbox)
     app.search_content_box = vbox
     app.search_base_margin_bottom = 32
 
