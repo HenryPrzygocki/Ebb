@@ -1386,6 +1386,9 @@ def render_search_tracks_page(app):
             page_lbl.set_text(f"Page {page + 1}/{total_pages}")
         else:
             page_lbl.set_text("Page 1/1")
+    for widget in (prev_btn, next_btn, page_lbl):  # fork: no pager for a single page
+        if widget is not None:
+            widget.set_visible(total_pages > 1)
 
     _clear_container(app.res_trk_list)
     for i, pair in enumerate(page_items):
@@ -2424,6 +2427,9 @@ def render_artists_dashboard(app):
     next_btn = Gtk.Button(label="Next", css_classes=["flat", "liked-action-btn"])
     prev_btn.set_tooltip_text("Previous page")
     next_btn.set_tooltip_text("Next page")
+    from ui import pager as ui_pager  # fork: page arrows, not "Prev" / "Next" words
+
+    ui_pager.arrows(prev_btn, next_btn)
     toolbar.append(prev_btn)
     toolbar.append(next_btn)
     app.collection_content_box.append(toolbar)
@@ -2471,6 +2477,8 @@ def render_artists_dashboard(app):
         pages = max(0, int(page_count or 0))
         prev_btn.set_sensitive(app.artists_page > 0)
         next_btn.set_sensitive(pages > 0 and app.artists_page < pages - 1)
+        for button in (prev_btn, next_btn):  # fork: no pager when everything is on one page
+            button.set_visible(pages != 1)
         if subtitle_total_count is not None:
             app._artists_total_count = max(0, int(subtitle_total_count or 0))
             app._artists_total_count_known = True
@@ -5814,10 +5822,12 @@ def render_collection_dashboard(app, favorite_tracks=None, favorite_albums=None)
         prev_btn = Gtk.Button(label="Prev", css_classes=["flat", "liked-action-btn"])
         prev_btn.set_tooltip_text("Previous page")
         search_box.append(prev_btn)
+        from ui import pager as ui_pager  # fork: page arrows, not "Prev" / "Next" words
 
         next_btn = Gtk.Button(label="Next", css_classes=["flat", "liked-action-btn"])
         next_btn.set_tooltip_text("Next page")
         search_box.append(next_btn)
+        ui_pager.arrows(prev_btn, next_btn)
 
         section.append(search_box)
 
@@ -5846,8 +5856,9 @@ def render_collection_dashboard(app, favorite_tracks=None, favorite_albums=None)
     def _update_pagination():
         """Update pagination UI and re-render current page."""
         total = _get_total_pages()
-        prev_btn.set_sensitive(app._albums_page > 0)
-        next_btn.set_sensitive(app._albums_page < total - 1)
+        from ui import pager as ui_pager
+
+        ui_pager.sync(prev_btn, next_btn, app._albums_page, total)  # fork: hidden with one page
         page_albums = _get_paginated_albums(app._albums_page)
         _render_album_page(flow_albums, page_albums)
 
@@ -6215,12 +6226,17 @@ def render_liked_songs_dashboard(app, tracks=None):
     shuffle_btn = Gtk.Button(label="Shuffle", css_classes=["flat", "liked-action-btn"])
     shuffle_btn.set_tooltip_text("Shuffle current liked songs and play")
     toolbar.append(shuffle_btn)
-    prev_page_btn = Gtk.Button(label="Prev", css_classes=["flat", "liked-action-btn"])
-    next_page_btn = Gtk.Button(label="Next", css_classes=["flat", "liked-action-btn"])
-    prev_page_btn.set_tooltip_text("Previous page")
-    next_page_btn.set_tooltip_text("Next page")
-    toolbar.append(prev_page_btn)
-    toolbar.append(next_page_btn)
+    # Fork (ui/pager.py): "‹ 2 / 5 ›" above and below the list, instead of "Prev" / "Next" words
+    # beside Play all and Shuffle. The handlers are defined further down.
+    from ui import pager as ui_pager
+
+    top_pager = ui_pager.Pager(lambda b: _on_prev_page(b), lambda b: _on_next_page(b), margin_start=8)
+    bottom_pager = ui_pager.Pager(
+        lambda b: (_on_prev_page(b), _scroll_to_list_top()), lambda b: (_on_next_page(b), _scroll_to_list_top()),
+        halign=Gtk.Align.CENTER,
+        margin_bottom=24,
+    )
+    toolbar.append(top_pager)
     app.collection_content_box.append(toolbar)
 
     artist_scroll_prev_btn = Gtk.Button(
@@ -6471,6 +6487,12 @@ def render_liked_songs_dashboard(app, tracks=None):
     app.liked_track_list = list_box
     list_box.connect("row-activated", lambda box, row: app.on_history_track_clicked(getattr(box, "liked_tracks", []), getattr(row, "liked_track_index", -1)))
     table_box.append(list_box)
+    table_box.append(bottom_pager)
+
+    def _scroll_to_list_top():
+        scroller = getattr(app, "alb_scroll", None)
+        if scroller is not None:
+            scroller.get_vadjustment().set_value(0)
 
     def _play_liked_tracks(tracks, shuffle=False):
         items = [t for t in list(tracks or []) if t is not None]
@@ -6627,8 +6649,8 @@ def render_liked_songs_dashboard(app, tracks=None):
 
         play_all_btn.set_sensitive(bool(filtered))
         shuffle_btn.set_sensitive(bool(filtered))
-        prev_page_btn.set_sensitive(page > 0)
-        next_page_btn.set_sensitive(page < (total_pages - 1))
+        top_pager.update(page, total_pages)
+        bottom_pager.update(page, total_pages)
 
         if not page_items:
             row = Gtk.ListBoxRow()
@@ -6727,8 +6749,6 @@ def render_liked_songs_dashboard(app, tracks=None):
 
     search_entry.connect("changed", _on_search_changed)
     sort_dd.connect("notify::selected", _on_sort_changed)
-    prev_page_btn.connect("clicked", _on_prev_page)
-    next_page_btn.connect("clicked", _on_next_page)
     _refresh_artist_filter_buttons()
     # Save signature and filter function so subsequent renders with the same
     # data can skip the full widget rebuild and just re-run filters.
@@ -6745,7 +6765,7 @@ def render_queue_drawer(app):
     current_idx = queue_dnd.current_index(app)
     count_lbl = getattr(app, "queue_count_label", None)
     if count_lbl is not None:
-        count_lbl.set_text(f"{len(tracks)} tracks")
+        count_lbl.set_text(f"{len(tracks)} track" if len(tracks) == 1 else f"{len(tracks)} tracks")
     clear_btn = getattr(app, "queue_clear_btn", None)
     if clear_btn is not None:
         clear_btn.set_sensitive(bool(tracks))

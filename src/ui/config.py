@@ -1189,8 +1189,12 @@ flowboxchild { background-color: transparent; padding: 0; margin: 0; }
 .artist-detail-hero-center-fade {
     border-radius: 0;
 }
+/* fork: the side panels are crops of the same artwork beside the sharp centre. With square
+   artwork they showed the whole picture, so the hero read as three copies of one photo.
+   Blurred, they are ambience around it. */
 .artist-detail-hero-side-image {
     opacity: 0.72;
+    filter: blur(44px) saturate(1.15);
 }
 .artist-detail-hero-side-dim {
     background-image:
@@ -1519,9 +1523,14 @@ flowboxchild { background-color: transparent; padding: 0; margin: 0; }
     padding: 0;
     border-radius: 999px;
     background-image: none;
-    background-color: alpha(currentColor, 0.10);
-    border: 1px solid alpha(currentColor, 0.10);
+    /* fork: filled like the player bar's Play; the faint 10 % disc vanished over the artwork */
+    background-color: @accent_bg_color;
+    color: @accent_fg_color;
+    border: none;
     box-shadow: none;
+}
+.now-playing-controls .transport-main-btn:hover {
+    background-color: mix(@accent_bg_color, white, 0.12);
 }
 .now-playing-controls .transport-main-btn image {
     -gtk-icon-size: 26px;
@@ -1675,13 +1684,14 @@ flowboxchild { background-color: transparent; padding: 0; margin: 0; }
 .album-pill-btn image {
     -gtk-icon-size: 18px;
 }
+/* fork: Play is the accent-filled button everywhere (player bar, Now Playing, Liked Songs) */
 .album-play-pill {
-    color: #111418;
-    background-color: #ffffff;
+    color: @accent_fg_color;
+    background-color: @accent_bg_color;
     box-shadow: none;
 }
 .album-play-pill:hover {
-    background-color: rgba(255, 255, 255, 0.88);
+    background-color: mix(@accent_bg_color, white, 0.12);
 }
 .album-shuffle-pill {
     color: #ffffff;

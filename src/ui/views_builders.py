@@ -329,12 +329,14 @@ def build_tracks_view(app):
     app.remote_playlist_more_pop.set_child(more_box)
     app.remote_playlist_more_btn.connect("clicked", lambda _b: app.remote_playlist_more_pop.popup())
 
+    # Fork: GNOME's selection-mode icon (a check in a circle). Upstream's bare check mark read as
+    # "done" or "added", not "pick tracks".
     app.track_list_select_btn = Gtk.ToggleButton(
-        icon_name="object-select-symbolic",
+        icon_name="selection-mode-symbolic",
         css_classes=["flat", "circular", "history-scroll-btn"],
         valign=Gtk.Align.CENTER,
     )
-    app.track_list_select_btn.set_tooltip_text("Select Multiple")
+    app.track_list_select_btn.set_tooltip_text("Select Tracks")
     app.track_list_select_btn.connect("toggled", app.on_track_list_select_mode_toggled)
 
     app.album_action_btns_box = Gtk.Box(spacing=4, valign=Gtk.Align.CENTER, halign=Gtk.Align.END, css_classes=["album-action-btns"])

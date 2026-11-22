@@ -311,19 +311,22 @@ def _apply_now_playing_dynamic_color(self, rgb=None):
     background-image: none;
     background-color: rgba({r8}, {g8}, {b8}, 0.28);
 }}
+/* fork: Play is the accent-filled button, as in the player bar. A 20 % tint of the artwork's
+   colour vanished on dark covers (a black album gave a black disc on black). */
 .now-playing-controls .transport-main-btn {{
     background-image: none;
-    background-color: rgba({r8}, {g8}, {b8}, 0.20);
-    border-color: rgba({r8}, {g8}, {b8}, 0.96);
+    background-color: @accent_bg_color;
+    color: @accent_fg_color;
+    border-color: transparent;
     box-shadow: none;
 }}
 .now-playing-controls .transport-main-btn:hover {{
     background-image: none;
-    background-color: rgba({r8}, {g8}, {b8}, 0.28);
+    background-color: mix(@accent_bg_color, white, 0.12);
 }}
 .now-playing-controls .transport-main-btn:active {{
     background-image: none;
-    background-color: rgba({r8}, {g8}, {b8}, 0.12);
+    background-color: mix(@accent_bg_color, black, 0.12);
 }}
 .now-playing-tool-btn {{
     background-image: none;

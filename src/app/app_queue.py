@@ -218,7 +218,7 @@ def render_mini_queue(self):
 
     count_lbl = getattr(self, "mini_queue_count_label", None)
     if count_lbl is not None:
-        count_lbl.set_text(f"{len(tracks)} tracks")
+        count_lbl.set_text(f"{len(tracks)} track" if len(tracks) == 1 else f"{len(tracks)} tracks")
 
     # Signature-based skip to avoid rebuilding unchanged queue.
     sig = (len(tracks), current_idx,
