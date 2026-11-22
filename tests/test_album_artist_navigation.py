@@ -579,6 +579,22 @@ def test_render_artists_dashboard_places_prev_next_in_search_toolbar(monkeypatch
         def connect(self, *_args, **_kwargs):
             return None
 
+        # Fork: ui/pager.py makes the pair page arrows.
+        def set_icon_name(self, value):
+            self.icon_name = value
+
+        def add_css_class(self, name):
+            self.css_classes = [c for c in getattr(self, "css_classes", []) if c != name] + [name]
+
+        def remove_css_class(self, name):
+            self.css_classes = [c for c in getattr(self, "css_classes", []) if c != name]
+
+        def set_valign(self, _value):
+            return None
+
+        def set_visible(self, value):
+            self.visible = bool(value)
+
     class _FakeGtkStringList:
         @staticmethod
         def new(values):
@@ -628,7 +644,8 @@ def test_render_artists_dashboard_places_prev_next_in_search_toolbar(monkeypatch
     assert toolbar.css_classes == ["search-bar"]
     assert toolbar.children[0].css_classes == ["search-entry"]
     assert toolbar.children[1].css_classes == ["sort-dropdown"]
-    assert [child.label for child in toolbar.children[2:4]] == ["Prev", "Next"]
+    assert [child.icon_name for child in toolbar.children[2:4]] == ["go-previous-symbolic", "go-next-symbolic"]
+    assert [child.tooltip for child in toolbar.children[2:4]] == ["Previous page", "Next page"]
     assert len(pager_bar.children) == 1
     assert not any(isinstance(child, _FakeGtkButton) for child in pager_bar.children)
 
@@ -717,6 +734,22 @@ def test_render_artists_dashboard_moves_total_count_to_grid_subtitle(monkeypatch
 
         def connect(self, *_args, **_kwargs):
             return None
+
+        # Fork: ui/pager.py makes the pair page arrows.
+        def set_icon_name(self, value):
+            self.icon_name = value
+
+        def add_css_class(self, name):
+            self.css_classes = [c for c in getattr(self, "css_classes", []) if c != name] + [name]
+
+        def remove_css_class(self, name):
+            self.css_classes = [c for c in getattr(self, "css_classes", []) if c != name]
+
+        def set_valign(self, _value):
+            return None
+
+        def set_visible(self, value):
+            self.visible = bool(value)
 
     class _FakeGtkStringList:
         @staticmethod
