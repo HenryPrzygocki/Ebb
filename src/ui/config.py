@@ -1662,6 +1662,11 @@ flowboxchild { background-color: transparent; padding: 0; margin: 0; }
 .album-header-overlay {
     background-color: rgba(0, 0, 0, 0.92);
 }
+/* fork: the header is dark in both schemes (black, a blurred cover, a dark gradient), so its
+   title, details and icon buttons are light in both; in light mode they were dark on dark. */
+.album-header-box {
+    color: white;
+}
 .album-header-bg {
     opacity: 0.6;
     /* fork: a soft colour wash instead of a sharp, cropped cover or mosaic */
