@@ -1895,6 +1895,14 @@ def _build_overflow_popover(actions):
     return pop
 
 
+def _count_phrase(*parts):
+    """(n, singular, plural, ...) -> "2 folders • 1 playlist"; zero counts are left out, but
+    the last one stays so an empty list still says "0 playlists"."""
+    triples = [parts[i:i + 3] for i in range(0, len(parts), 3)]
+    shown = [t for t in triples if t[0]] or triples[-1:]
+    return " • ".join(f"{n} {one if n == 1 else many}" for n, one, many in shown)
+
+
 def _build_track_row_overflow_menu(app, track):
     menu_btn = Gtk.MenuButton(
         icon_name="view-more-symbolic",
@@ -6922,7 +6930,8 @@ def render_playlists_home(app):
 
         def apply():
             nonlocal folder_collage_imgs
-            count_lbl.set_text(f"{len(folders)} folders • {len(playlists)} playlists")
+            # Fork #27: no "0 folders", and "1 playlist", not "1 playlists".
+            count_lbl.set_text(_count_phrase(len(folders), "folder", "folders", len(playlists), "playlist", "playlists"))
 
             for f in folders:
                 fid = str(getattr(f, "id", "") or "")

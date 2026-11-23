@@ -30,3 +30,11 @@ def test_meta_line():
     assert tt.count_text(1) == "1 Track" and tt.count_text(10) == "10 Tracks" and tt.count_text(0) == ""
     assert tt.meta_line("1973", tt.count_text(10), tt.runtime_text(2594)) == "1973  •  10 Tracks  •  43 min"
     assert tt.meta_line("", tt.count_text(1), "") == "1 Track"
+
+
+def test_count_phrase_drops_zero_counts():
+    from actions import ui_actions
+    f = ui_actions._count_phrase
+    assert f(0, "folder", "folders", 20, "playlist", "playlists") == "20 playlists"
+    assert f(2, "folder", "folders", 1, "playlist", "playlists") == "2 folders • 1 playlist"
+    assert f(0, "folder", "folders", 0, "playlist", "playlists") == "0 playlists"
