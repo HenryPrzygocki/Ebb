@@ -1106,7 +1106,7 @@ def _load_now_playing_cover(self, cover_ref):
 # Queue/Album/Lyrics panel (width, and the height the lyrics need); left tiers follow the cover
 # panel. No class is the base size: every window under the thresholds looks as it did.
 _NOW_PLAYING_RIGHT_TIERS = (("np-right-xl", 1000, 860), ("np-right-l", 760, 720), ("np-right-m", 560, 560))
-_NOW_PLAYING_LEFT_TIERS = (("np-left-xl", 1250), ("np-left-l", 1000))
+_NOW_PLAYING_LEFT_TIERS = (("np-left-xl", 1200), ("np-left-l", 920))
 _NOW_PLAYING_TIER_CLASSES = tuple(t[0] for t in _NOW_PLAYING_RIGHT_TIERS + _NOW_PLAYING_LEFT_TIERS)
 
 

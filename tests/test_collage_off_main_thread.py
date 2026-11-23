@@ -87,3 +87,28 @@ def test_no_covers_shows_the_icon_at_once(monkeypatch):
 
     assert img.icon == "audio-x-generic-symbolic" and img.pixel_size == 160
     assert loads == [] and built == []
+
+
+def test_a_collage_is_published_in_one_rename(tmp_path, monkeypatch):
+    # Another image worker may test os.path.exists(out_path) while this one is still writing.
+    from utils import helpers
+
+    covers = []
+    for name, rgb in (("a", (255, 0, 0)), ("b", (0, 0, 255))):
+        surface = helpers.cairo.ImageSurface(helpers.cairo.FORMAT_ARGB32, 8, 8)
+        cr = helpers.cairo.Context(surface)
+        cr.set_source_rgb(*(c / 255 for c in rgb))
+        cr.paint()
+        path = tmp_path / f"{name}.png"
+        surface.write_to_png(str(path))
+        covers.append(str(path))
+    seen = []
+    real_replace = helpers.os.replace
+    monkeypatch.setattr(helpers.os, "replace", lambda src, dst: (seen.append((src, dst)), real_replace(src, dst))[1])
+
+    out = helpers.generate_auto_collage_cover(covers, str(tmp_path), str(tmp_path / "collages"), key_prefix="t", size=32)
+
+    [(src, dst)] = seen
+    assert dst == out and os.path.basename(src).startswith(".collage-")
+    assert os.path.getsize(out) > 0
+    assert sorted(os.listdir(tmp_path / "collages")) == [os.path.basename(out)]  # no temp file left

@@ -23,8 +23,11 @@ def test_the_default_window_keeps_the_base_sizes():
     assert _tiers_for_surface(1230, 880) == ("", "")
 
 
-def test_a_maximized_1080p_window_gets_bigger_lyrics_but_the_same_track_info():
-    assert _tiers_for_surface(1870, 930) == ("np-right-l", "")
+def test_a_full_width_window_on_a_1080p_screen_gets_the_large_tier_on_both_sides():
+    # Henry's outputs are both 1920 x 1080 at scale 1: a full-width column leaves the surface
+    # about 1830-1870 px wide and 930-1010 px tall.
+    assert _tiers_for_surface(1870, 930) == ("np-right-l", "np-left-l")
+    assert _tiers_for_surface(1830, 1010) == ("np-right-l", "np-left-l")
 
 
 def test_a_1440p_window_gets_the_largest_sizes_on_both_sides():

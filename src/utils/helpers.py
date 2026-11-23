@@ -590,11 +590,22 @@ def generate_auto_collage_cover(
             cr.rectangle(0, 0, size, size)
             cr.fill()
 
+    # Fork: collages are built on the image pool now, so another worker may be checking
+    # os.path.exists(out_path) while this one writes: publish the finished file in one rename.
+    tmp_path = None
     try:
-        surface.write_to_png(out_path)
+        fd, tmp_path = tempfile.mkstemp(prefix=".collage-", suffix=".png", dir=collage_cache_dir)
+        os.close(fd)
+        surface.write_to_png(tmp_path)
+        os.replace(tmp_path, out_path)
         return out_path
     except Exception as e:
         logger.debug("Failed to write collage cover: %s", e)
+        if tmp_path:
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
         return None
 
 
