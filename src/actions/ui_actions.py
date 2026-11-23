@@ -4862,32 +4862,29 @@ def render_decades_dashboard(app, prefer_cache=True):
             return
         app.show_album_details(obj)
 
-    def _populate_category(cat_box, items):
-        """Progressively append items into a FlowBox inside cat_box."""
-        flow = Gtk.FlowBox(
-            homogeneous=True,
-            min_children_per_line=1,
-            max_children_per_line=16,
-            column_spacing=16,
-            row_spacing=16,
-            selection_mode=Gtk.SelectionMode.NONE,
-        )
+    def _populate_category(cat_box, items, more_btn=None):
+        """Fork #27: a shelf: the first row's cards at once, the rest on the first Show all."""
+        flow = shelf.Shelf(button=more_btn)
         cat_box.append(flow)
-        idx_state = [0]
 
-        def _tick(flow=flow, items=items, idx_state=idx_state):
-            for _ in range(8):
-                i = idx_state[0]
-                if i >= len(items):
-                    return False
-                btn = _build_feed_item_button(app, items[i], _open_item)
-                child = Gtk.FlowBoxChild()
-                child.set_child(btn)
-                flow.append(child)
-                idx_state[0] += 1
-            return idx_state[0] < len(items)
+        def _add(seq):
+            state = [0]
 
-        GLib.idle_add(_tick)
+            def _tick():
+                for _ in range(8):
+                    if state[0] >= len(seq):
+                        return False
+                    child = Gtk.FlowBoxChild()
+                    child.set_child(_build_feed_item_button(app, seq[state[0]], _open_item))
+                    flow.append(child)
+                    state[0] += 1
+                return state[0] < len(seq)
+
+            GLib.idle_add(_tick)
+
+        first, rest = items[:shelf.MAX_PER_LINE], items[shelf.MAX_PER_LINE:]
+        _add(first)
+        flow.reset(pending=len(rest), fill=(lambda _f: _add(rest)) if rest else None)
 
     def _build_decade_tab(sec):
         """Build the scrollable content box for one decade tab."""
@@ -4899,13 +4896,11 @@ def render_decades_dashboard(app, prefer_cache=True):
             items = list(cat.get("items", []) or [])
             if not items:
                 continue
-            # Section header label
-            lbl = Gtk.Label(label=cat_title, xalign=0, css_classes=["home-section-title"])
-            lbl.set_margin_top(4)
-            tab_box.append(lbl)
+            head, more_btn = shelf.heading(cat_title)
+            tab_box.append(head)
             cat_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
             tab_box.append(cat_box)
-            _populate_category(cat_box, items)
+            _populate_category(cat_box, items, more_btn=more_btn)
         return tab_box
 
     def _build_ui(definitions, tab_cache):
@@ -5131,275 +5126,72 @@ def _render_tabbed_page_dashboard(app, cfg, prefer_cache=True):
             return
         app.show_album_details(obj)
 
-    def _populate_category(cat_box, items, more_path=None):
-        flow = Gtk.FlowBox(
-            homogeneous=True,
-            min_children_per_line=1,
-            max_children_per_line=16,
-            column_spacing=16,
-            row_spacing=16,
-            selection_mode=Gtk.SelectionMode.NONE,
-        )
+    def _populate_category(cat_box, items, more_path=None, more_btn=None):
+        """Fork #27: a shelf (ui/shelf.py): one row, "Show all" beside the heading. It replaced
+        ~270 lines that laid out 48 cards, measured which landed in the first two rows and
+        trimmed the rest. The first row is built at once; the rest, and TIDAL's `more_path`
+        page, on the first Show all. A category too short for a row fetches `more_path` at once."""
+        flow = shelf.Shelf(button=more_btn)
         cat_box.append(flow)
-        idx_state = [0]
-        resolved_chunk_size = [0]
-        more_row = None
+        state = {"built": 0, "fetched": False}
 
-        def _append_items(limit, flow=flow, items=items, idx_state=idx_state):
-            appended = 0
-            while appended < limit:
-                i = idx_state[0]
-                if i >= len(items):
-                    break
-                btn = _build_feed_item_button(app, items[i], _open_item)
+        def _key(it):
+            obj = it.get("obj")
+            item_id = getattr(obj, "id", None) if obj is not None else None
+            typ = str(it.get("type") or "")
+            if item_id:
+                return (typ, str(item_id).strip())
+            return (typ, str(it.get("name") or "").lower(), str(it.get("sub_title") or "").lower())
+
+        def _build(upto):
+            while state["built"] < min(upto, len(items)):
                 child = Gtk.FlowBoxChild()
-                child.set_child(btn)
+                child.set_child(_build_feed_item_button(app, items[state["built"]], _open_item))
                 flow.append(child)
-                idx_state[0] += 1
-                appended += 1
+                state["built"] += 1
 
-        def _measured_chunk_size(flow=flow, items=items):
-            gap = 16
-            flow_width = 0
-            try:
-                flow_width = int(flow.get_allocated_width() or 0)
-            except Exception:
-                flow_width = 0
-            if flow_width <= 0:
+        def _fetch_more(then):
+            if not more_path or state["fetched"]:
+                return
+            state["fetched"] = True
+
+            def task():
                 try:
-                    flow_width = int(flow.get_width() or 0)
-                except Exception:
-                    flow_width = 0
+                    new_items = app.backend.fetch_genre_more(more_path) or []
+                except Exception as e:
+                    logger.debug("genre more fetch failed: %s", e)
+                    new_items = []
 
-            first_child = flow.get_first_child() if hasattr(flow, "get_first_child") else None
-            first_widget = None
-            if first_child is not None:
-                if hasattr(first_child, "get_first_child"):
-                    try:
-                        first_widget = first_child.get_first_child()
-                    except Exception:
-                        first_widget = None
-                if first_widget is None:
-                    first_widget = getattr(first_child, "child", None)
-
-            child_width = 0
-            if first_widget is not None:
-                try:
-                    child_width = int(first_widget.get_allocated_width() or 0)
-                except Exception:
-                    child_width = 0
-                if child_width <= 0:
-                    try:
-                        child_width = int(first_widget.get_width() or 0)
-                    except Exception:
-                        child_width = 0
-
-            if flow_width > 0 and child_width > 0:
-                columns = max(1, min(16, int((flow_width + gap) // (child_width + gap)) or 1))
-                return max(1, columns * 2)
-
-            return _genre_category_visible_count(
-                items[0] if items else None,
-                flow,
-            )
-
-        def _rendered_two_row_capacity(flow=flow):
-            children = []
-            child = flow.get_first_child() if hasattr(flow, "get_first_child") else None
-            while child is not None:
-                children.append(child)
-                if not hasattr(child, "get_next_sibling"):
-                    return 0
-                child = child.get_next_sibling() if hasattr(child, "get_next_sibling") else None
-
-            if not children:
-                return 0
-
-            row_positions = []
-            count = 0
-            for child in children:
-                try:
-                    alloc = child.get_allocation()
-                except Exception:
-                    alloc = None
-                y = int(getattr(alloc, "y", 0) or 0)
-                height = int(getattr(alloc, "height", 0) or 0)
-                if height <= 0:
-                    try:
-                        height = int(child.get_allocated_height() or 0)
-                    except Exception:
-                        height = 0
-                tolerance = max(4, int(height // 4) if height > 0 else 4)
-
-                matched = False
-                for row_y in row_positions:
-                    if abs(y - row_y) <= tolerance:
-                        matched = True
-                        break
-                if not matched:
-                    row_positions.append(y)
-                    if len(row_positions) > 2:
-                        break
-                count += 1
-            return count if count > 0 else 0
-
-        more_exhausted = [False]
-        more_loading = [False]
-        more_auto_fill_ran = [False]
-
-        def _dedup_new_items(new_items):
-            """Filter new_items to exclude anything already present in items."""
-            seen = set()
-            for it in items:
-                obj = it.get("obj")
-                item_id = getattr(obj, "id", None) if obj is not None else None
-                typ = str(it.get("type") or "")
-                if item_id:
-                    seen.add((typ, str(item_id).strip()))
-                else:
-                    seen.add((typ, str(it.get("name") or "").lower(),
-                              str(it.get("sub_title") or "").lower()))
-            result = []
-            for it in new_items:
-                obj = it.get("obj")
-                item_id = getattr(obj, "id", None) if obj is not None else None
-                typ = str(it.get("type") or "")
-                key = (typ, str(item_id).strip()) if item_id else (
-                    typ, str(it.get("name") or "").lower(),
-                    str(it.get("sub_title") or "").lower()
-                )
-                if key not in seen:
-                    seen.add(key)
-                    result.append(it)
-            return result
-
-        def _sync_more_row():
-            if more_row is not None:
-                has_more = idx_state[0] < len(items) or (
-                    bool(more_path) and not more_exhausted[0]
-                )
-                more_row.set_visible(has_more)
-
-        def _append_chunk(flow=flow, items=items, idx_state=idx_state):
-            chunk_size = resolved_chunk_size[0] or _measured_chunk_size()
-            _append_items(chunk_size)
-            _sync_more_row()
-            return False
-
-        def _finalize_initial_layout(flow=flow, items=items, idx_state=idx_state):
-            chunk_size = _rendered_two_row_capacity() or _measured_chunk_size()
-            resolved_chunk_size[0] = chunk_size
-            rendered = idx_state[0]
-            if rendered > chunk_size:
-                _clear_container(flow)
-                idx_state[0] = 0
-                _append_items(chunk_size)
-            elif rendered < chunk_size:
-                _append_items(chunk_size - rendered)
-            _sync_more_row()
-            # If the initial items from the main page aren't enough to fill 2
-            # rows (common for Track categories which only return ~5 items
-            # upfront), silently auto-fetch the _more link so the grid looks
-            # full without requiring the user to click "Show More".
-            if (idx_state[0] >= len(items) and more_path
-                    and not more_exhausted[0] and not more_loading[0]
-                    and not more_auto_fill_ran[0]):
-                _auto_fill_rows()
-            return False
-
-        def _auto_fill_rows():
-            """Transparently fetch _more items to fill up to the 2-row capacity.
-            Only called once per category (guarded by more_auto_fill_ran).
-
-            _rendered_two_row_capacity() may under-report when fewer items than
-            one full row are available (all items land in row 1, so it counts
-            them as the "2-row capacity").  Use _measured_chunk_size() here
-            which derives the column count from the FlowBox width and is
-            reliable regardless of how many rows are actually rendered.
-            """
-            more_loading[0] = True
-            more_auto_fill_ran[0] = True
-
-            def fetch():
-                new_items = app.backend.fetch_genre_more(more_path)
-
-                def apply(new_items=new_items):
-                    more_loading[0] = False
-                    deduped = _dedup_new_items(new_items)
-                    if deduped:
-                        items.extend(deduped)
-                        # Probe-append up to 48 items so the FlowBox has enough
-                        # children to render multiple real rows.  Then delegate to
-                        # _finalize_initial_layout which calls
-                        # _rendered_two_row_capacity() on the live layout to get
-                        # the exact 2-row capacity and trims the FlowBox to it.
-                        # This sidesteps all width-estimation issues: homogeneous
-                        # FlowBox with few items stretches children to fill the
-                        # row, making card-width-based column math unreliable.
-                        probe = min(len(items) - idx_state[0], 48)
-                        if probe > 0:
-                            _append_items(probe)
-                        GLib.idle_add(_finalize_initial_layout)
-                    else:
-                        more_exhausted[0] = True
-                        _sync_more_row()
+                def apply():
+                    if flow.get_root() is None:  # the page was left meanwhile
+                        return False
+                    seen = {_key(it) for it in items}
+                    for it in new_items:
+                        k = _key(it)
+                        if k not in seen:
+                            seen.add(k)
+                            items.append(it)
+                    then()
                     return False
 
                 GLib.idle_add(apply)
 
-            Thread(target=fetch, daemon=True).start()
+            Thread(target=task, daemon=True).start()
 
-        if len(items) > 2:
-            more_row = Gtk.Box(
-                orientation=Gtk.Orientation.HORIZONTAL,
-                hexpand=True,
-                css_classes=["genres-show-more-row"],
-            )
-            more_row.set_halign(Gtk.Align.FILL)
-            more_row.set_visible(False)
-            more_row.append(Gtk.Box(hexpand=True))
-            more_btn = Gtk.Button(label="Show More", css_classes=["flat", "genres-show-more-btn"])
-            more_btn.set_halign(Gtk.Align.END)
+        def _rest(_flow):
+            _build(len(items))
+            _fetch_more(lambda: _build(len(items)))
 
-            def _on_show_more(_btn, btn=more_btn):
-                if idx_state[0] < len(items):
-                    GLib.idle_add(_append_chunk)
-                    return
-                # Local items exhausted — fetch from server _more link if available.
-                if not more_path or more_exhausted[0] or more_loading[0]:
-                    return
-                more_loading[0] = True
-                btn.set_sensitive(False)
-
-                def _fetch_more(btn=btn):
-                    new_items = app.backend.fetch_genre_more(more_path)
-
-                    def _apply(new_items=new_items, btn=btn):
-                        more_loading[0] = False
-                        btn.set_sensitive(True)
-                        deduped = _dedup_new_items(new_items)
-                        if deduped:
-                            items.extend(deduped)
-                            GLib.idle_add(_append_chunk)
-                        else:
-                            more_exhausted[0] = True
-                        _sync_more_row()
-                        return False
-
-                    GLib.idle_add(_apply)
-
-                Thread(target=_fetch_more, daemon=True).start()
-
-            more_btn.connect("clicked", _on_show_more)
-            more_row.append(more_btn)
-            cat_box.append(more_row)
-
-        # Let FlowBox lay out a representative sample first, then clamp the
-        # initial visible range to the real two-row capacity for this distro/theme.
-        # FlowBox caps at 16 children per line here, so 48 items guarantees
-        # we probe at least 3 full rows even for tiny Track cards.
-        _append_items(min(len(items), 48))
-        GLib.idle_add(_finalize_initial_layout)
+        first = shelf.MAX_PER_LINE
+        _build(first)
+        pending = len(items) - state["built"] + (1 if more_path else 0)
+        flow.reset(pending=pending, fill=_rest if pending else None)
+        if len(items) < first and more_path:  # too few for a row: fill it now
+            def _filled():
+                _build(first)
+                left = len(items) - state["built"]
+                flow.reset(pending=left, fill=_rest if left else None)
+            _fetch_more(_filled)
 
     def _build_genre_tab(sec):
         tab_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=24)
@@ -5413,12 +5205,11 @@ def _render_tabbed_page_dashboard(app, cfg, prefer_cache=True):
                 continue
             has_items = True
             more_path = cat.get("more_path")
-            lbl = Gtk.Label(label=cat_title, xalign=0, css_classes=["home-section-title"])
-            lbl.set_margin_top(4)
-            tab_box.append(lbl)
+            head, more_btn = shelf.heading(cat_title)
+            tab_box.append(head)
             cat_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
             tab_box.append(cat_box)
-            _populate_category(cat_box, items, more_path=more_path)
+            _populate_category(cat_box, items, more_path=more_path, more_btn=more_btn)
         return tab_box if has_items else None
 
     def _build_ui(definitions, tab_cache):

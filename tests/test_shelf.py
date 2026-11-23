@@ -33,3 +33,11 @@ def test_the_button_is_there_only_when_one_row_does_not_hold_them():
     assert shelf.button_state(3, 3, False)[0] is False
     assert shelf.button_state(3, 3, False, pending=5) == (True, "Show all")  # cards not built yet count
     assert shelf.button_state(10, 0, False)[0] is False  # not counted yet
+
+
+def test_a_recount_queued_before_a_reset_does_nothing():
+    """reset() clears the measurement; a recount already queued must not unpack it."""
+    from types import SimpleNamespace
+    stand_in = SimpleNamespace(_idle=7, _seen=None)  # no real widget: GTK needs a display
+    assert shelf.Shelf._recount(stand_in) is False
+    assert stand_in._idle == 0

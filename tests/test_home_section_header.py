@@ -19,6 +19,20 @@ def _fake_card_grid(monkeypatch):
         ui_actions, "card_grid", SimpleNamespace(cover=lambda *_a, **_k: object(), fit_labels=lambda _card: None)
     )
 
+    # Fork #27: so does ui/shelf.py (Shelf is a real Gtk.FlowBox): a fake shelf is the test's
+    # own fake FlowBox, and a heading is a fake Box with no button.
+    def _fake_shelf(button=None):
+        flow = ui_actions.Gtk.FlowBox()
+        for name in ("reset", "add_css_class"):
+            if not hasattr(flow, name):
+                setattr(flow, name, lambda *_a, **_k: None)
+        if not hasattr(flow, "get_root"):
+            flow.get_root = lambda: object()
+        return flow
+
+    monkeypatch.setattr(ui_actions, "shelf", SimpleNamespace(
+        Shelf=_fake_shelf, MAX_PER_LINE=16, heading=lambda _title: (ui_actions.Gtk.Box(), None)))
+
 
 def test_home_section_header_uses_context_kicker_as_small_line():
     result = ui_actions._home_section_header_lines(
@@ -664,8 +678,6 @@ def test_render_genres_dashboard_prefetches_the_next_tab_and_serves_it_from_cach
     blues_tab = blues_placeholder.children[0]
     blues_cat_box = blues_tab.children[1]
     blues_flow = blues_cat_box.children[0]
-    blues_more_row = blues_cat_box.children[1]
-    blues_more_btn = blues_more_row.children[1]
 
     assert genres_tabs_row.children[0].visible is True
     assert genres_tabs_row.children[2].visible is True
@@ -675,11 +687,8 @@ def test_render_genres_dashboard_prefetches_the_next_tab_and_serves_it_from_cach
     genres_tabs_row.children[2].handlers["clicked"](genres_tabs_row.children[2])
 
     assert genres_tabs_scroll.get_hadjustment().get_value() > 0.0
-    assert len(blues_flow.children) == 2
-
-    blues_more_btn.handlers["clicked"](blues_more_btn)
-
-    assert len(blues_flow.children) == 4
+    # Fork #27: a shelf builds a row's worth (up to 16) at once; "Show all" sits in the heading.
+    assert len(blues_flow.children) == 5  # all five: under a row's worth (16), so built at once
 
     genres_stack.set_visible_child_name("Jazz")
     genres_stack.handlers["notify::visible-child-name"](genres_stack, None)

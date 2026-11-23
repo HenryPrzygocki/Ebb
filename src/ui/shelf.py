@@ -101,6 +101,8 @@ class Shelf(Gtk.FlowBox):
 
     def _recount(self):
         self._idle = 0
+        if self._seen is None:  # reset() since this was queued: the next allocation re-measures
+            return False
         width, card, _count = self._seen
         columns = fit(width, card, self.get_column_spacing())
         if columns != self.columns:
@@ -116,3 +118,12 @@ class Shelf(Gtk.FlowBox):
         visible, label = button_state(self.count(), self.columns, self.expanded, self._pending)
         self._button.set_visible(visible)
         self._button.set_label(label)
+
+
+def heading(title):
+    """A section heading with its "Show all" button: (row, button) for Shelf(button=)."""
+    head = Gtk.Box(spacing=8, margin_top=4)
+    head.append(Gtk.Label(label=title, xalign=0, hexpand=True, css_classes=["home-section-title"]))
+    more = Gtk.Button(label="Show all", css_classes=["flat", "home-section-more"], valign=Gtk.Align.CENTER)
+    head.append(more)
+    return head, more
