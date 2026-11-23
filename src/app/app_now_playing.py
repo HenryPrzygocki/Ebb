@@ -90,19 +90,32 @@ def _build_now_playing_track_album_label(track):
         css_classes=["dim-label", "track-album", "now-playing-track-album"],
     )
     album_lbl.set_tooltip_text(album_name)
-    album_lbl.set_width_chars(14)  # one width for every row, so the column lines up
-    album_lbl.set_max_width_chars(14)
+    # One width for every row, so the column lines up.
+    album_lbl.set_width_chars(_now_playing_album_chars)
+    album_lbl.set_max_width_chars(_now_playing_album_chars)
     album_lbl.set_valign(Gtk.Align.CENTER)
     album_lbl.set_visible(_now_playing_album_column)
     return album_lbl
 
 
-def _set_now_playing_album_column(self, visible):
-    global _now_playing_album_column
+# Fork: the album column widens with the panel (it was 14 characters at every width). Steps,
+# not a ratio: each change walks every row of both lists.
+_NOW_PLAYING_ALBUM_CHAR_STEPS = (600, 760, 920, 1080)
+_now_playing_album_chars = 14
+
+
+def _now_playing_album_chars_for(right_w):
+    return 14 + 4 * sum(1 for step in _NOW_PLAYING_ALBUM_CHAR_STEPS if right_w >= step)
+
+
+def _set_now_playing_album_column(self, visible, chars=None):
+    global _now_playing_album_column, _now_playing_album_chars
     visible = bool(visible)
-    if visible == _now_playing_album_column:
+    chars = _now_playing_album_chars if chars is None else int(chars)
+    if visible == _now_playing_album_column and chars == _now_playing_album_chars:
         return
     _now_playing_album_column = visible
+    _now_playing_album_chars = chars
     for name in ("now_playing_queue_list", "now_playing_track_list"):
         listbox = getattr(self, name, None)
         pending = [listbox] if listbox is not None else []
@@ -110,6 +123,8 @@ def _set_now_playing_album_column(self, visible):
             widget = pending.pop()
             if widget.has_css_class("now-playing-track-album"):
                 widget.set_visible(visible)
+                widget.set_width_chars(chars)
+                widget.set_max_width_chars(chars)
                 continue
             child = widget.get_first_child()
             while child is not None:
@@ -1087,6 +1102,46 @@ def _load_now_playing_cover(self, cover_ref):
     submit_daemon(task)
 
 
+# Fork: the overlay's text grows with the room its panels get. Right tiers follow the
+# Queue/Album/Lyrics panel (width, and the height the lyrics need); left tiers follow the cover
+# panel. No class is the base size: every window under the thresholds looks as it did.
+_NOW_PLAYING_RIGHT_TIERS = (("np-right-xl", 1000, 860), ("np-right-l", 760, 720), ("np-right-m", 560, 560))
+_NOW_PLAYING_LEFT_TIERS = (("np-left-xl", 1250), ("np-left-l", 1000))
+_NOW_PLAYING_TIER_CLASSES = tuple(t[0] for t in _NOW_PLAYING_RIGHT_TIERS + _NOW_PLAYING_LEFT_TIERS)
+
+
+def _now_playing_size_tiers(left_w, right_w, surface_h):
+    """(right tier, left tier) for these panel sizes; "" is the base size."""
+    right = next(
+        (name for name, min_w, min_h in _NOW_PLAYING_RIGHT_TIERS if right_w >= min_w and surface_h >= min_h), ""
+    )
+    left = next((name for name, min_w in _NOW_PLAYING_LEFT_TIERS if left_w >= min_w), "")
+    return right, left
+
+
+def _apply_now_playing_size_tiers(self, left_w, right_w, surface_h):
+    """Put the tier classes on the surface; True when they changed."""
+    surface = getattr(self, "now_playing_surface", None)
+    if surface is None or not all(hasattr(surface, m) for m in ("has_css_class", "add_css_class", "remove_css_class")):
+        return False
+    wanted = set(_now_playing_size_tiers(left_w, right_w, surface_h)) - {""}
+    changed = False
+    for name in _NOW_PLAYING_TIER_CLASSES:
+        has = surface.has_css_class(name)
+        if name in wanted and not has:
+            surface.add_css_class(name)
+            changed = True
+        elif has and name not in wanted:
+            surface.remove_css_class(name)
+            changed = True
+    return changed
+
+
+def _resync_now_playing_surface_size(self):
+    _sync_now_playing_surface_size(self)
+    return False
+
+
 def _sync_now_playing_surface_size(self):
     surface = getattr(self, "now_playing_surface", None)
     left_stage = getattr(self, "now_playing_left_stage", None)
@@ -1178,12 +1233,17 @@ def _sync_now_playing_surface_size(self):
     left_target_w, right_panel_w = _now_playing_split_widths(surface_w, target_h)
     if right_panel is not None:
         _set_size_request_if_changed(right_panel, right_panel_w, -1)
-        _set_now_playing_album_column(self, right_panel_w >= _NOW_PLAYING_ALBUM_COLUMN_MIN_W)
+        _set_now_playing_album_column(
+            self, right_panel_w >= _NOW_PLAYING_ALBUM_COLUMN_MIN_W, _now_playing_album_chars_for(right_panel_w)
+        )
     visible_left_w = None
     if left_stage is not None:
         visible_left_w = left_target_w
         _set_size_request_if_changed(left_stage, left_target_w, -1)
     self.now_playing_visible_left_w = visible_left_w or 0
+    if _apply_now_playing_size_tiers(self, left_target_w, right_panel_w, target_h):
+        # The new font sizes change the track info's height: measure it again once they apply.
+        GLib.idle_add(_resync_now_playing_surface_size, self)
     if meta_panel is not None:
         meta_target_w = max(280, int(surface_w * 0.36))
         if visible_left_w is not None:

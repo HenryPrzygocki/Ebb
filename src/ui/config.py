@@ -1671,6 +1671,24 @@ flowboxchild { background-color: transparent; padding: 0; margin: 0; }
 .now-playing-lyrics-box {
     min-width: 0;
 }
+/* Fork: Now Playing's text grows with its panels (app_now_playing._NOW_PLAYING_*_TIERS on the
+   surface). Right tiers: lyrics and the Queue/Album rows. Left tiers: the track info under the
+   cover. Without a tier class everything keeps the sizes above. */
+.np-right-m .now-playing-lyrics-box .lyric-line { font-size: 18px; }
+.np-right-m .now-playing-lyrics-box .lyric-line.active { font-size: 23px; }
+.np-right-l .now-playing-lyrics-box .lyric-line { font-size: 22px; }
+.np-right-l .now-playing-lyrics-box .lyric-line.active { font-size: 28px; margin-top: 10px; margin-bottom: 28px; }
+.np-right-xl .now-playing-lyrics-box .lyric-line { font-size: 26px; }
+.np-right-xl .now-playing-lyrics-box .lyric-line.active { font-size: 34px; margin-top: 12px; margin-bottom: 32px; }
+.np-right-m .now-playing-track-row { font-size: 1.04em; }
+.np-right-l .now-playing-track-row { font-size: 1.10em; padding-top: 2px; padding-bottom: 2px; }
+.np-right-xl .now-playing-track-row { font-size: 1.16em; padding-top: 4px; padding-bottom: 4px; }
+.np-left-l .now-playing-title { font-size: 36px; }
+.np-left-l .now-playing-artist { font-size: 18px; }
+.np-left-l .now-playing-album { font-size: 14px; }
+.np-left-xl .now-playing-title { font-size: 42px; }
+.np-left-xl .now-playing-artist { font-size: 21px; }
+.np-left-xl .now-playing-album { font-size: 16px; }
 
 .track-heart-btn { background: transparent; box-shadow: none; border: none; padding: 2px; min-width: 18px; min-height: 18px; border-radius: 99px; color: alpha(currentColor, 0.36); transition: all 0.2s; }
 .track-heart-btn image { -gtk-icon-size: 18px; }
