@@ -187,6 +187,44 @@ def _restore_runtime_state(self):
     self._apply_lyrics_offset_ms(self.settings.get("lyrics_user_offset_ms", 0))
 
 
+def _watch_content_size(self):
+    """Run the layout updates whenever the window's content really changes size.
+
+    Fork: they hung on notify::default-width alone, and GTK keeps that property current only
+    for a floating window. A tiled window is resized without it (niri with prefer-no-csd tiles
+    every window), and so is a maximized one. In a niri column nothing ran: Now Playing kept
+    the layout of the width it had been opened at and was clipped by the narrower window; the
+    sidebar, visualizer, queue drawer and artist hero kept their old proportions.
+
+    A DrawingArea's "resize" is the one signal GTK 4 gives for an allocation change, so an
+    empty, click-through one over the body reports its size.
+    """
+    overlay = getattr(self, "body_overlay", None)
+    if overlay is None:
+        return
+    probe = Gtk.DrawingArea(can_target=False, can_focus=False, hexpand=True, vexpand=True)
+
+    def _resized(_area, width, height):
+        size = (int(width), int(height))
+        if size == getattr(self, "_content_size", None):
+            return
+        self._content_size = size
+        if getattr(self, "_content_resize_source", 0):
+            return
+
+        def _run():
+            self._content_resize_source = 0
+            self.update_layout_proportions(None, None)
+            return False
+
+        # Not from inside the allocation: the updates move the paned and set size requests.
+        self._content_resize_source = GLib.idle_add(_run)
+
+    probe.connect("resize", _resized)
+    overlay.add_overlay(probe)
+    self._content_size_probe = probe
+
+
 def _run_post_activate_tasks(app):
     # Run non-critical startup work after first frame to improve perceived launch speed.
     app._start_mpris_service()
@@ -462,6 +500,7 @@ def do_activate(self):
     if getattr(self, "body_overlay", None) is not None:
         self.body_overlay.connect("notify::width", self.update_layout_proportions)
         self.body_overlay.connect("notify::height", self.update_layout_proportions)
+    _watch_content_size(self)
     self.paned.connect("notify::position", self.on_paned_position_changed)
     GLib.idle_add(lambda: (self._schedule_viz_handle_realign(animate=False), False)[1])
     _startup_mark("activate-done")

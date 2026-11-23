@@ -187,7 +187,10 @@ def update_layout_proportions(self, w, p):
     # default width so the sidebar grows proportionally on large screens.
     win_w = self.win.get_width()
     default_w = int(ui_config.WINDOW_WIDTH)
-    if win_w >= default_w:
+    # Fork: only on the window's own resize notify (w is the window). The content-size watch
+    # (app_bootstrap._watch_content_size, w is None) also runs this for a tiled window, where
+    # the sidebar has always kept the width it was given: it stays that way.
+    if win_w >= default_w and w is not None:
         s_px = int(max(120, win_w * float(ui_config.SIDEBAR_RATIO)))
         self.paned.set_position(s_px)
     # else: leave paned position as-is so the sidebar stays stable
@@ -238,6 +241,11 @@ def update_layout_proportions(self, w, p):
             return False
 
         self._artist_detail_layout_sync_source = GLib.timeout_add(140, _retry_artist_detail)
+    # Fork: History's grids picked their columns on notify::default-width only, which a tiled
+    # window never sends (see app_bootstrap._watch_content_size).
+    refresh_history = getattr(self, "_history_grid_layout_refresh", None)
+    if callable(refresh_history):
+        GLib.idle_add(refresh_history)
     GLib.idle_add(lambda: (self._schedule_viz_handle_realign(animate=False), False)[1])
 
 

@@ -1439,6 +1439,34 @@ _SEARCH_ARTIST_SIZE = 160
 SEARCH_TRACKS_FOLDED = 10  # fork #27: tracks shown before "Show all"
 
 
+def _window_layout_width(win):
+    """The window width to lay out for.
+
+    While a floating window is resized, its default size is the *intended* width and the
+    allocation lags a frame or two (mini mode back to normal jumps from 390 px). But GTK does
+    not update the default size of a tiled, maximized or fullscreen window: there it is stale
+    (a niri column 571 px wide still reported 1280) and the allocation is the truth.
+    """
+    try:
+        allocated = int(win.get_width() or 0)
+    except Exception:
+        allocated = 0
+    try:
+        default = int(win.get_default_size()[0] or 0)
+    except Exception:
+        default = 0
+    try:
+        state = win.get_surface().get_state()
+        pinned = bool(
+            state & (Gdk.ToplevelState.TILED | Gdk.ToplevelState.MAXIMIZED | Gdk.ToplevelState.FULLSCREEN)
+        )
+    except Exception:
+        pinned = False
+    if allocated > 0 and (pinned or default <= 0):
+        return allocated
+    return default or allocated
+
+
 def _show_collage_fallback(widget, display_size, icon_name):
     widget.set_pixel_size(display_size)
     widget.set_from_icon_name(icon_name)
@@ -4152,22 +4180,7 @@ def render_history_dashboard(app):
         win = getattr(app, "win", None)
         if win is None:
             return 2
-        # When notify::default-width fires we're being told the *intended* new
-        # window width; the allocated width can lag a frame or two. Mini-mode
-        # → normal transitions hit this case (set_default_size jumps from
-        # 390 → saved_width while get_width() still reports 390 at signal
-        # time), so prefer the default-size and fall back to the allocated
-        # width only when default is unset.
-        w = 0
-        try:
-            w = int(win.get_default_size()[0] or 0)
-        except Exception:
-            pass
-        if w <= 0:
-            try:
-                w = int(win.get_width() or 0)
-            except Exception:
-                w = 0
+        w = _window_layout_width(win)
         # Reserve space for sidebar (~250px) + paddings
         avail = max(360, w - 320)
         # Aim for ~360px per column card
@@ -4214,9 +4227,14 @@ def render_history_dashboard(app):
         watched_grids = [top_grid, recent_tracks_grid]
         def _on_resize(*_):
             if all(g.get_root() is None for g in watched_grids):
-                return
+                return False
             for fn in relayout_fns:
                 fn()
+            return False
+
+        # Fork: also on every real size change (update_layout_proportions); a tiled window
+        # never sends the notify below.
+        app._history_grid_layout_refresh = _on_resize
         try:
             handler_id = app.win.connect("notify::default-width", _on_resize)
             app._history_top_resize_handler = handler_id
