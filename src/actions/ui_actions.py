@@ -24,11 +24,14 @@ from ui import shelf  # fork #27
 from actions import up_next  # fork #25
 from ui.track_table import LAYOUT, build_tracks_header, append_header_action_spacers
 from ui.track_table import adapt_track_row, clear_track_rows, set_track_rows_hidden, track_columns  # fork
+from ui import track_table  # fork: header meta helpers
 from core.errors import classify_exception, user_message
 
 logger = logging.getLogger(__name__)
 MAX_SEARCH_HISTORY = 10
 DASHBOARD_TRACK_COVER_SIZE = 70
+# Fork #27: search lists tracks to scan, 70 px covers made rows 91 px tall (5 per screen).
+SEARCH_TRACK_COVER_SIZE = 44
 _RUST_COLLECTION_CORE = None
 
 
@@ -1445,15 +1448,15 @@ def render_search_tracks_page(app):
             stack.set_visible_child_name("num")
         row_box.append(stack)
 
-        img = Gtk.Image(pixel_size=DASHBOARD_TRACK_COVER_SIZE, css_classes=["album-cover-img"])
+        img = Gtk.Image(pixel_size=SEARCH_TRACK_COVER_SIZE, css_classes=["album-cover-img"])
         cover = app.backend.get_artwork_url(t, 320)
         if cover is None:
             cover = getattr(getattr(t, "album", None), "cover", None)
         if cover:
-            utils.load_img(img, cover, app.cache_dir, DASHBOARD_TRACK_COVER_SIZE)
+            utils.load_img(img, cover, app.cache_dir, SEARCH_TRACK_COVER_SIZE)
         else:
             img.set_from_icon_name("audio-x-generic-symbolic")
-        row_box.append(_build_feed_media_overlay(img, DASHBOARD_TRACK_COVER_SIZE, "album-cover-img"))
+        row_box.append(_build_feed_media_overlay(img, SEARCH_TRACK_COVER_SIZE, "album-cover-img"))
 
         lbl_title = Gtk.Label(label=getattr(t, "name", "Unknown"), xalign=0, hexpand=True, ellipsize=3, css_classes=["track-title"])
         lbl_title.set_tooltip_text(getattr(t, "name", ""))
@@ -1708,23 +1711,12 @@ def _load_similar_albums(app, alb):
 
         for s_alb in similar[:initial_count]:
             flow.append(_build_album_card(s_alb))
-
+        # Fork #27: a shelf (one row + "Show all"); the rest is built on the first Show all.
         remaining = similar[initial_count:]
-        if remaining and more_row is not None:
-            while c := more_row.get_first_child():
-                more_row.remove(c)
-            more_row.append(Gtk.Box(hexpand=True))
-            more_btn = Gtk.Button(
-                label=f"Show more ({len(remaining)})",
-                css_classes=["flat", "liked-action-btn"],
-            )
-            def _on_show_more(_btn, rem=remaining, f=flow, r=more_row):
-                for a in rem:
-                    f.append(_build_album_card(a))
-                r.set_visible(False)
-            more_btn.connect("clicked", _on_show_more)
-            more_row.append(more_btn)
-            more_row.set_visible(True)
+        if hasattr(flow, "reset"):
+            flow.reset(pending=len(remaining),
+                       fill=(lambda f, rem=remaining: [f.append(_build_album_card(a)) for a in rem])
+                       if remaining else None)
 
         box.set_visible(True)
 
@@ -1854,16 +1846,13 @@ def show_album_details(app, alb):
 
     def detail_task():
         ts = app.backend.get_tracks(alb)
-        desc = ""
         year = _album_release_year_text(alb)
-        if year:
-            desc += year
-        elif hasattr(alb, "last_updated"):
-            desc += "Updated Recently"
-        count = len(ts) if ts else 0
-        if count > 0:
-            desc += f"  •  {count} Tracks"
-        GLib.idle_add(lambda: app.header_meta.set_text(desc.strip(" • ")))
+        if not year and hasattr(alb, "last_updated"):
+            year = "Updated Recently"
+        # Fork: and the running time; "1 Track", not "1 Tracks".
+        desc = track_table.meta_line(year, track_table.count_text(len(ts) if ts else 0),
+                                     track_table.runtime_text(track_table.total_seconds(alb, ts)))
+        GLib.idle_add(lambda: app.header_meta.set_text(desc))
         GLib.idle_add(app.load_album_tracks, ts)
         _load_similar_albums(app, alb)
 

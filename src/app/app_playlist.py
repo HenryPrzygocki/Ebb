@@ -7,6 +7,7 @@ from gi.repository import Gtk, GLib
 from core.executor import submit_daemon
 import copy
 from ui.track_table import clear_track_rows, set_track_rows_hidden  # fork
+from ui import track_table  # fork: header meta helpers
 
 logger = logging.getLogger(__name__)
 
@@ -336,7 +337,10 @@ def on_remote_playlist_card_clicked(self, playlist_obj):
         # Fork: the playlist's size, not "20/30" (that only meant "20 loaded so far";
         # the rest loads on scroll or when played).
         count = total if total > 0 else loaded
-        self.header_meta.set_text(f"{count} Track" if count == 1 else f"{count} Tracks")
+        # Fork: and the running time. Summing the tracks only counts when all of them are in.
+        seconds = track_table.total_seconds(playlist_obj, state["tracks"] if loaded >= count else None)
+        self.header_meta.set_text(track_table.meta_line(track_table.count_text(count),
+                                                        track_table.runtime_text(seconds)))
         self.load_album_tracks(list(state["tracks"]))
 
     # Fork: a confirmed removal updates this page in place (_after_playlist_removal) instead of

@@ -8,6 +8,7 @@ from app.app_remote_control import REMOTE_ACCESS_MODES
 from core import brand  # fork
 from ui import account  # fork
 from ui import offline  # fork
+from ui import shelf  # fork
 import utils
 from ui.track_table import build_tracks_header, append_header_action_spacers
 
@@ -512,18 +513,16 @@ def build_tracks_view(app):
         visible=False,
         css_classes=["home-section", "home-generic-section"],
     )
-    app.similar_albums_label = Gtk.Label(label="More by this Artist", xalign=0, css_classes=["home-section-title"])
-    app.similar_albums_box.append(app.similar_albums_label)
-    app.similar_albums_flow = Gtk.FlowBox(
-        homogeneous=True,
-        valign=Gtk.Align.START,
-        min_children_per_line=1,
-        max_children_per_line=10,
-        column_spacing=16,
-        row_spacing=16,
-        selection_mode=Gtk.SelectionMode.NONE,
-        css_classes=["home-flow"],
-    )
+    app.similar_albums_label = Gtk.Label(label="More by this Artist", xalign=0, hexpand=True,
+                                         css_classes=["home-section-title"])
+    # Fork #27: one row, like Home's sections; "Show all" opens the rest (ui/shelf.py).
+    similar_head = Gtk.Box(spacing=8)
+    similar_head.append(app.similar_albums_label)
+    similar_more = Gtk.Button(label="Show all", css_classes=["flat", "home-section-more"], valign=Gtk.Align.CENTER)
+    similar_head.append(similar_more)
+    app.similar_albums_box.append(similar_head)
+    app.similar_albums_flow = shelf.Shelf(button=similar_more)
+    app.similar_albums_flow.add_css_class("home-flow")
     app.similar_albums_box.append(app.similar_albums_flow)
     app.similar_albums_more_row = Gtk.Box(
         orientation=Gtk.Orientation.HORIZONTAL,

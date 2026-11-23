@@ -345,3 +345,43 @@ def set_track_rows_hidden(listbox, track_id, hidden):
             label = getattr(row, "track_number_label", None)
             if label is not None:
                 label.set_text(str(shown))
+
+
+# --- Fork: the header's meta line (album / playlist): count and running time --------------
+
+def _seconds(item):
+    value = item.get("duration") if isinstance(item, dict) else getattr(item, "duration", 0)
+    try:
+        return max(0, int(value or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def total_seconds(owner, tracks=None):
+    """The album's or playlist's own duration, else the sum of `tracks` (pass them only when
+    they are all of it)."""
+    own = _seconds(owner) if owner is not None else 0
+    if own:
+        return own
+    return sum(_seconds(t) for t in tracks or ())
+
+
+def runtime_text(seconds):
+    """43 min, 1 hr 12 min, 2 hr; "" when unknown."""
+    seconds = int(seconds or 0)
+    if seconds <= 0:
+        return ""
+    minutes = max(1, round(seconds / 60))
+    hours, minutes = divmod(minutes, 60)
+    if not hours:
+        return f"{minutes} min"
+    return f"{hours} hr {minutes} min" if minutes else f"{hours} hr"
+
+
+def count_text(count):
+    count = int(count or 0)
+    return "" if count <= 0 else ("1 Track" if count == 1 else f"{count} Tracks")
+
+
+def meta_line(*parts):
+    return "  •  ".join(p for p in parts if p)

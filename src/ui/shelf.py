@@ -30,9 +30,10 @@ def shows(index, columns, expanded):
     return bool(expanded) or index < max(1, int(columns or 0))
 
 
-def button_state(count, columns, expanded):
-    """(visible, label) for the "Show all" button: there only when one row doesn't hold them."""
-    visible = columns > 0 and count > columns
+def button_state(count, columns, expanded, pending=0):
+    """(visible, label) for the "Show all" button: there only when one row doesn't hold them.
+    `pending`: cards not built yet (see Shelf.reset)."""
+    visible = columns > 0 and count + max(0, int(pending or 0)) > columns
     return visible, ("Show less" if expanded else "Show all")
 
 
@@ -55,6 +56,7 @@ class Shelf(Gtk.FlowBox):
         self._seen = None
         self._idle = 0
         self._button = button
+        self._pending, self._fill = 0, None
         self.set_filter_func(lambda child: shows(child.get_index(), self.columns, self.expanded))
         if button is not None:
             button.connect("clicked", lambda _b: self.toggle())
@@ -69,7 +71,20 @@ class Shelf(Gtk.FlowBox):
 
     def toggle(self):
         self.expanded = not self.expanded
+        if self.expanded and self._fill is not None:
+            fill, self._fill, self._pending = self._fill, None, 0
+            fill(self)  # the cards past the first ones are built on the first "Show all"
         self.invalidate_filter()
+        self._sync_button()
+
+    def reset(self, pending=0, fill=None):
+        """For a shelf that is refilled (the album page's "More by"): folded again. `fill(shelf)`
+        appends the `pending` cards not built yet, on the first "Show all"."""
+        self.expanded = False
+        self._pending, self._fill = (max(0, int(pending)), fill) if fill is not None else (0, None)
+        self._seen = None
+        self.invalidate_filter()
+        self.queue_resize()
         self._sync_button()
 
     def do_size_allocate(self, width, height, baseline):
@@ -98,6 +113,6 @@ class Shelf(Gtk.FlowBox):
     def _sync_button(self):
         if self._button is None:
             return
-        visible, label = button_state(self.count(), self.columns, self.expanded)
+        visible, label = button_state(self.count(), self.columns, self.expanded, self._pending)
         self._button.set_visible(visible)
         self._button.set_label(label)

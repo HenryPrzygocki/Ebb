@@ -31,4 +31,5 @@ def test_the_button_is_there_only_when_one_row_does_not_hold_them():
     assert shelf.button_state(10, 3, False) == (True, "Show all")
     assert shelf.button_state(10, 3, True) == (True, "Show less")
     assert shelf.button_state(3, 3, False)[0] is False
+    assert shelf.button_state(3, 3, False, pending=5) == (True, "Show all")  # cards not built yet count
     assert shelf.button_state(10, 0, False)[0] is False  # not counted yet
