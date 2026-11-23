@@ -27,6 +27,9 @@ def test_a_lone_card_per_row_becomes_two_smaller_ones():
     assert shelf.fit(402, 260, 16, card_min=260) == 1
     # Not below SHRINK of the natural width.
     assert shelf.fit(250, 199, 24, card_min=96) == 1
+    # Fixed covers whose two minimums would not fit the narrowest shelf stay one.
+    assert shelf.fit(380, 200, 24, card_min=170) == 1
+    assert shelf.two_up_safe(96, 24) and not shelf.two_up_safe(160, 24)
 
 
 def test_one_row_until_shown_all():

@@ -1613,21 +1613,23 @@ def build_player_bar(app, container):
 # it, so the app tiles in a half-width (or narrower) niri column.
 # Play modes: Shuffle and Repeat in the transport row. Splitting the one play-mode button in two
 # (r30) took the tiny tier's bar to 466 px (cover and title 166 + transport 216 + the card's
-# margins and padding 84), past a 420 px window: every page was cut off on the right. Without
-# them the transport row is 128 and the bar 378. Now Playing keeps both.
+# margins and padding 84), past windows under ~476 px: every page was cut off on the right.
+# "micro" (<= 480 px) leaves them to Now Playing, which has both: the bar's minimum is 400.
 #           timeline  side ctrls  quality row  album  cover  text  sidebar collapsed  play modes
 _LAYOUT_TIERS = {
     "full": (560, True, True, True, 80, 120, False, True),
     "wide": (400, True, True, True, 80, 120, False, True),
     "medium": (240, True, True, True, 64, 110, False, True),
     "narrow": (220, False, False, True, 64, 110, True, True),
-    "tiny": (150, False, False, False, 56, 90, True, False),
+    "tiny": (150, False, False, False, 56, 90, True, True),
+    "micro": (150, False, False, False, 56, 90, True, False),
 }
 _TIER_CONDITIONS = (
     ("wide", "max-width: 1079px and min-width: 900px"),
     ("medium", "max-width: 899px and min-width: 761px"),
     ("narrow", "max-width: 760px and min-width: 601px"),
-    ("tiny", "max-width: 600px"),
+    ("tiny", "max-width: 600px and min-width: 481px"),
+    ("micro", "max-width: 480px"),
 )
 MAIN_MIN_SIZE = (420, 480)
 

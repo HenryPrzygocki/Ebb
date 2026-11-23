@@ -16,6 +16,16 @@ from gi.repository import GLib, Gtk, Pango  # noqa: E402
 SPACING = 16
 MAX_PER_LINE = 16
 SHRINK = 0.7  # where a row holds one card at its natural width, two may share it down to this
+# The narrowest shelf: Home's, ~346 px at the 420 px window. Two cards' minimums must fit it.
+TWO_UP_MAX = 340
+
+
+def two_up_safe(card_min, spacing=SPACING):
+    """Whether a shelf may hold two cards per line as its minimum: only if two cards' minimums
+    fit the narrowest shelf. Otherwise that minimum would widen the page at a 420 px window, and
+    keep the shelf two wide as the window narrows (it recounts from the width it is given).
+    Grid covers shrink to 96 px; a fixed cover (search's 160 px artist circles) does not."""
+    return 2 * int(card_min) + spacing <= TWO_UP_MAX
 
 
 def fit(width, card_width, spacing=SPACING, card_min=0):
@@ -30,7 +40,7 @@ def fit(width, card_width, spacing=SPACING, card_min=0):
         return 1
     width, card = int(width), int(card_width)
     count = (width + spacing) // (card + spacing)
-    if count < 2 and width + spacing >= 2 * (max(int(card_min), int(card * SHRINK)) + spacing):
+    if count < 2 and two_up_safe(card_min, spacing) and width + spacing >= 2 * (max(int(card_min), int(card * SHRINK)) + spacing):
         count = 2
     return max(1, min(MAX_PER_LINE, count))
 
@@ -121,9 +131,9 @@ class Shelf(Gtk.FlowBox):
             self.columns = columns
             self.set_max_children_per_line(columns)
             # A FlowBox flows at its cards' natural width: fit()'s two narrower cards need it told.
-            # Never more than two: a minimum of n cards would hold the shelf n cards wide when the
-            # window narrows, and the recount would see that width and keep n.
-            self.set_min_children_per_line(min(columns, 2))
+            # Never more than two, and only cards that can shrink (two_up_safe): a minimum of n
+            # cards holds the shelf n wide when the window narrows, and the recount keeps n.
+            self.set_min_children_per_line(2 if columns >= 2 and two_up_safe(card_min, self.get_column_spacing()) else 1)
             self.invalidate_filter()
         self._sync_button()
         return False

@@ -144,13 +144,13 @@ def test_widening_docks_the_sidebar_again(monkeypatch):
     assert app.timeline_box.size == (560, -1) and app.vol_box.visible
 
 
-def test_tiny_tier_leaves_shuffle_and_repeat_to_now_playing():
+def test_micro_tier_leaves_shuffle_and_repeat_to_now_playing():
     # With them the bar's minimum (466 px) was wider than a 420 px window: pages were clipped.
     app = _app()
     app.shuffle_btn, app.repeat_btn = _W(), _W()
-    builders.apply_layout_tier(app, "tiny")
+    builders.apply_layout_tier(app, "micro")
     assert not app.shuffle_btn.visible and not app.repeat_btn.visible
-    builders.apply_layout_tier(app, "narrow")
+    builders.apply_layout_tier(app, "tiny")  # 481-600 px: room for both
     assert app.shuffle_btn.visible and app.repeat_btn.visible
 
 
