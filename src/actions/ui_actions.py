@@ -3470,7 +3470,7 @@ def render_artist_detail(app, artist, render_token=None):
     def _append_section_header(title, count=0):
         section = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12, css_classes=["home-section", "artist-detail-section"])
         head = Gtk.Box(spacing=8, css_classes=["home-section-head"], margin_bottom=8)
-        head.append(Gtk.Label(label=title, xalign=0, hexpand=True, css_classes=["home-section-title"]))
+        head.append(Gtk.Label(label=title, xalign=0, hexpand=True, wrap=True, wrap_mode=Pango.WrapMode.WORD_CHAR, css_classes=["home-section-title"]))
         section.append(head)
         body_box.append(section)
         return section
@@ -3874,13 +3874,13 @@ def batch_load_home(app, sections):
                 )
             )
         if context_header.get("obj") is not None:
-            section_title_label = Gtk.Label(label=header_lines["title"], xalign=0, css_classes=["home-section-title", "home-section-title-link"])
+            section_title_label = Gtk.Label(label=header_lines["title"], xalign=0, wrap=True, wrap_mode=Pango.WrapMode.WORD_CHAR, css_classes=["home-section-title", "home-section-title-link"])
             section_title_btn = Gtk.Button(css_classes=["home-section-title-btn"], hexpand=True, halign=Gtk.Align.FILL)
             section_title_btn.set_child(section_title_label)
             section_title_btn.connect("clicked", lambda _b, d=context_header: _open_item(d))
             heading_box.append(section_title_btn)
         else:
-            section_title = Gtk.Label(label=header_lines["title"], xalign=0, hexpand=True, css_classes=["home-section-title"])
+            section_title = Gtk.Label(label=header_lines["title"], xalign=0, hexpand=True, wrap=True, wrap_mode=Pango.WrapMode.WORD_CHAR, css_classes=["home-section-title"])
             heading_box.append(section_title)
         section_subtitle = header_lines["secondary"]
         if section_subtitle:
@@ -6273,15 +6273,17 @@ def render_liked_songs_dashboard(app, tracks=None):
     hires_chip = hires_filter.Chip(app, _on_hires_chip_changed)  # fork: ui/hires_filter.py
     toolbar.append(hires_chip)
     sort_label = Gtk.Label(label="Sort by", css_classes=["dim-label"], valign=Gtk.Align.CENTER)
+    track_table.bind_wide(app, sort_label)  # fork #27: the toolbar was 427 px; a 420 window has ~346
     toolbar.append(sort_label)
     sort_dd = Gtk.DropDown(model=Gtk.StringList.new(["Recent", "Title", "Artist", "Album", "Duration"]))
     sort_map = {"recent": 0, "title": 1, "artist": 2, "album": 3, "duration": 4}
     sort_dd.set_selected(sort_map.get(app.liked_tracks_sort, 0))
     toolbar.append(sort_dd)
-    play_all_btn = Gtk.Button(label="Play all", css_classes=["flat", "liked-action-btn", "liked-action-btn-primary"])
+    play_all_btn = track_table.icon_label_button(
+        app, "media-playback-start-symbolic", "Play all", ["flat", "liked-action-btn", "liked-action-btn-primary"])
     play_all_btn.set_tooltip_text("Play all liked songs in current view")
     toolbar.append(play_all_btn)
-    shuffle_btn = Gtk.Button(label="Shuffle", css_classes=["flat", "liked-action-btn"])
+    shuffle_btn = track_table.icon_label_button(app, "media-playlist-shuffle-symbolic", "Shuffle", ["flat", "liked-action-btn"])
     shuffle_btn.set_tooltip_text("Shuffle current liked songs and play")
     toolbar.append(shuffle_btn)
     app.collection_content_box.append(toolbar)
@@ -6938,7 +6940,7 @@ def render_playlists_home(app):
     else:
         title_txt = "Your Playlists"
     head.append(Gtk.Label(label=title_txt, xalign=0, hexpand=True, css_classes=["home-section-title"]))
-    count_lbl = Gtk.Label(label="", css_classes=["home-section-count"])
+    count_lbl = track_table.bind_wide(app, Gtk.Label(label="", css_classes=["home-section-count"]))  # fork #27: 452 px header
     head.append(count_lbl)
 
     # Sort button
@@ -7556,6 +7558,8 @@ def render_daily_mixes(app, mixes):
             label=f"{mix.get('title', 'Daily Mix')} · {mix.get('date_label', '')}",
             xalign=0,
             hexpand=True,
+            wrap=True,
+            wrap_mode=Pango.WrapMode.WORD_CHAR,
             css_classes=["home-section-title"],
         )
         count = Gtk.Label(label=f"{len(tracks)} tracks", css_classes=["home-section-count"])

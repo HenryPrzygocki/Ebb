@@ -11,7 +11,7 @@ pins the grid to that many columns, so the expanded grid starts with the same ro
 import gi
 
 gi.require_version("Gtk", "4.0")
-from gi.repository import GLib, Gtk  # noqa: E402
+from gi.repository import GLib, Gtk, Pango  # noqa: E402
 
 SPACING = 16
 MAX_PER_LINE = 16
@@ -139,7 +139,9 @@ class Shelf(Gtk.FlowBox):
 def heading(title):
     """A section heading with its "Show all" button: (row, button) for Shelf(button=)."""
     head = Gtk.Box(spacing=8, margin_top=4)
-    head.append(Gtk.Label(label=title, xalign=0, hexpand=True, css_classes=["home-section-title"]))
+    # Fork #27: wraps. A long title ("Because you listened to …") set the page's minimum width.
+    head.append(Gtk.Label(label=title, xalign=0, hexpand=True, wrap=True, wrap_mode=Pango.WrapMode.WORD_CHAR,
+                          css_classes=["home-section-title"]))
     more = Gtk.Button(label="Show all", css_classes=["flat", "home-section-more"], valign=Gtk.Align.CENTER)
     head.append(more)
     return head, more

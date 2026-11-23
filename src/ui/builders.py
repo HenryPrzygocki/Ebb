@@ -1763,7 +1763,7 @@ def _install_content_breakpoints(app):
         else []
     )
     # Fork: track rows' gaps 16 -> 8, the time cell 64 -> 40, no "+" / trash (⋮ has both).
-    compact += [(cols, "row-gap", 8), (cols, "time-width", 40), (cols, "row-tools", False)]
+    compact += [(cols, "row-gap", 8), (cols, "time-width", 40), (cols, "row-tools", False), (cols, "wide", False)]
     def widths(artist, album):
         return [(cols, "artist-width", artist), (cols, "album-width", album)]
 

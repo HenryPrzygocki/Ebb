@@ -172,6 +172,9 @@ class TrackColumns(GObject.Object):
     row_gap = GObject.Property(type=int, default=LAYOUT["col_gap"])
     time_width = GObject.Property(type=int, default=LAYOUT["time_width"])
     row_tools = GObject.Property(type=bool, default=True)
+    # Off in the compact tier too: toolbars drop the words their icons or neighbours already say
+    # (Liked Songs' "Sort by" and "Play all"/"Shuffle" labels, Playlists' count).
+    wide = GObject.Property(type=bool, default=True)
 
 
 def track_columns(app):
@@ -224,6 +227,22 @@ def bind_row_tool(app, widget):
     """A row's "+" or trash can, which the ⋮ menu also offers: hidden in the compact tier."""
     _bind(app, "row-tools", widget, "visible")
     return widget
+
+
+def bind_wide(app, widget):
+    """Shown except in the compact tier (see TrackColumns.wide)."""
+    _bind(app, "wide", widget, "visible")
+    return widget
+
+
+def icon_label_button(app, icon, text, css_classes):
+    """A toolbar button with an icon and a label that the compact tier drops (fork)."""
+    btn = Gtk.Button(css_classes=list(css_classes))
+    box = Gtk.Box(spacing=6, halign=Gtk.Align.CENTER)
+    box.append(Gtk.Image.new_from_icon_name(icon))
+    box.append(bind_wide(app, Gtk.Label(label=text)))
+    btn.set_child(box)
+    return btn
 
 
 def link_label(label, on_activate):

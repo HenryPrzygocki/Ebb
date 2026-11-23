@@ -522,8 +522,8 @@ def build_tracks_view(app):
         visible=False,
         css_classes=["home-section", "home-generic-section"],
     )
-    app.similar_albums_label = Gtk.Label(label="More by this Artist", xalign=0, hexpand=True,
-                                         css_classes=["home-section-title"])
+    app.similar_albums_label = Gtk.Label(label="More by this Artist", xalign=0, hexpand=True, wrap=True,
+                                         wrap_mode=Pango.WrapMode.WORD_CHAR, css_classes=["home-section-title"])
     # Fork #27: one row, like Home's sections; "Show all" opens the rest (ui/shelf.py).
     similar_head = Gtk.Box(spacing=8)
     similar_head.append(app.similar_albums_label)
