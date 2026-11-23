@@ -275,7 +275,10 @@ def build_tracks_view(app):
     info = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4, valign=Gtk.Align.CENTER, hexpand=True)
     app.header_kicker = Gtk.Label(label="Album", xalign=0, css_classes=["album-kicker"])
     app.header_title = Gtk.Label(xalign=0, wrap=True, css_classes=["album-title-large"])
-    app.header_artist = Gtk.Label(xalign=0, css_classes=["album-artist-medium"])
+    # Fork #27: the artist ellipsizes and the meta line wraps. Neither could shrink, so below
+    # ~460 px of content the hero (cover 237 + "1993 • 12 Tracks • 42 min") was wider than the
+    # page and lost its right edge. The artist's tooltip is the full name.
+    app.header_artist = Gtk.Label(xalign=0, ellipsize=3, css_classes=["album-artist-medium"])
     tap = Gtk.GestureClick()
     tap.connect("pressed", app.on_header_artist_clicked)
     app.header_artist.add_controller(tap)
@@ -285,7 +288,8 @@ def build_tracks_view(app):
     )
     motion.connect("leave", lambda c: utils.set_pointer_cursor(app.header_artist, False))
     app.header_artist.add_controller(motion)
-    app.header_meta = Gtk.Label(xalign=0, css_classes=["album-meta", "album-meta-pill"])
+    app.header_meta = Gtk.Label(xalign=0, wrap=True, wrap_mode=Pango.WrapMode.WORD_CHAR,
+                                css_classes=["album-meta", "album-meta-pill"])
 
     info.append(app.header_kicker)
     info.append(app.header_title)

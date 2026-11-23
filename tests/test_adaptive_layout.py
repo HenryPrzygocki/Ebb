@@ -144,6 +144,16 @@ def test_widening_docks_the_sidebar_again(monkeypatch):
     assert app.timeline_box.size == (560, -1) and app.vol_box.visible
 
 
+def test_tiny_tier_leaves_shuffle_and_repeat_to_now_playing():
+    # With them the bar's minimum (466 px) was wider than a 420 px window: pages were clipped.
+    app = _app()
+    app.shuffle_btn, app.repeat_btn = _W(), _W()
+    builders.apply_layout_tier(app, "tiny")
+    assert not app.shuffle_btn.visible and not app.repeat_btn.visible
+    builders.apply_layout_tier(app, "narrow")
+    assert app.shuffle_btn.visible and app.repeat_btn.visible
+
+
 def test_mini_mode_keeps_its_bar_layout():
     app = _app(mini=True)
     builders.apply_layout_tier(app, "tiny")
@@ -243,3 +253,14 @@ def test_cells_built_while_narrow_start_hidden():
     late = _Cell()
     track_table.bind_track_column(app, late, "album-column")
     assert not late.props.visible
+
+
+def test_compact_row_properties_default_to_the_wide_layout():
+    # Rows bind their gaps, time cell and "+"/trash to these: the defaults must be the layout
+    # every row had before, so only the compact tier (< 520 px of content) changes anything.
+    from ui.track_table import LAYOUT, TrackColumns
+
+    cols = TrackColumns()
+    assert cols.props.row_gap == LAYOUT["col_gap"]
+    assert cols.props.time_width == LAYOUT["time_width"]
+    assert cols.props.row_tools is True

@@ -64,6 +64,9 @@ def build_tracks_header(
     dur_head = create_head_click_label(time_text, on_sort_time, xalign=1.0, extra_classes=["tracks-head-time"])
     dur_head.set_halign(Gtk.Align.END)
     dur_head.set_size_request(LAYOUT["time_width"], -1)
+    if app is not None:  # fork: the rows' compact tier, so the headings stay over their columns
+        bind_row_gap(app, head)
+        bind_time_cell(app, dur_head)
     head.append(idx_head)
     head.append(title_head)
     head.append(artist_head)
@@ -137,9 +140,12 @@ def _build_header_action_spacer(kind):
     return w
 
 
-def append_header_action_spacers(head, kinds):
+def append_header_action_spacers(head, kinds, app=None):
     for kind in list(kinds or []):
-        head.append(_build_header_action_spacer(kind))
+        spacer = _build_header_action_spacer(kind)
+        if app is not None and kind in ("add", "remove", "playlist_remove"):
+            bind_row_tool(app, spacer)  # fork: hidden with the rows' "+" and trash can
+        head.append(spacer)
 
 
 # ---------------------------------------------------------------- fork: adaptive columns
@@ -158,6 +164,14 @@ class TrackColumns(GObject.Object):
     # empty space while "The Brook & The…" and "I Love You, Honeybear…" were cut short.
     artist_width = GObject.Property(type=int, default=LAYOUT["artist_width"])
     album_width = GObject.Property(type=int, default=LAYOUT["album_width"])
+    # Fork #27: below 520 px of content a row's fixed parts left its title ~22 px ("Ji…"): six
+    # 16 px gaps, a 64 px cell for "4:59", and "+" (or a trash can) beside ⋮, whose menu has
+    # both. The compact tier (ui.builders) narrows the first two and hides the third, in rows
+    # that have a ⋮ (search, album and TIDAL playlist pages, local playlists); Liked Songs,
+    # Uploads and a playlist being edited have none, and keep theirs.
+    row_gap = GObject.Property(type=int, default=LAYOUT["col_gap"])
+    time_width = GObject.Property(type=int, default=LAYOUT["time_width"])
+    row_tools = GObject.Property(type=bool, default=True)
 
 
 def track_columns(app):
@@ -183,6 +197,32 @@ def bind_track_column(app, widget, prop, invert=False):
     # gets exactly the tier's width and the columns stay aligned.
     if width and not invert and widget.find_property("width-request") is not None:
         cols.bind_property(width, widget, "width-request", GObject.BindingFlags.SYNC_CREATE)
+    return widget
+
+
+def _bind(app, prop, widget, target):
+    if isinstance(widget, GObject.Object):
+        track_columns(app).bind_property(prop, widget, target, GObject.BindingFlags.SYNC_CREATE)
+        return True
+    return False  # a test's stand-in widget
+
+
+def bind_row_gap(app, box):
+    """A table row's (or header's) gaps follow the compact tier."""
+    _bind(app, "row-gap", box, "spacing")
+    return box
+
+
+def bind_time_cell(app, widget):
+    """The duration cell: LAYOUT's width, narrower in the compact tier."""
+    if not _bind(app, "time-width", widget, "width-request") and hasattr(widget, "set_size_request"):
+        widget.set_size_request(LAYOUT["time_width"], -1)
+    return widget
+
+
+def bind_row_tool(app, widget):
+    """A row's "+" or trash can, which the ⋮ menu also offers: hidden in the compact tier."""
+    _bind(app, "row-tools", widget, "visible")
     return widget
 
 
@@ -292,6 +332,8 @@ def adapt_track_row(app, title_widget, artist_widget, album_widget, album_hidden
     parent = title_widget.get_parent()
     if parent is None:
         return
+    if getattr(parent, "get_spacing", lambda: None)() == LAYOUT["col_gap"]:  # not the queue drawer's 5
+        bind_row_gap(app, parent)
     prev = title_widget.get_prev_sibling()
     cell = Gtk.Box(
         orientation=Gtk.Orientation.VERTICAL,

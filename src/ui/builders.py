@@ -1611,13 +1611,17 @@ def build_player_bar(app, container):
 # tiers listened to notify::width, which GTK4 widgets don't have, so they never ran. Window
 # breakpoints now pick a tier; each tier's minimum content width fits the narrowest window in
 # it, so the app tiles in a half-width (or narrower) niri column.
-#           timeline  side ctrls  quality row  album  cover  text  sidebar collapsed
+# Play modes: Shuffle and Repeat in the transport row. Splitting the one play-mode button in two
+# (r30) took the tiny tier's bar to 466 px (cover and title 166 + transport 216 + the card's
+# margins and padding 84), past a 420 px window: every page was cut off on the right. Without
+# them the transport row is 128 and the bar 378. Now Playing keeps both.
+#           timeline  side ctrls  quality row  album  cover  text  sidebar collapsed  play modes
 _LAYOUT_TIERS = {
-    "full": (560, True, True, True, 80, 120, False),
-    "wide": (400, True, True, True, 80, 120, False),
-    "medium": (240, True, True, True, 64, 110, False),
-    "narrow": (220, False, False, True, 64, 110, True),
-    "tiny": (150, False, False, False, 56, 90, True),
+    "full": (560, True, True, True, 80, 120, False, True),
+    "wide": (400, True, True, True, 80, 120, False, True),
+    "medium": (240, True, True, True, 64, 110, False, True),
+    "narrow": (220, False, False, True, 64, 110, True, True),
+    "tiny": (150, False, False, False, 56, 90, True, False),
 }
 _TIER_CONDITIONS = (
     ("wide", "max-width: 1079px and min-width: 900px"),
@@ -1640,13 +1644,14 @@ def apply_layout_tier(app, tier):
     spec = _LAYOUT_TIERS.get(tier)
     if spec is None:
         tier, spec = "full", _LAYOUT_TIERS["full"]
-    timeline, side, tech, album, cover, text, collapse = spec
+    timeline, side, tech, album, cover, text, collapse, modes = spec
     app._layout_tier = tier
     app._player_bar_layout_tier = tier
     if not getattr(app, "is_mini_mode", False):  # mini mode owns the bar while it's active
         if getattr(app, "timeline_box", None) is not None:
             app.timeline_box.set_size_request(timeline, -1)
-        for name, show in (("vol_box", side), ("tech_box", tech), ("lbl_album", album)):
+        for name, show in (("vol_box", side), ("tech_box", tech), ("lbl_album", album),
+                           ("shuffle_btn", modes), ("repeat_btn", modes)):
             widget = getattr(app, name, None)
             if widget is not None:
                 widget.set_visible(show)
@@ -1717,7 +1722,8 @@ def _install_content_breakpoints(app):
     680 - 819       title over artist | time            full
     580 - 679       title over artist | time            tighter margins
     < 580           title over artist | time            action icons below Play/Shuffle
-    < 520           (same), selection bar uses plain buttons instead of 32 px-padded pills
+    < 520           (same), selection bar uses plain buttons instead of 32 px-padded pills;
+                    rows: 8 px gaps, 40 px time, no "+" / trash (both in ⋮)
 
     The cover keeps its size request: the scrolled page sizes the hero to its *minimum* height,
     so a smaller request there lets the drawn cover overflow onto the track list.
@@ -1756,6 +1762,8 @@ def _install_content_breakpoints(app):
         if select_bar is not None
         else []
     )
+    # Fork: track rows' gaps 16 -> 8, the time cell 64 -> 40, no "+" / trash (⋮ has both).
+    compact += [(cols, "row-gap", 8), (cols, "time-width", 40), (cols, "row-tools", False)]
     def widths(artist, album):
         return [(cols, "artist-width", artist), (cols, "album-width", album)]
 

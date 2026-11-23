@@ -1087,10 +1087,10 @@ def _build_queue_track_row(app, track, i, current_idx, compact):
             m, s = divmod(dur, 60)
             d = Gtk.Label(label=f"{m}:{s:02d}", xalign=1, css_classes=["dim-label", "track-duration"])
             d.set_attributes(Pango.AttrList.from_string("font-features 'tnum=1'"))
-            d.set_size_request(LAYOUT["time_width"], -1)
+            track_table.bind_time_cell(app, d)  # fork: under the queue header's Time, in every tier
             box.append(d)
         else:
-            box.append(Gtk.Box(width_request=LAYOUT["time_width"]))
+            box.append(track_table.bind_time_cell(app, Gtk.Box()))
 
     if up_next.mark_row(app, row, track):  # fork #25
         if compact:  # under the title: the narrow drawer has no width to spare for a pill
@@ -1765,12 +1765,13 @@ def render_search_tracks_page(app):
             m, s = divmod(dur_sec, 60)
             lbl_dur = Gtk.Label(label=f"{m}:{s:02d}", xalign=1, css_classes=["dim-label", "track-duration"])
             lbl_dur.set_attributes(Pango.AttrList.from_string("font-features 'tnum=1'"))
-            lbl_dur.set_size_request(LAYOUT["time_width"], -1)
+            track_table.bind_time_cell(app, lbl_dur)
             row_box.append(lbl_dur)
 
         fav_btn = app.create_track_fav_button(t)
         row_box.append(fav_btn)
         add_btn = Gtk.Button(icon_name="list-add-symbolic", css_classes=["flat", "circular", "history-scroll-btn"])
+        track_table.bind_row_tool(app, add_btn)
         add_btn.set_tooltip_text("Add to Playlist")
         add_btn.connect("clicked", lambda _b, tr=t: app.on_add_single_track_to_playlist(tr))
         row_box.append(add_btn)
@@ -2359,7 +2360,7 @@ def populate_tracks(app, tracks):
             dur_str = f"{m}:{s:02d}"
             lbl_dur = Gtk.Label(label=dur_str, xalign=1, css_classes=["dim-label", "track-duration"])
             lbl_dur.set_attributes(Pango.AttrList.from_string("font-features 'tnum=1'"))
-            lbl_dur.set_size_request(LAYOUT["time_width"], -1)
+            track_table.bind_time_cell(app, lbl_dur)
             box.append(lbl_dur)
 
         if not select_mode:
@@ -2369,6 +2370,7 @@ def populate_tracks(app, tracks):
             is_own_remote = getattr(app, "_remote_playlist_is_own", False)
             if current_remote is not None and is_own_remote:
                 rm_btn = Gtk.Button(icon_name="user-trash-symbolic", css_classes=["flat", "playlist-tool-btn"])
+                track_table.bind_row_tool(app, rm_btn)
                 rm_btn.set_tooltip_text("Remove from Playlist")
                 rm_btn.connect("clicked", lambda _b, tr=t: app.on_remove_single_track_from_remote_playlist(tr))
                 box.append(rm_btn)
@@ -2376,6 +2378,7 @@ def populate_tracks(app, tracks):
                         lambda tr=t: app.on_remove_single_track_from_remote_playlist(tr))
             else:
                 add_btn = Gtk.Button(icon_name="list-add-symbolic", css_classes=["flat", "circular", "history-scroll-btn"])
+                track_table.bind_row_tool(app, add_btn)
                 add_btn.set_tooltip_text("Add to Playlist")
                 add_btn.connect("clicked", lambda _b, tr=t: app.on_add_single_track_to_playlist(tr))
                 box.append(add_btn)
@@ -6190,7 +6193,7 @@ def render_uploads_dashboard(app, tracks=None):
             dur_text = "Processing…"
         d = Gtk.Label(label=dur_text, xalign=0, css_classes=["dim-label", "track-duration"])
         d.set_attributes(Pango.AttrList.from_string("font-features 'tnum=1'"))
-        d.set_size_request(LAYOUT["time_width"], -1)
+        track_table.bind_time_cell(app, d)
         d.set_halign(Gtk.Align.FILL)
         box.append(d)
 
@@ -6773,7 +6776,7 @@ def render_liked_songs_dashboard(app, tracks=None):
             m, s = divmod(max(0, dur), 60)
             d = Gtk.Label(label=f"{m}:{s:02d}", xalign=0, css_classes=["dim-label", "track-duration"])
             d.set_attributes(Pango.AttrList.from_string("font-features 'tnum=1'"))
-            d.set_size_request(LAYOUT["time_width"], -1)
+            track_table.bind_time_cell(app, d)
             d.set_halign(Gtk.Align.FILL)
             box.append(d)
 
@@ -7344,7 +7347,8 @@ def render_playlist_detail(app, playlist_id):
     if edit_mode:
         append_header_action_spacers(tracks_head, ["fav", "drag", "playlist_remove"])
     else:
-        append_header_action_spacers(tracks_head, ["fav", "add", "menu"])
+        # fork: its "+" spacer hides with the rows' empty "+" slot in the compact tier
+        append_header_action_spacers(tracks_head, ["fav", "add", "menu"], app=app)
     title_head = head_btns["title"]
     artist_head = head_btns["artist"]
     album_head = head_btns["album"]
@@ -7405,7 +7409,7 @@ def render_playlist_detail(app, playlist_id):
             m, s = divmod(dur, 60)
             d = Gtk.Label(label=f"{m}:{s:02d}", xalign=1, css_classes=["dim-label", "track-duration"])
             d.set_attributes(Pango.AttrList.from_string("font-features 'tnum=1'"))
-            d.set_size_request(LAYOUT["time_width"], -1)
+            track_table.bind_time_cell(app, d)
             box.append(d)
         fav_btn = app.create_track_fav_button(t)
         box.append(fav_btn)
@@ -7424,6 +7428,7 @@ def render_playlist_detail(app, playlist_id):
             ghost_btn = Gtk.Button(icon_name="list-add-symbolic", css_classes=["flat", "circular", "history-scroll-btn", "ghost-row-btn"])
             ghost_btn.set_sensitive(False)
             ghost_btn.set_focusable(False)
+            track_table.bind_row_tool(app, ghost_btn)  # an empty slot: the compact tier drops it
             box.append(ghost_btn)
             box.append(_build_track_row_overflow_menu(app, t))
         row.set_child(box)
