@@ -3166,6 +3166,15 @@ def render_artist_detail(app, artist, render_token=None):
         body_box.append(section)
         return section
 
+    def _artist_shelf(section):
+        head = section.get_first_child()
+        more = Gtk.Button(label="Show all", css_classes=["flat", "home-section-more"], valign=Gtk.Align.CENTER)
+        head.append(more)
+        flow = shelf.Shelf(button=more)
+        flow.add_css_class("home-flow")
+        section.append(flow)
+        return flow, more
+
     top_section = _append_section_header("Top Tracks", 0)
     top_grid = Gtk.Grid(column_spacing=16, row_spacing=8, hexpand=True)
     top_section.append(top_grid)
@@ -3179,23 +3188,10 @@ def render_artist_detail(app, artist, render_token=None):
     top_section.append(top_loading)
 
     albums_section = _append_section_header("Albums", 0)
-    albums_flow = Gtk.FlowBox(
-        homogeneous=True,
-        valign=Gtk.Align.START,
-        min_children_per_line=1,
-        max_children_per_line=10,
-        selection_mode=Gtk.SelectionMode.NONE,
-        column_spacing=16,
-        row_spacing=16,
-        css_classes=["home-flow"],
-    )
+    # Fork #27: a shelf like Home's: one row, "Show all" beside the heading (ui/shelf.py).
+    albums_flow, albums_more_btn = _artist_shelf(albums_section)
     albums_flow.connect("child-activated", app.on_grid_item_activated)
-    albums_section.append(albums_flow)
-    albums_action_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-    albums_action_row.append(Gtk.Box(hexpand=True))
-    albums_more_btn = Gtk.Button(label="Show more", css_classes=["flat", "liked-action-btn"])
-    albums_action_row.append(albums_more_btn)
-    albums_section.append(albums_action_row)
+    albums_action_row = Gtk.Box(visible=False)  # the old "Show more" row; kept for the signature
     albums_loading = Gtk.Label(
         label="Loading albums...",
         xalign=0,
@@ -3206,23 +3202,10 @@ def render_artist_detail(app, artist, render_token=None):
     albums_section.append(albums_loading)
 
     eps_section = _append_section_header("EP & Singles", 0)
-    eps_flow = Gtk.FlowBox(
-        homogeneous=True,
-        valign=Gtk.Align.START,
-        min_children_per_line=1,
-        max_children_per_line=10,
-        selection_mode=Gtk.SelectionMode.NONE,
-        column_spacing=16,
-        row_spacing=16,
-        css_classes=["home-flow"],
-    )
+    # Fork #27: a shelf like Home's: one row, "Show all" beside the heading (ui/shelf.py).
+    eps_flow, eps_more_btn = _artist_shelf(eps_section)
     eps_flow.connect("child-activated", app.on_grid_item_activated)
-    eps_section.append(eps_flow)
-    eps_action_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-    eps_action_row.append(Gtk.Box(hexpand=True))
-    eps_more_btn = Gtk.Button(label="Show more", css_classes=["flat", "liked-action-btn"])
-    eps_action_row.append(eps_more_btn)
-    eps_section.append(eps_action_row)
+    eps_action_row = Gtk.Box(visible=False)  # the old "Show more" row; kept for the signature
     eps_loading = Gtk.Label(
         label="Loading EPs & singles...",
         xalign=0,
@@ -3360,29 +3343,15 @@ def render_artist_detail(app, artist, render_token=None):
             _token_attr="_artist_albums_render_token",
         )
 
-        if not remaining:
-            more_btn.set_visible(False)
-            action_row.set_visible(False)
-            return
-
-        action_row.set_visible(True)
-        more_btn.set_visible(True)
-        more_btn.set_label(f"Show more ({len(remaining)})")
-
-        def _on_more(_btn, rem=list(remaining), target_flow=flow, target_token=local_token, btn_ref=more_btn, row_ref=action_row):
+        # Fork #27: the flow is a shelf; the rest is built on its first "Show all".
+        def _fill(target_flow, rem=list(remaining), target_token=local_token):
             if int(getattr(app, "_artist_albums_render_token", 0) or 0) != target_token:
                 return
-            btn_ref.set_sensitive(False)
-            app.batch_load_albums(
-                rem,
-                _flow=target_flow,
-                _token=target_token,
-                _token_attr="_artist_albums_render_token",
-            )
-            row_ref.set_visible(False)
-            btn_ref.set_visible(False)
+            app.batch_load_albums(rem, _flow=target_flow, _token=target_token,
+                                  _token_attr="_artist_albums_render_token")
 
-        more_btn.connect("clicked", _on_more)
+        if hasattr(flow, "reset"):
+            flow.reset(pending=len(remaining), fill=_fill if remaining else None)
 
     def _append_empty_hint(section, loading_label, text):
         if loading_label.get_parent() is not None:
