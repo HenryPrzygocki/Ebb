@@ -15,13 +15,24 @@ from gi.repository import GLib, Gtk  # noqa: E402
 
 SPACING = 16
 MAX_PER_LINE = 16
+SHRINK = 0.7  # where a row holds one card at its natural width, two may share it down to this
 
 
-def fit(width, card_width, spacing=SPACING):
-    """How many cards of `card_width` fit in `width`, `spacing` apart: at least one."""
+def fit(width, card_width, spacing=SPACING, card_min=0):
+    """How many cards of `card_width` fit in `width`, `spacing` apart: at least one.
+
+    Fork #27: where only one would fit, two do if each still gets SHRINK of its natural width
+    and its minimum (`card_min`). At a 420 px window an album shelf was one 400 px cover per
+    row, a poster rather than a grid. Home's track columns ask for their whole width as their
+    minimum, so they stay one.
+    """
     if card_width <= 0:
         return 1
-    return max(1, min(MAX_PER_LINE, (int(width) + spacing) // (int(card_width) + spacing)))
+    width, card = int(width), int(card_width)
+    count = (width + spacing) // (card + spacing)
+    if count < 2 and width + spacing >= 2 * (max(int(card_min), int(card * SHRINK)) + spacing):
+        count = 2
+    return max(1, min(MAX_PER_LINE, count))
 
 
 def shows(index, columns, expanded):
@@ -92,7 +103,8 @@ class Shelf(Gtk.FlowBox):
         first = self.get_child_at_index(0)
         if first is None:
             return
-        seen = (width, first.measure(Gtk.Orientation.HORIZONTAL, -1)[1], self.count())
+        card_min, card_nat = first.measure(Gtk.Orientation.HORIZONTAL, -1)[:2]
+        seen = (width, card_nat, self.count(), card_min)
         if seen != self._seen:
             self._seen = seen
             # Changing the layout while it is being allocated would re-enter it; next idle.
@@ -103,11 +115,15 @@ class Shelf(Gtk.FlowBox):
         self._idle = 0
         if self._seen is None:  # reset() since this was queued: the next allocation re-measures
             return False
-        width, card, _count = self._seen
-        columns = fit(width, card, self.get_column_spacing())
+        width, card, _count, card_min = self._seen
+        columns = fit(width, card, self.get_column_spacing(), card_min)
         if columns != self.columns:
             self.columns = columns
             self.set_max_children_per_line(columns)
+            # A FlowBox flows at its cards' natural width: fit()'s two narrower cards need it told.
+            # Never more than two: a minimum of n cards would hold the shelf n cards wide when the
+            # window narrows, and the recount would see that width and keep n.
+            self.set_min_children_per_line(min(columns, 2))
             self.invalidate_filter()
         self._sync_button()
         return False

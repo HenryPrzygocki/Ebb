@@ -2610,10 +2610,7 @@ def render_mixes_dashboard(app):
     status_bar.append(status_lbl)
     app.collection_content_box.append(status_bar)
 
-    scroller = Gtk.ScrolledWindow(
-        hexpand=True, vexpand=True, css_classes=["history-row-scroller"]
-    )
-    scroller.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+    # Fork #27: the grid scrolls with the page; it had a scroller of its own inside the page's.
     # `homogeneous=False` is critical here: with the typical user having
     # only 3-6 favorited mixes, a homogeneous flow stretches each cell
     # to 1/min_children_per_line of the row width, so hovering anywhere
@@ -2622,14 +2619,13 @@ def render_mixes_dashboard(app):
     # "card got selected even though my mouse is nowhere near it."
     flow = Gtk.FlowBox(
         homogeneous=False,
-        min_children_per_line=1,
+        min_children_per_line=2,  # fork #27: two cards, not one poster, at 420 px
         max_children_per_line=10,
         column_spacing=16,
         row_spacing=16,
         selection_mode=Gtk.SelectionMode.NONE,
     )
-    scroller.set_child(flow)
-    app.collection_content_box.append(scroller)
+    app.collection_content_box.append(flow)
 
     # Stamp the in-flight token so a second navigation away/back doesn't
     # let the older daemon's idle_add land on the new view.
@@ -3990,7 +3986,7 @@ def render_history_dashboard(app):
     sec_recent = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12, css_classes=["home-section", "history-section"])
     flow_recent = Gtk.FlowBox(
         homogeneous=True,
-        min_children_per_line=1,
+        min_children_per_line=2,  # fork #27: two cards, not one poster, at 420 px
         max_children_per_line=12,
         column_spacing=16,
         row_spacing=16,
@@ -4545,7 +4541,7 @@ def render_top_dashboard(app, prefer_cache=True):
                 else:
                     flow = Gtk.FlowBox(
                         homogeneous=True,
-                        min_children_per_line=1,
+                        min_children_per_line=2,  # fork #27: two cards, not one poster, at 420 px
                         max_children_per_line=16,
                         column_spacing=16,
                         row_spacing=16,
@@ -4907,7 +4903,7 @@ def render_new_dashboard(app, prefer_cache=True):
                 else:
                     flow = Gtk.FlowBox(
                         homogeneous=True,
-                        min_children_per_line=1,
+                        min_children_per_line=2,  # fork #27: two cards, not one poster, at 420 px
                         max_children_per_line=16,
                         column_spacing=16,
                         row_spacing=16,
@@ -5065,7 +5061,7 @@ def render_hires_dashboard(app, prefer_cache=True):
                 tab_items, tab_page_box = _tab_data[tab_name]
                 flow = Gtk.FlowBox(
                     homogeneous=True,
-                    min_children_per_line=1,
+                    min_children_per_line=2,  # fork #27: two cards, not one poster, at 420 px
                     max_children_per_line=16,
                     column_spacing=16,
                     row_spacing=16,
@@ -5886,7 +5882,7 @@ def render_collection_dashboard(app, favorite_tracks=None, favorite_albums=None)
 
         flow = Gtk.FlowBox(
             homogeneous=True,
-            min_children_per_line=1,
+            min_children_per_line=2,  # not one 400 px cover per row at a 420 px window
             max_children_per_line=10,
             column_spacing=16,
             row_spacing=16,
@@ -7040,6 +7036,7 @@ def render_playlists_home(app):
     section_box.append(head)
 
     flow = Gtk.FlowBox(
+        min_children_per_line=2,  # fork #27: two cards, not one poster, at 420 px
         valign=Gtk.Align.START,
         max_children_per_line=30,
         selection_mode=Gtk.SelectionMode.NONE,
@@ -7567,6 +7564,7 @@ def render_daily_mixes(app, mixes):
         section_box.append(head)
 
         flow = Gtk.FlowBox(
+            min_children_per_line=2,  # fork #27: two cards, not one poster, at 420 px
             valign=Gtk.Align.START,
             max_children_per_line=30,
             selection_mode=Gtk.SelectionMode.NONE,

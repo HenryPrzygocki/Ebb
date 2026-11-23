@@ -20,6 +20,15 @@ def test_the_row_holds_as_many_cards_as_fit():
     assert shelf.fit(800, 0) == 1  # nothing measured yet
 
 
+def test_a_lone_card_per_row_becomes_two_smaller_ones():
+    # 420 px window: a 402 px search shelf of 199 px album cards (minimum 96), 24 apart.
+    assert shelf.fit(402, 199, 24, card_min=96) == 2
+    # Home's track columns: their minimum is their width, so one stays one.
+    assert shelf.fit(402, 260, 16, card_min=260) == 1
+    # Not below SHRINK of the natural width.
+    assert shelf.fit(250, 199, 24, card_min=96) == 1
+
+
 def test_one_row_until_shown_all():
     assert [shelf.shows(i, 3, False) for i in range(5)] == [True, True, True, False, False]
     assert all(shelf.shows(i, 3, True) for i in range(5))
