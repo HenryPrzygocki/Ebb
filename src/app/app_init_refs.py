@@ -261,8 +261,6 @@ def _init_runtime_refs(self):
     self.current_selected_artist = None
     self.artists_query = ""
     self.artists_sort = "name_asc"
-    self.artists_page = 0
-    self.artists_page_size = 50
     self._artists_total_count = 0
     self._artists_index_entries = []
     self._artists_index_ready = False

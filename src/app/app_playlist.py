@@ -232,6 +232,19 @@ def on_playlist_card_clicked(self, playlist_id):
     self.render_playlist_detail(playlist_id)
 
 
+def playlist_byline(creator, own):
+    """Who made a playlist, for the header (fork). Any missing creator name used to read "TIDAL":
+    your own playlists said so (TIDAL sends no name for them; tidalapi may say "me"),
+    and so did other people's. Editorial playlists have no creator at all: those are TIDAL's."""
+    if own:
+        return "You"
+    if creator is None or not str(getattr(creator, "id", "") or "").strip("0 "):
+        return "TIDAL"
+    name = str(getattr(creator, "name", "") or "").strip()
+    # someone else's, name unknown (tidalapi's placeholders "me" and "user"): no line at all
+    return "" if name in ("", "me", "user") else name
+
+
 def on_remote_playlist_card_clicked(self, playlist_obj):
     if playlist_obj is None:
         return
@@ -257,15 +270,16 @@ def on_remote_playlist_card_clicked(self, playlist_obj):
     else:
         self._track_view_source = {"type": "playlist", "name": title, "obj": playlist_obj, "open_method": "on_remote_playlist_card_clicked"}
     creator = getattr(playlist_obj, "creator", None)
-    creator_name = str(getattr(creator, "name", None) or "TIDAL")
     user_id = str(getattr(getattr(self.backend, "user", None), "id", "") or "").strip()
     creator_id = str(getattr(creator, "id", "") or "").strip()
     self._remote_playlist_is_own = bool(user_id and creator_id and user_id == creator_id)
+    creator_name = playlist_byline(creator, self._remote_playlist_is_own)
     self.header_kicker.set_text("Playlist")
     self.header_title.set_text(title)
     self.header_title.set_tooltip_text(title)
     self.header_artist.set_text(creator_name)
     self.header_artist.set_tooltip_text(creator_name)
+    self.header_artist.set_visible(bool(creator_name))
     self.header_meta.set_text("")
     if getattr(self, "track_list_placeholder_label", None) is not None:  # fork: empty-list state
         self.track_list_placeholder_label.set_text("Loading tracks…")

@@ -334,9 +334,101 @@ def _build_track_column(app, pairs, on_play):
 # Fork #27: Liked Songs is one list that grows as you scroll (it was "‹ 1 / 5 ›" pages of 50).
 # Back to a deep position still works: the scroll restore (ui_navigation) follows the growing
 # content, and each step it takes down builds the next rows.
+GRID_CHUNK = 50  # Favorite Artists, library Albums: cards built with the page
+GRID_APPEND = 25  # and per step after that
 LIKED_CHUNK = 50  # rows built with the page
 LIKED_APPEND = 25  # rows per idle callback after that (50 cost ~40 ms, a hitch mid-scroll)
-LIKED_PRELOAD_PX = 900  # build more when the bottom is this close
+GROW_PRELOAD_PX = 900  # build more when the bottom is this close
+
+
+def near_bottom(value, page, upper, preload=GROW_PRELOAD_PX):
+    """True when the bottom of the view is within `preload` px of the end of the content."""
+    return value + page >= upper - preload
+
+
+def _artist_key(artist):
+    return str(getattr(artist, "id", "") or "") or f"obj:{id(artist)}"
+
+
+def grid_remaining(grow):
+    """Whether a growing grid has more to build: from its local list, or from TIDAL's pages,
+    whose end is an empty page when the count is unknown (`total` None)."""
+    if grow["loading"] or grow["done"] or grow["source"] is None:
+        return False
+    if grow["source"] == "local":
+        return grow["shown"] < len(grow["entries"])
+    return grow["total"] is None or grow["shown"] < grow["total"]
+
+
+def grid_fold_page(grow, items, key):
+    """Fold one fetched page into `grow` and return the items to draw. `shown` is TIDAL's offset
+    and moves by the page as fetched; a short page shifts TIDAL's offsets, so the next one can
+    repeat an item, which is dropped."""
+    if not items:
+        grow["done"] = True
+        return []
+    grow["shown"] += len(items)
+    fresh = [item for item in items if key(item) not in grow["seen"]]
+    grow["seen"].update(key(item) for item in fresh)
+    return fresh
+
+
+def _grow_on_scroll(app, widget, remaining, more):
+    """Fork #27: lists that grow as you scroll (Liked Songs, Favorite Artists). Calls `more()`
+    from an idle callback whenever the page scroller's bottom nears the end and `remaining()`.
+
+    Runs on scroll and when the content height changes (which also fills a tall window); the
+    append waits for idle since this can fire during size allocation. The watch lives with
+    `widget`: connected on map, or at once if it is already mapped (a widget appended to a page
+    already on screen is mapped before anything can connect), and disconnected on unmap. The
+    scroller is shared by every page and pages are rebuilt often: a handler left connected
+    would pile up and keep firing elsewhere. Returns the check, to run after a removal.
+    """
+    state = {"adj": None, "ids": [], "pending": False}
+
+    def wanted():
+        scroller = getattr(app, "alb_scroll", None)
+        if scroller is None or not widget.get_mapped() or not remaining():
+            return False
+        adj = scroller.get_vadjustment()
+        return near_bottom(adj.get_value(), adj.get_page_size(), adj.get_upper())
+
+    def check(*_a):
+        if state["pending"] or not wanted():
+            return
+        state["pending"] = True
+
+        def go():
+            # Asked again: on map the scroller can still measure the previous page (layout has
+            # not run), which made a fresh grid build a second chunk it did not need.
+            state["pending"] = False
+            if wanted():
+                more()
+            return False
+
+        GLib.idle_add(go)
+
+    def watch(_w):
+        scroller = getattr(app, "alb_scroll", None)
+        if scroller is None or state["ids"]:
+            return
+        adj = scroller.get_vadjustment()
+        state["adj"], state["ids"] = adj, [adj.connect("value-changed", check), adj.connect("notify::upper", check)]
+        check()
+
+    def unwatch(_w):
+        for hid in state["ids"]:
+            state["adj"].disconnect(hid)
+        state["adj"], state["ids"] = None, []
+
+    if not callable(getattr(widget, "get_mapped", None)):  # a test's stand-in widget
+        return lambda *_a: None
+    widget.connect("map", watch)
+    widget.connect("unmap", unwatch)
+    if widget.get_mapped():
+        watch(widget)
+    widget.grow_watch = state  # for tests and probes: is it watching?
+    return check
 
 
 def liked_removed_ids(prev, new):
@@ -351,11 +443,6 @@ def liked_removed_ids(prev, new):
     if [i for i in prev_ids if i in keep] != new_ids:
         return None
     return set(prev_ids) - keep
-
-
-def liked_wants_more(built, total, value, page, upper, preload=LIKED_PRELOAD_PX):
-    """True when rows remain and the bottom of the view is within `preload` px of the end."""
-    return built < total and value + page >= upper - preload
 
 
 def _build_feed_item_button(app, item_data, on_click):
@@ -2006,6 +2093,7 @@ def show_album_details(app, alb):
     app.current_album_artist_id = artist_id
     app.current_album_artist_name = artist_name
     app.header_artist.set_text(artist_name)
+    app.header_artist.set_visible(True)  # fork: a playlist with no known creator hides it
     app.header_artist.set_tooltip_text(artist_name)
 
     utils.load_img(app.header_art, lambda: app.backend.get_artwork_url(alb, 640), app.cache_dir, utils.COVER_SIZE)
@@ -2597,18 +2685,15 @@ def render_mixes_dashboard(app):
 
 def render_artists_dashboard(app):
     logger.info(
-        "Artists dashboard opened: query=%r sort=%s page=%s",
+        "Artists dashboard opened: query=%r sort=%s",
         getattr(app, "artists_query", ""),
         getattr(app, "artists_sort", "name_asc"),
-        getattr(app, "artists_page", 0),
     )
     _clear_container(app.collection_content_box)
     app.playlist_track_list = None
     app.queue_track_list = None
     app.artists_query = str(getattr(app, "artists_query", "") or "")
     app.artists_sort = str(getattr(app, "artists_sort", "name_asc") or "name_asc")
-    app.artists_page = max(0, int(getattr(app, "artists_page", 0) or 0))
-    app.artists_page_size = max(1, int(getattr(app, "artists_page_size", 50) or 50))
 
     current_user_id = str(getattr(getattr(app.backend, "user", None), "id", "") or "")
     if current_user_id != str(getattr(app, "_artists_index_user_id", "") or ""):
@@ -2656,15 +2741,6 @@ def render_artists_dashboard(app):
     sort_lookup = {key: idx for idx, (key, _label) in enumerate(sort_options)}
     sort_dd.set_selected(sort_lookup.get(app.artists_sort, 0))
     toolbar.append(sort_dd)
-    prev_btn = Gtk.Button(label="Prev", css_classes=["flat", "liked-action-btn"])
-    next_btn = Gtk.Button(label="Next", css_classes=["flat", "liked-action-btn"])
-    prev_btn.set_tooltip_text("Previous page")
-    next_btn.set_tooltip_text("Next page")
-    from ui import pager as ui_pager  # fork: page arrows, not "Prev" / "Next" words
-
-    ui_pager.arrows(prev_btn, next_btn)
-    toolbar.append(prev_btn)
-    toolbar.append(next_btn)
     app.collection_content_box.append(toolbar)
 
     pager_bar = Gtk.Box(spacing=8, margin_start=0, margin_end=0, margin_bottom=8)
@@ -2677,6 +2753,67 @@ def render_artists_dashboard(app):
 
     app.create_album_flow()
     flow = app.main_flow
+    # Fork #27: one grid that grows as you scroll (it was "‹ 1 / 2 ›" pages of 50): the first 50
+    # cards, then GRID_APPEND more near the bottom, from the local index once it is built,
+    # else from TIDAL's sorted pages.
+    # `shown` counts source items used (TIDAL's offset), not cards: a nameless artist draws none.
+    # `total` None: TIDAL's count is unknown, so pages are fetched until one comes back empty
+    # (a short page mid-list does not end it). `seen`: a short page shifts TIDAL's offsets,
+    # and the next page can repeat an artist.
+    grow = {"source": None, "entries": [], "shown": 0, "total": 0, "loading": False, "done": False,
+            "sort": app.artists_sort, "seen": set()}
+
+    def _render_token():
+        return int(getattr(app, "_artists_render_token", 0) or 0)
+
+    def _retry(token):
+        if _render_token() == token:  # not re-rendered meanwhile: that resets `grow` itself
+            grow["loading"] = False
+            check_more()
+        return False
+
+    def _more():
+        token = _render_token()
+        if grow["source"] == "local":
+            nxt = grow["entries"][grow["shown"]:grow["shown"] + GRID_APPEND]
+            grow["shown"] += len(nxt)
+            items = [_artist_obj_from_index_entry(entry) for entry in nxt]
+            app.batch_load_artists(items, len(items), token, flow)
+            return
+        grow["loading"] = True
+        offset, sort = grow["shown"], grow["sort"]
+
+        def task():
+            try:
+                items = list(app.backend.get_favorite_artists_page(limit=GRID_APPEND, offset=offset, sort=sort) or [])
+            except Exception:
+                logger.warning("Loading more favorite artists failed", exc_info=True)
+                items = None
+
+            def apply():
+                if _render_token() != token:
+                    # Re-rendered meanwhile (search, sort): `grow` was reset, and another fetch
+                    # may be running. Clearing `loading` here would start a second one.
+                    return False
+                if items is None:
+                    GLib.timeout_add_seconds(5, _retry, token)  # stays "loading" until then
+                    return False
+                grow["loading"] = False
+                fresh = grid_fold_page(grow, items, _artist_key)
+                if fresh:
+                    app.batch_load_artists(fresh, len(fresh), token, flow)
+                return False
+
+            GLib.idle_add(apply)
+
+        Thread(target=task, daemon=True).start()
+
+    check_more = _grow_on_scroll(app, flow, lambda: grid_remaining(grow), _more)
+
+    def _scroll_to_top():
+        scroller = getattr(app, "alb_scroll", None)
+        if scroller is not None:
+            scroller.get_vadjustment().set_value(0)
 
     def _render_items(items):
         _clear_container(flow)
@@ -2707,12 +2844,6 @@ def render_artists_dashboard(app):
         subtitle_label.set_text(f"{total} {noun} you follow and love")
 
     def _update_pager(total_count, page_count, status_message="", subtitle_total_count=None):
-        pages = max(0, int(page_count or 0))
-        prev_btn.set_sensitive(app.artists_page > 0)
-        next_btn.set_sensitive(pages > 0 and app.artists_page < pages - 1)
-        for button in (prev_btn, next_btn):  # fork: no pager when everything is on one page
-            button.set_visible(pages != 1)
-        ui_pager.show_page(prev_btn, app.artists_page, pages)
         if subtitle_total_count is not None:
             app._artists_total_count = max(0, int(subtitle_total_count or 0))
             app._artists_total_count_known = True
@@ -2728,10 +2859,9 @@ def render_artists_dashboard(app):
         if not query and not getattr(app, "_artists_index_ready", False):
             return False
         if query and not getattr(app, "_artists_index_ready", False):
+            grow.update(source=None, entries=[], shown=0, total=0, loading=False, done=False)
             _render_items([])
             _update_pager(0, 0, "Building artist search index...")
-            prev_btn.set_sensitive(False)
-            next_btn.set_sensitive(False)
             return True
 
         index_entries = getattr(app, "_artists_index_entries", [])
@@ -2739,33 +2869,25 @@ def render_artists_dashboard(app):
         filtered = _sort_artist_index_entries(filtered, app.artists_sort)
         total = len(filtered)
         library_total = len(index_entries)
-        page_size = app.artists_page_size
-        total_pages = (total + page_size - 1) // page_size if total > 0 else 0
-        if total_pages > 0 and app.artists_page >= total_pages:
-            app.artists_page = total_pages - 1
-        elif total_pages == 0:
-            app.artists_page = 0
-        start = app.artists_page * page_size
-        end = start + page_size
-        page_items = [_artist_obj_from_index_entry(entry) for entry in filtered[start:end]]
-        _render_items(page_items)
+        first = filtered[:GRID_CHUNK]
+        grow.update(source="local", entries=filtered, shown=len(first), total=total, loading=False, done=False)
+        _render_items([_artist_obj_from_index_entry(entry) for entry in first])
         if total == 0:
             _update_pager(0, 0, "No artists match this search.", subtitle_total_count=library_total)
         else:
-            _update_pager(total, total_pages, "", subtitle_total_count=library_total)
+            _update_pager(total, 1, "", subtitle_total_count=library_total)
         return True
 
     def _load_remote_page():
         request_token = int(getattr(app, "_artists_browser_request_token", 0) or 0) + 1
         app._artists_browser_request_token = request_token
-        requested_page = int(app.artists_page)
+        requested_page = 0
         sort_key = str(app.artists_sort or "name_asc")
         known_total = max(0, int(getattr(app, "_artists_total_count", 0) or 0))
         known_total_for_subtitle = known_total if bool(getattr(app, "_artists_total_count_known", False)) else None
+        grow.update(source=None, entries=[], shown=0, total=0, loading=False, done=False, sort=sort_key)
         _render_items([])
         _update_pager(known_total, 0, "Loading artists...", subtitle_total_count=known_total_for_subtitle)
-        prev_btn.set_sensitive(False)
-        next_btn.set_sensitive(False)
 
         def task(token=request_token, dashboard=dashboard_token, page=requested_page, sort=sort_key, total_hint=known_total):
             # Skip the count API call if the index is already building — it will update
@@ -2776,8 +2898,8 @@ def render_artists_dashboard(app):
                 total = app.backend.get_favorite_artists_count()
             items = list(
                 app.backend.get_favorite_artists_page(
-                    limit=app.artists_page_size,
-                    offset=page * app.artists_page_size,
+                    limit=GRID_CHUNK,
+                    offset=0,
                     sort=sort,
                 ) or []
             )
@@ -2788,24 +2910,19 @@ def render_artists_dashboard(app):
                 if int(getattr(app, "_artists_browser_request_token", 0) or 0) != token:
                     return False
                 total_count = max(0, int(total or 0))
+                count_known = total_count > 0
                 if total_count <= 0 and items:
-                    total_count = (page * app.artists_page_size) + len(items)
+                    total_count = len(items)
                 app._artists_total_count = total_count
                 app._artists_total_count_known = True
-                total_pages = (total_count + app.artists_page_size - 1) // app.artists_page_size if total_count > 0 else 0
-                if total_pages > 0 and app.artists_page >= total_pages:
-                    app.artists_page = total_pages - 1
-                    _load_remote_page()
-                    return False
+                grow.update(source="remote", shown=len(items), total=total_count if count_known else None,
+                            loading=False, done=not items, seen={_artist_key(artist) for artist in items})
                 _render_items(items)
                 if total_count == 0:
                     _update_pager(0, 0, "No favorite artists yet.", subtitle_total_count=total_count)
                 else:
                     status = "Building artist search index..." if getattr(app, "_artists_index_building", False) else ""
-                    _update_pager(total_count, total_pages, status, subtitle_total_count=total_count)
-                if total_count > 0 and total_pages == 0:
-                    prev_btn.set_sensitive(app.artists_page > 0)
-                    next_btn.set_sensitive(bool(items) and len(items) >= app.artists_page_size)
+                    _update_pager(total_count, 1, status, subtitle_total_count=total_count)
                 return False
 
             GLib.idle_add(apply)
@@ -2870,29 +2987,17 @@ def render_artists_dashboard(app):
 
         Thread(target=task, daemon=True).start()
 
-    def _on_prev_clicked(_btn):
-        if app.artists_page <= 0:
-            return
-        app.artists_page -= 1
-        _refresh_view()
-
-    def _on_next_clicked(_btn):
-        app.artists_page += 1
-        _refresh_view()
-
     def _on_search_changed(entry):
         app.artists_query = str(entry.get_text() or "")
-        app.artists_page = 0
+        _scroll_to_top()
         _refresh_view()
 
     def _on_sort_changed(dropdown, _pspec):
         idx = int(dropdown.get_selected())
         app.artists_sort = sort_options[idx][0] if 0 <= idx < len(sort_options) else "name_asc"
-        app.artists_page = 0
+        _scroll_to_top()
         _refresh_view()
 
-    prev_btn.connect("clicked", _on_prev_clicked)
-    next_btn.connect("clicked", _on_next_clicked)
     search_entry.connect("changed", _on_search_changed)
     sort_dd.connect("notify::selected", _on_sort_changed)
 
@@ -5749,31 +5854,20 @@ def render_collection_dashboard(app, favorite_tracks=None, favorite_albums=None)
     app.playlist_track_list = None
     app.queue_track_list = None
 
-    # Store all albums for pagination and search
+    # Fork #27: one grid that grows as you scroll. It was "‹ 1 / N ›" pages of 50 in a scroller
+    # of its own inside the page's, so the page had two, and Back could not find the place.
+    # Every favourite album is in memory already: building the cards is the cost.
     app._all_albums = list(favorite_albums or [])
     app._filtered_albums = list(app._all_albums)
-    app._albums_page = 0
-    app._albums_page_size = 50
+    grow = {"shown": 0}
 
-    def _get_paginated_albums(page):
-        start = page * app._albums_page_size
-        end = start + app._albums_page_size
-        return app._filtered_albums[start:end]
-
-    def _get_total_pages():
-        return (len(app._filtered_albums) + app._albums_page_size - 1) // app._albums_page_size
-
-    def _build_paged_grid_section():
-        """Build a paged grid section using FlowBox with pagination and search."""
+    def _build_grid_section():
         section = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12, css_classes=["home-section", "history-section"])
-
-        # Search bar with sort and pagination
         search_box = Gtk.Box(spacing=8, margin_start=0, margin_end=0, margin_top=6, margin_bottom=8, css_classes=["search-bar"])
         search_entry = Gtk.Entry(placeholder_text="Search albums...", css_classes=["search-entry"])
         search_entry.set_hexpand(True)
         search_box.append(search_entry)
 
-        # Sort dropdown
         sort_model = Gtk.StringList()
         sort_model.append("Recently Added")
         sort_model.append("Album Name (A-Z)")
@@ -5784,23 +5878,8 @@ def render_collection_dashboard(app, favorite_tracks=None, favorite_albums=None)
         sort_dropdown.set_tooltip_text("Sort albums")
         sort_dropdown.set_size_request(150, -1)
         search_box.append(sort_dropdown)
-
-        # Pagination controls
-        prev_btn = Gtk.Button(label="Prev", css_classes=["flat", "liked-action-btn"])
-        prev_btn.set_tooltip_text("Previous page")
-        search_box.append(prev_btn)
-        from ui import pager as ui_pager  # fork: page arrows, not "Prev" / "Next" words
-
-        next_btn = Gtk.Button(label="Next", css_classes=["flat", "liked-action-btn"])
-        next_btn.set_tooltip_text("Next page")
-        search_box.append(next_btn)
-        ui_pager.arrows(prev_btn, next_btn)
-
         section.append(search_box)
 
-        # FlowBox grid
-        scroller = Gtk.ScrolledWindow(hexpand=True, vexpand=True, css_classes=["history-row-scroller"])
-        scroller.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
         flow = Gtk.FlowBox(
             homogeneous=True,
             min_children_per_line=1,
@@ -5809,38 +5888,27 @@ def render_collection_dashboard(app, favorite_tracks=None, favorite_albums=None)
             row_spacing=16,
             selection_mode=Gtk.SelectionMode.NONE,
         )
-        scroller.set_child(flow)
-        section.append(scroller)
+        section.append(flow)
+        return section, flow, search_entry, sort_dropdown
 
-        return section, flow, prev_btn, next_btn, search_entry, sort_dropdown
+    def _append_albums(upto):
+        albums = app._filtered_albums
+        upto = min(upto, len(albums))
+        for alb in albums[grow["shown"]:upto]:
+            flow_albums.append(_build_my_albums_style_button(app, alb, app.on_history_album_clicked))
+        grow["shown"] = max(grow["shown"], upto)
 
-    def _render_album_page(flow, albums_page):
-        """Render albums for a specific page."""
-        _clear_container(flow)
-        for alb in albums_page:
-            flow.append(_build_my_albums_style_button(app, alb, app.on_history_album_clicked))
+    def _render_first():
+        _clear_container(flow_albums)
+        grow["shown"] = 0
+        _append_albums(GRID_CHUNK)
 
-    def _update_pagination():
-        """Update pagination UI and re-render current page."""
-        total = _get_total_pages()
-        from ui import pager as ui_pager
-
-        ui_pager.sync(prev_btn, next_btn, app._albums_page, total)  # fork: hidden with one page
-        page_albums = _get_paginated_albums(app._albums_page)
-        _render_album_page(flow_albums, page_albums)
-
-    def _on_prev_clicked(_btn):
-        if app._albums_page > 0:
-            app._albums_page -= 1
-            _update_pagination()
-
-    def _on_next_clicked(_btn):
-        if app._albums_page < _get_total_pages() - 1:
-            app._albums_page += 1
-            _update_pagination()
+    def _scroll_to_top():
+        scroller = getattr(app, "alb_scroll", None)
+        if scroller is not None:
+            scroller.get_vadjustment().set_value(0)
 
     def _on_search_changed(entry):
-        """Handle search input."""
         query = entry.get_text().strip().lower()
         if not query:
             app._filtered_albums = list(app._all_albums)
@@ -5850,15 +5918,14 @@ def render_collection_dashboard(app, favorite_tracks=None, favorite_albums=None)
                 if query in getattr(alb, "name", "").lower()
                 or query in getattr(getattr(alb, "artist", None), "name", "").lower()
             ]
-        app._albums_page = 0
         _apply_sort()
-        _update_pagination()
+        _scroll_to_top()
+        _render_first()
 
     def _on_sort_changed(dropdown, _pspec):
-        """Handle sort option change."""
         _apply_sort()
-        app._albums_page = 0
-        _update_pagination()
+        _scroll_to_top()
+        _render_first()
 
     def _apply_sort():
         """Apply current sort option to filtered albums."""
@@ -5877,17 +5944,18 @@ def render_collection_dashboard(app, favorite_tracks=None, favorite_albums=None)
         elif sort_idx == 4:  # Artist Name (Z-A)
             app._filtered_albums.sort(key=lambda a: getattr(getattr(a, "artist", None), "name", "").lower(), reverse=True)
 
-    # Build the section
-    sec_albums, flow_albums, prev_btn, next_btn, search_entry, sort_dropdown = _build_paged_grid_section()
-    prev_btn.connect("clicked", _on_prev_clicked)
-    next_btn.connect("clicked", _on_next_clicked)
+    sec_albums, flow_albums, search_entry, sort_dropdown = _build_grid_section()
     search_entry.connect("changed", _on_search_changed)
     sort_dropdown.connect("notify::selected", _on_sort_changed)
-
-    # Initial render
     _apply_sort()
-    _update_pagination()
+    _render_first()
     app.collection_content_box.append(sec_albums)
+    _grow_on_scroll(
+        app,
+        flow_albums,
+        lambda: grow["shown"] < len(app._filtered_albums),
+        lambda: _append_albums(grow["shown"] + GRID_APPEND),
+    )
 
 
 def _queue_save_button(app, sensitive=True):
@@ -6470,7 +6538,6 @@ def render_liked_songs_dashboard(app, tracks=None):
     list_box.connect("row-activated", lambda box, row: app.on_history_track_clicked(getattr(box, "liked_tracks", []), getattr(row, "liked_track_index", -1)))
     table_box.append(list_box)
     list_box.liked_built = 0
-    list_box.liked_more_pending = False
 
     def _scroll_to_list_top():
         scroller = getattr(app, "alb_scroll", None)
@@ -6481,46 +6548,13 @@ def render_liked_songs_dashboard(app, tracks=None):
         # A new search, sort, artist filter or Hi-Res filter starts over at the top.
         _scroll_to_list_top()
 
-    def _check_more(*_a):
-        # Runs on scroll and when the content height changes (which also fills a tall window).
-        # The append itself waits for an idle callback: this can fire during size allocation.
-        scroller = getattr(app, "alb_scroll", None)
-        if scroller is None or list_box.liked_more_pending or app.liked_track_list is not list_box:
-            return
-        adj = scroller.get_vadjustment()
-        total = len(getattr(list_box, "liked_tracks", []) or [])
-        if not liked_wants_more(list_box.liked_built, total, adj.get_value(), adj.get_page_size(), adj.get_upper()):
-            return
-        list_box.liked_more_pending = True
-
-        def _more():
-            list_box.liked_more_pending = False
-            if app.liked_track_list is list_box and list_box.get_mapped():
-                _append_rows(list_box.liked_built + LIKED_APPEND)
-            return False
-
-        GLib.idle_add(_more)
-
-    def _watch_scroll(_w):
-        scroller = getattr(app, "alb_scroll", None)
-        if scroller is None or getattr(list_box, "liked_scroll_ids", None):
-            return
-        adj = scroller.get_vadjustment()
-        list_box.liked_scroll_ids = (adj, [adj.connect("value-changed", _check_more), adj.connect("notify::upper", _check_more)])
-        _check_more()
-
-    def _unwatch_scroll(_w):
-        # The scroller is shared by every page, and each rebuild makes a new list: a handler left
-        # connected would pile up with every heart toggle and keep firing on other pages.
-        adj, ids = getattr(list_box, "liked_scroll_ids", None) or (None, [])
-        for hid in ids:
-            adj.disconnect(hid)
-        list_box.liked_scroll_ids = None
-
-    list_box.connect("map", _watch_scroll)
-    list_box.connect("unmap", _unwatch_scroll)
-    if list_box.get_mapped():  # appended to a page already on screen: "map" has been and gone
-        _watch_scroll(list_box)
+    _check_more = _grow_on_scroll(
+        app,
+        list_box,
+        remaining=lambda: app.liked_track_list is list_box
+        and list_box.liked_built < len(getattr(list_box, "liked_tracks", []) or []),
+        more=lambda: _append_rows(list_box.liked_built + LIKED_APPEND),
+    )
 
     def _play_liked_tracks(tracks, shuffle=False):
         items = [t for t in list(tracks or []) if t is not None]

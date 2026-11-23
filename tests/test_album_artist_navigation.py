@@ -24,6 +24,10 @@ class _Label:
     def __init__(self, text=None):
         self.text = text
         self.tooltip = None
+        self.visible = True
+
+    def set_visible(self, value):
+        self.visible = bool(value)
 
     def set_text(self, value):
         self.text = str(value)
@@ -497,7 +501,7 @@ def test_batch_load_artists_uses_explicit_flow_target(monkeypatch):
     assert wrong_flow.children == []
 
 
-def test_render_artists_dashboard_places_prev_next_in_search_toolbar(monkeypatch):
+def test_render_artists_dashboard_toolbar_has_search_and_sort_but_no_pager(monkeypatch):
     class _FakeGtkBox(_Container):
         def __init__(self, *args, **kwargs):
             super().__init__()
@@ -647,8 +651,7 @@ def test_render_artists_dashboard_places_prev_next_in_search_toolbar(monkeypatch
     assert toolbar.css_classes == ["search-bar"]
     assert toolbar.children[0].css_classes == ["search-entry"]
     assert toolbar.children[1].css_classes == ["sort-dropdown"]
-    assert [child.icon_name for child in toolbar.children[2:4]] == ["go-previous-symbolic", "go-next-symbolic"]
-    assert [child.tooltip for child in toolbar.children[2:4]] == ["Previous page", "Next page"]
+    assert len(toolbar.children) == 2  # fork #27: no page arrows; the grid grows as you scroll
     assert len(pager_bar.children) == 1
     assert not any(isinstance(child, _FakeGtkButton) for child in pager_bar.children)
 

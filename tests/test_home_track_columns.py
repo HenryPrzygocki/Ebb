@@ -118,12 +118,12 @@ def test_an_unlike_is_recognised_as_a_pure_removal():
     assert ui_actions.liked_removed_ids([], []) is None
 
 
-def test_liked_list_grows_only_near_the_bottom_and_while_rows_remain():
-    # 50 rows built of 205; a 900 px view over 2500 px of content
-    assert not ui_actions.liked_wants_more(50, 205, value=0, page=900, upper=2500)
-    assert ui_actions.liked_wants_more(50, 205, value=800, page=900, upper=2500)
-    assert ui_actions.liked_wants_more(50, 205, value=0, page=1400, upper=1400)  # tall window, short list
-    assert not ui_actions.liked_wants_more(205, 205, value=1600, page=900, upper=2500)
+def test_lists_grow_only_near_the_bottom():
+    # a 900 px view over 2500 px of content
+    assert not ui_actions.near_bottom(value=0, page=900, upper=2500)
+    assert ui_actions.near_bottom(value=800, page=900, upper=2500)
+    assert ui_actions.near_bottom(value=0, page=1400, upper=1400)  # tall window, short list
+
 
 
 def test_only_the_word_radio_makes_a_radio_card():
@@ -143,3 +143,42 @@ def test_search_merges_playlists_across_query_variants():
     a, b, c = (SimpleNamespace(id=i) for i in ("p1", "p2", "p3"))
     merged = ui_actions._merge_remote_results([{"playlists": [a, b]}, {"playlists": [b, c]}])
     assert [p.id for p in merged["playlists"]] == ["p1", "p2", "p3"]
+
+
+def test_playlist_byline_never_credits_tidal_with_your_playlists():
+    from app.app_playlist import playlist_byline
+    assert playlist_byline(SimpleNamespace(id=1234567, name=None), own=True) == "You"
+    assert playlist_byline(SimpleNamespace(id=1234567, name="me"), own=True) == "You"
+    assert playlist_byline(None, own=False) == "TIDAL"  # editorial
+    assert playlist_byline(SimpleNamespace(id=0, name=None), own=False) == "TIDAL"
+    assert playlist_byline(SimpleNamespace(id=42, name="Ana"), own=False) == "Ana"
+    assert playlist_byline(SimpleNamespace(id=42, name=None), own=False) == ""
+    assert playlist_byline(SimpleNamespace(id=42, name="user"), own=False) == ""
+
+
+def _remote_grow(**kw):
+    grow = {"source": "remote", "entries": [], "shown": 0, "total": None, "loading": False, "done": False, "seen": set()}
+    grow.update(kw)
+    return grow
+
+
+def test_grid_fetches_until_an_empty_page_when_the_count_is_unknown():
+    grow = _remote_grow(shown=50)
+    assert ui_actions.grid_remaining(grow)
+    assert ui_actions.grid_fold_page(grow, [], str) == []
+    assert grow["done"] and not ui_actions.grid_remaining(grow)
+    assert not ui_actions.grid_remaining(_remote_grow(shown=64, total=64))
+    assert ui_actions.grid_remaining(_remote_grow(shown=50, total=64))
+    assert not ui_actions.grid_remaining(_remote_grow(loading=True))
+    assert not ui_actions.grid_remaining(_remote_grow(source=None))
+    local = _remote_grow(source="local", entries=list(range(63)), shown=50)
+    assert ui_actions.grid_remaining(local)
+    local["shown"] = 63
+    assert not ui_actions.grid_remaining(local)
+
+
+def test_grid_page_after_a_short_one_drops_repeats_and_keeps_tidals_offset():
+    grow = _remote_grow(shown=49, seen={str(i) for i in range(50) if i != 7})  # 7 was not sent
+    page = [str(i) for i in range(48, 73)]  # TIDAL's offset 49 repeats 48 and 49
+    assert ui_actions.grid_fold_page(grow, page, str) == [str(i) for i in range(50, 73)]
+    assert grow["shown"] == 74  # the next request is at 49 + 25, as fetched

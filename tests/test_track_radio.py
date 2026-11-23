@@ -25,6 +25,10 @@ class _Label:
     def __init__(self):
         self.text = ""
         self.tooltip = ""
+        self.visible = True
+
+    def set_visible(self, value):
+        self.visible = bool(value)
 
     def get_text(self):
         return self.text
