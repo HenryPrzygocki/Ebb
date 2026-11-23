@@ -6329,6 +6329,8 @@ def render_liked_songs_dashboard(app, tracks=None):
         _refresh_artist_filter_buttons()
         _apply_filters()
 
+    badges = {}  # fork: artist key -> its count badge, for in-place unlikes (_remove_rows)
+    gone = set()  # fork: ids unliked in place; all_tracks (and its indexes) still holds them
     for item in artist_items:
         artist_obj = item.get("artist")
         key = item.get("key")
@@ -6356,6 +6358,7 @@ def render_liked_songs_dashboard(app, tracks=None):
         badge.set_halign(Gtk.Align.END)
         badge.set_valign(Gtk.Align.END)
         overlay.add_overlay(badge)
+        badges[key] = badge
         card.append(overlay)
         card.append(Gtk.Label(label=name, css_classes=["dim-label", "liked-artist-filter-name"], max_width_chars=16, ellipsize=3))
 
@@ -6615,6 +6618,8 @@ def render_liked_songs_dashboard(app, tracks=None):
             # recent => keep backend order
 
         filtered = [all_tracks[i] for i in filtered_indices]
+        if gone:
+            filtered = [t for t in filtered if getattr(t, "id", None) not in gone]
         filtered = hires_filter.apply(app, filtered, scope=app.liked_tracks_data)
         hires_chip.sync(app.liked_tracks_data)
 
@@ -6712,6 +6717,24 @@ def render_liked_songs_dashboard(app, tracks=None):
             app._update_track_list_icon(target_list=list_box)
 
     def _remove_rows(removed):
+        gone.update(removed)
+        emptied = False
+        for i, t in enumerate(all_tracks):  # the artist strip's counts
+            if getattr(t, "id", None) in removed:
+                key = artist_key_strs[i]
+                badge = badges.get(key)
+                left = int(badge.get_label() or 0) - 1 if badge is not None else 1
+                if badge is not None:
+                    badge.set_label(str(max(0, left)))
+                if left <= 0 and key in app.liked_artist_filter_buttons:
+                    app.liked_artist_filter_buttons[key].set_visible(False)
+                    emptied = emptied or getattr(app, "liked_tracks_artist_filter", None) == key
+        if emptied:  # the artist you were filtering by has no liked songs left: show them all
+            app.liked_tracks_artist_filter = None
+            _refresh_artist_filter_buttons()
+            _reset_rows()
+            _apply_filters()
+            return
         tracks = [t for t in (getattr(list_box, "liked_tracks", []) or []) if getattr(t, "id", None) not in removed]
         list_box.liked_tracks = tracks
         if not tracks:  # the last of the shown ones: say so
