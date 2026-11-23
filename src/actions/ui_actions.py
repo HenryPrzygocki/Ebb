@@ -325,6 +325,33 @@ def _build_track_column(app, pairs, on_play):
     return col
 
 
+# Fork #27: Liked Songs is one list that grows as you scroll (it was "‹ 1 / 5 ›" pages of 50).
+# Back to a deep position still works: the scroll restore (ui_navigation) follows the growing
+# content, and each step it takes down builds the next rows.
+LIKED_CHUNK = 50  # rows built with the page
+LIKED_APPEND = 25  # rows per idle callback after that (50 cost ~40 ms, a hitch mid-scroll)
+LIKED_PRELOAD_PX = 900  # build more when the bottom is this close
+
+
+def liked_removed_ids(prev, new):
+    """The track ids dropped when `new` is exactly `prev` minus them (same order, nothing added),
+    else None. An unlike refreshes the page with such a list; its rows go in place instead of a
+    rebuild, which cost ~330 ms at 200 rows deep and lost the scroll position."""
+    prev_ids = [getattr(t, "id", None) for t in prev or []]
+    new_ids = [getattr(t, "id", None) for t in new or []]
+    keep = set(new_ids)
+    if len(new_ids) >= len(prev_ids) or None in keep or len(keep) != len(new_ids):
+        return None
+    if [i for i in prev_ids if i in keep] != new_ids:
+        return None
+    return set(prev_ids) - keep
+
+
+def liked_wants_more(built, total, value, page, upper, preload=LIKED_PRELOAD_PX):
+    """True when rows remain and the bottom of the view is within `preload` px of the end."""
+    return built < total and value + page >= upper - preload
+
+
 def _build_feed_item_button(app, item_data, on_click):
     layout = _home_card_layout(item_data, utils.COVER_SIZE)
     card_width = layout["card_width"]
@@ -6083,14 +6110,28 @@ def render_liked_songs_dashboard(app, tracks=None):
     # Fast path: track list identical — skip full widget rebuild, only re-apply filters.
     prev_sig = getattr(app, "_liked_tracks_view_sig", None)
     apply_fn = getattr(app, "_liked_tracks_apply_fn", None)
+    shown_list = getattr(app, "liked_track_list", None)
     if (prev_sig is not None and prev_sig == curr_sig
             and apply_fn is not None
-            and getattr(app, "liked_track_list", None) is not None):
+            and shown_list is not None):
         logger.info("Liked songs dashboard: data unchanged (sig=%s), skipping full rebuild", curr_sig)
         app.liked_tracks_data = all_tracks
         if hasattr(app, "grid_subtitle_label") and app.grid_subtitle_label is not None:
             app.grid_subtitle_label.set_text(f"{n} Liked Songs")
-        apply_fn()
+        # Fork #27: rows already built for this very data stay (a heart click re-renders the
+        # cached list first, which rebuilt every row it had grown to).
+        if not int(getattr(shown_list, "liked_built", 0) or 0):
+            apply_fn()
+        return
+    remove_fn = getattr(app, "_liked_tracks_remove_fn", None)
+    removed = liked_removed_ids(getattr(app, "liked_tracks_data", None), all_tracks) if prev_sig is not None else None
+    if removed and remove_fn is not None and apply_fn is not None and shown_list is not None:
+        logger.info("Liked songs dashboard: %s unliked, removing their rows in place", len(removed))
+        app.liked_tracks_data = all_tracks
+        app._liked_tracks_view_sig = curr_sig
+        if hasattr(app, "grid_subtitle_label") and app.grid_subtitle_label is not None:
+            app.grid_subtitle_label.set_text(f"{n} Liked Songs")
+        remove_fn(removed)
         return
 
     logger.info("Liked songs dashboard opened: tracks=%s", n)
@@ -6099,6 +6140,7 @@ def render_liked_songs_dashboard(app, tracks=None):
     app.queue_track_list = None
     app._liked_tracks_view_sig = None  # clear until full build completes
     app._liked_tracks_apply_fn = None
+    app._liked_tracks_remove_fn = None
 
     if hasattr(app, "grid_subtitle_label") and app.grid_subtitle_label is not None:
         app.grid_subtitle_label.set_text(f"{n} Liked Songs")
@@ -6106,8 +6148,6 @@ def render_liked_songs_dashboard(app, tracks=None):
     app.liked_tracks_sort = getattr(app, "liked_tracks_sort", "recent")
     app.liked_tracks_query = getattr(app, "liked_tracks_query", "")
     app.liked_tracks_artist_filter = getattr(app, "liked_tracks_artist_filter", None)
-    app.liked_tracks_page_size = max(1, int(getattr(app, "liked_tracks_page_size", 50) or 50))
-    app.liked_tracks_page = max(0, int(getattr(app, "liked_tracks_page", 0) or 0))
 
     toolbar = Gtk.Box(spacing=8, margin_start=0, margin_end=0, margin_top=6, margin_bottom=8)
     search_entry = Gtk.Entry(hexpand=True)
@@ -6116,7 +6156,7 @@ def render_liked_songs_dashboard(app, tracks=None):
     toolbar.append(search_entry)
 
     def _on_hires_chip_changed():
-        app.liked_tracks_page = 0
+        _reset_rows()
         apply_fn = getattr(app, "_liked_tracks_apply_fn", None)
         if apply_fn is not None:
             apply_fn()
@@ -6135,17 +6175,6 @@ def render_liked_songs_dashboard(app, tracks=None):
     shuffle_btn = Gtk.Button(label="Shuffle", css_classes=["flat", "liked-action-btn"])
     shuffle_btn.set_tooltip_text("Shuffle current liked songs and play")
     toolbar.append(shuffle_btn)
-    # Fork (ui/pager.py): "‹ 2 / 5 ›" above and below the list, instead of "Prev" / "Next" words
-    # beside Play all and Shuffle. The handlers are defined further down.
-    from ui import pager as ui_pager
-
-    top_pager = ui_pager.Pager(lambda b: _on_prev_page(b), lambda b: _on_next_page(b), margin_start=8)
-    bottom_pager = ui_pager.Pager(
-        lambda b: (_on_prev_page(b), _scroll_to_list_top()), lambda b: (_on_next_page(b), _scroll_to_list_top()),
-        halign=Gtk.Align.CENTER,
-        margin_bottom=24,
-    )
-    toolbar.append(top_pager)
     app.collection_content_box.append(toolbar)
 
     artist_scroll_prev_btn = Gtk.Button(
@@ -6296,7 +6325,7 @@ def render_liked_songs_dashboard(app, tracks=None):
     def _on_artist_filter_clicked(key):
         current = getattr(app, "liked_tracks_artist_filter", None)
         app.liked_tracks_artist_filter = None if current == key else key
-        app.liked_tracks_page = 0
+        _reset_rows()
         _refresh_artist_filter_buttons()
         _apply_filters()
 
@@ -6396,12 +6425,58 @@ def render_liked_songs_dashboard(app, tracks=None):
     app.liked_track_list = list_box
     list_box.connect("row-activated", lambda box, row: app.on_history_track_clicked(getattr(box, "liked_tracks", []), getattr(row, "liked_track_index", -1)))
     table_box.append(list_box)
-    table_box.append(bottom_pager)
+    list_box.liked_built = 0
+    list_box.liked_more_pending = False
 
     def _scroll_to_list_top():
         scroller = getattr(app, "alb_scroll", None)
         if scroller is not None:
             scroller.get_vadjustment().set_value(0)
+
+    def _reset_rows():
+        # A new search, sort, artist filter or Hi-Res filter starts over at the top.
+        _scroll_to_list_top()
+
+    def _check_more(*_a):
+        # Runs on scroll and when the content height changes (which also fills a tall window).
+        # The append itself waits for an idle callback: this can fire during size allocation.
+        scroller = getattr(app, "alb_scroll", None)
+        if scroller is None or list_box.liked_more_pending or app.liked_track_list is not list_box:
+            return
+        adj = scroller.get_vadjustment()
+        total = len(getattr(list_box, "liked_tracks", []) or [])
+        if not liked_wants_more(list_box.liked_built, total, adj.get_value(), adj.get_page_size(), adj.get_upper()):
+            return
+        list_box.liked_more_pending = True
+
+        def _more():
+            list_box.liked_more_pending = False
+            if app.liked_track_list is list_box and list_box.get_mapped():
+                _append_rows(list_box.liked_built + LIKED_APPEND)
+            return False
+
+        GLib.idle_add(_more)
+
+    def _watch_scroll(_w):
+        scroller = getattr(app, "alb_scroll", None)
+        if scroller is None or getattr(list_box, "liked_scroll_ids", None):
+            return
+        adj = scroller.get_vadjustment()
+        list_box.liked_scroll_ids = (adj, [adj.connect("value-changed", _check_more), adj.connect("notify::upper", _check_more)])
+        _check_more()
+
+    def _unwatch_scroll(_w):
+        # The scroller is shared by every page, and each rebuild makes a new list: a handler left
+        # connected would pile up with every heart toggle and keep firing on other pages.
+        adj, ids = getattr(list_box, "liked_scroll_ids", None) or (None, [])
+        for hid in ids:
+            adj.disconnect(hid)
+        list_box.liked_scroll_ids = None
+
+    list_box.connect("map", _watch_scroll)
+    list_box.connect("unmap", _unwatch_scroll)
+    if list_box.get_mapped():  # appended to a page already on screen: "map" has been and gone
+        _watch_scroll(list_box)
 
     def _play_liked_tracks(tracks, shuffle=False):
         items = [t for t in list(tracks or []) if t is not None]
@@ -6547,24 +6622,12 @@ def render_liked_songs_dashboard(app, tracks=None):
         list_box.liked_tracks = filtered
 
         total = len(filtered)
-        page_size = max(1, int(getattr(app, "liked_tracks_page_size", 50) or 50))
-        total_pages = max(1, (total + page_size - 1) // page_size)
-        page = int(getattr(app, "liked_tracks_page", 0) or 0)
-        if page >= total_pages:
-            page = total_pages - 1
-        if page < 0:
-            page = 0
-        app.liked_tracks_page = page
-        start = page * page_size
-        end = min(start + page_size, total)
-        page_items = filtered[start:end] if total > 0 else []
+        list_box.liked_built = 0
 
         play_all_btn.set_sensitive(bool(filtered))
         shuffle_btn.set_sensitive(bool(filtered))
-        top_pager.update(page, total_pages)
-        bottom_pager.update(page, total_pages)
 
-        if not page_items:
+        if not filtered:
             row = Gtk.ListBoxRow()
             row.set_selectable(False)
             row.set_activatable(False)
@@ -6572,8 +6635,14 @@ def render_liked_songs_dashboard(app, tracks=None):
             list_box.append(row)
             return
 
-        for i, t in enumerate(page_items):
-            abs_i = start + i
+        _append_rows(LIKED_CHUNK)
+
+    def _append_rows(upto):
+        tracks = list(getattr(list_box, "liked_tracks", []) or [])
+        start = int(list_box.liked_built)
+        upto = min(len(tracks), int(upto))
+        for abs_i in range(start, upto):
+            t = tracks[abs_i]
             row = Gtk.ListBoxRow(css_classes=["track-row"])
             row.liked_track_index = abs_i
             row.track_id = getattr(t, "id", None)
@@ -6589,6 +6658,7 @@ def render_liked_songs_dashboard(app, tracks=None):
             stack.set_size_request(LAYOUT["index_width"], -1)
             stack.add_css_class("track-index-stack")
             idx = Gtk.Label(label=str(abs_i + 1), css_classes=["dim-label"])
+            row.liked_index_label = idx
             stack.add_named(idx, "num")
             icon = Gtk.Image(icon_name="media-playback-start-symbolic")
             icon.add_css_class("accent")
@@ -6636,27 +6706,58 @@ def render_liked_songs_dashboard(app, tracks=None):
             box.append(add_btn)
             row.set_child(box)
             list_box.append(row)
+        list_box.liked_built = max(start, upto)
 
         if hasattr(app, "_update_track_list_icon"):
             app._update_track_list_icon(target_list=list_box)
 
+    def _remove_rows(removed):
+        tracks = [t for t in (getattr(list_box, "liked_tracks", []) or []) if getattr(t, "id", None) not in removed]
+        list_box.liked_tracks = tracks
+        if not tracks:  # the last of the shown ones: say so
+            _apply_filters()
+            return
+        index_of = {getattr(t, "id", None): i for i, t in enumerate(tracks)}
+        scroller = getattr(app, "alb_scroll", None)
+        shift = 0.0  # rows removed above the view (unliked from the player bar while scrolled)
+        built, row = 0, list_box.get_first_child()
+        while row is not None:
+            nxt = row.get_next_sibling()
+            if hasattr(row, "liked_track_index"):
+                if getattr(row, "track_id", None) in removed:
+                    if scroller is not None:
+                        from gi.repository import Graphene
+
+                        ok, top = row.compute_point(scroller, Graphene.Point().init(0, 0))
+                        ok2, below = (nxt.compute_point(scroller, Graphene.Point().init(0, 0))
+                                      if nxt is not None else (False, None))
+                        height = (below.y - top.y) if ok2 else row.get_height()
+                        if ok and top.y + height <= 0:
+                            shift += height
+                    list_box.remove(row)
+                else:
+                    row.liked_track_index = index_of.get(row.track_id, row.liked_track_index)
+                    label = getattr(row, "liked_index_label", None)
+                    if label is not None:
+                        label.set_label(str(row.liked_track_index + 1))
+                    built += 1
+            row = nxt
+        list_box.liked_built = built  # still the first `built` tracks: the order is unchanged
+        if shift > 0 and scroller is not None:  # keep what you were looking at in place
+            adj = scroller.get_vadjustment()
+            adj.set_value(max(0.0, adj.get_value() - shift))
+        hires_chip.sync(app.liked_tracks_data)
+        _check_more()
+
     def _on_search_changed(entry):
         app.liked_tracks_query = entry.get_text()
-        app.liked_tracks_page = 0
+        _reset_rows()
         _apply_filters()
 
     def _on_sort_changed(dd, _pspec):
         idx = int(dd.get_selected())
         app.liked_tracks_sort = {0: "recent", 1: "title", 2: "artist", 3: "album", 4: "duration"}.get(idx, "recent")
-        app.liked_tracks_page = 0
-        _apply_filters()
-
-    def _on_prev_page(_btn):
-        app.liked_tracks_page = max(0, int(getattr(app, "liked_tracks_page", 0) or 0) - 1)
-        _apply_filters()
-
-    def _on_next_page(_btn):
-        app.liked_tracks_page = int(getattr(app, "liked_tracks_page", 0) or 0) + 1
+        _reset_rows()
         _apply_filters()
 
     search_entry.connect("changed", _on_search_changed)
@@ -6666,6 +6767,7 @@ def render_liked_songs_dashboard(app, tracks=None):
     # data can skip the full widget rebuild and just re-run filters.
     app._liked_tracks_view_sig = curr_sig
     app._liked_tracks_apply_fn = _apply_filters
+    app._liked_tracks_remove_fn = _remove_rows
     _apply_filters()
 
 

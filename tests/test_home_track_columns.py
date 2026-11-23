@@ -102,3 +102,25 @@ def test_left_right_keep_the_row_and_skip_folded_columns():
     assert ui_actions._track_column_step(b, b.kids[0], Gdk.KEY_Left) is a.kids[0]
     assert ui_actions._track_column_step(b, b.kids[1], Gdk.KEY_Right) is None  # c is folded away
     assert ui_actions._track_column_step(a, a.kids[0], Gdk.KEY_Left) is None
+
+
+# Fork #27: Liked Songs grows as you scroll instead of paging.
+def _t(*ids):
+    return [SimpleNamespace(id=i) for i in ids]
+
+
+def test_an_unlike_is_recognised_as_a_pure_removal():
+    assert ui_actions.liked_removed_ids(_t(1, 2, 3, 4), _t(1, 3, 4)) == {2}
+    assert ui_actions.liked_removed_ids(_t(1, 2, 3, 4), _t(1, 4)) == {2, 3}
+    assert ui_actions.liked_removed_ids(_t(1, 2, 3), _t(1, 2, 3)) is None  # nothing removed
+    assert ui_actions.liked_removed_ids(_t(1, 2, 3), _t(1, 3, 2)) is None  # reordered: rebuild
+    assert ui_actions.liked_removed_ids(_t(1, 2, 3), _t(1, 9)) is None  # something added: rebuild
+    assert ui_actions.liked_removed_ids([], []) is None
+
+
+def test_liked_list_grows_only_near_the_bottom_and_while_rows_remain():
+    # 50 rows built of 205; a 900 px view over 2500 px of content
+    assert not ui_actions.liked_wants_more(50, 205, value=0, page=900, upper=2500)
+    assert ui_actions.liked_wants_more(50, 205, value=800, page=900, upper=2500)
+    assert ui_actions.liked_wants_more(50, 205, value=0, page=1400, upper=1400)  # tall window, short list
+    assert not ui_actions.liked_wants_more(205, 205, value=1600, page=900, upper=2500)
