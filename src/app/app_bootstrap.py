@@ -202,7 +202,9 @@ def _watch_content_size(self):
     overlay = getattr(self, "body_overlay", None)
     if overlay is None:
         return
-    probe = Gtk.DrawingArea(can_target=False, can_focus=False, hexpand=True, vexpand=True)
+    # No expand flags: an overlay child fills by its alignment, and the flags would spread to
+    # the body's parents.
+    probe = Gtk.DrawingArea(can_target=False, can_focus=False)
 
     def _resized(_area, width, height):
         size = (int(width), int(height))
