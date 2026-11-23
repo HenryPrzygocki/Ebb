@@ -18,7 +18,7 @@ except ImportError:  # older tidalapi
     _TidalAuthError = ()
 
 
-ARTIST_PAGE_FLOOR = 50  # fork: TIDAL list pages hold at least this many when asked
+ARTIST_PAGE_FLOOR = 50  # fork: a first page shorter than this is the whole list
 
 
 def restore_failure_kind(exc):
@@ -2028,12 +2028,13 @@ class TidalBackend:
                         len(page),
                     )
                     break
-                offset += len(page)
-                # Fork: a short page is the last one. Without this, every artist list cost one
-                # more request that came back empty (two per artist page). Under 50 only, in
-                # case the server caps pages below what was asked for.
-                if len(page) < min(size, ARTIST_PAGE_FLOOR):
+                # Fork: a short *first* page is the whole list (most artists: one page), so
+                # don't ask for an empty second one; that was two wasted round trips per artist
+                # page. Only the first page: TIDAL returns short pages mid-list (Bach's albums
+                # came 100, 100, 100, 99, 100, …), so later pages page on until an empty one.
+                if offset == 0 and len(page) < min(size, ARTIST_PAGE_FLOOR):
                     break
+                offset += len(page)
             return merged[:target]
 
         return list(self._call_with_session_recovery(_fetch, context=f"artist {method_name}") or [])

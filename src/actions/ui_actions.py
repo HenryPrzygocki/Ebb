@@ -5202,6 +5202,9 @@ def _render_tabbed_page_dashboard(app, cfg, prefer_cache=True):
         flow.reset(pending=pending, fill=_rest if pending else None)
         if len(items) < first and more_path:  # too few for a row: fill it now
             def _filled():
+                if getattr(flow, "expanded", False):  # Show all was clicked meanwhile: keep it open
+                    _build(len(items))
+                    return
                 left = len(items) - min(first, len(items))
                 flow.reset(pending=left, fill=_rest if left else None)
                 _build(first)

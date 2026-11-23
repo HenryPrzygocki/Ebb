@@ -259,4 +259,4 @@ def test_get_artist_ep_singles_all_paginates_all_pages():
     result = backend.get_artist_ep_singles_all(SimpleNamespace(id="artist-9", name="Demo"), limit=500)
 
     assert [item.id for item in result] == [f"e{i}" for i in range(130)]
-    assert calls == [(100, 0), (100, 100)]
+    assert calls == [(100, 0), (100, 100), (100, 130)]
