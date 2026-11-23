@@ -907,6 +907,14 @@ button.circular {
     .lyric-row-clickable:hover .lyric-line {
         color: rgba(255, 255, 255, 0.85);
     }
+    /* Fork: unsynced lyrics. No line is ever the active one, so the text itself is readable. */
+    .lyric-line.lyric-static {
+        font-weight: 400;
+        color: rgba(255, 255, 255, 0.86);
+    }
+    .lyrics-theme-light .lyric-line.lyric-static {
+        color: rgba(12, 16, 24, 0.88);
+    }
     .lyrics-theme-light .lyric-row-clickable:hover .lyric-line {
         color: rgba(12, 16, 24, 0.92);
     }
@@ -1689,6 +1697,15 @@ flowboxchild { background-color: transparent; padding: 0; margin: 0; }
 .np-left-xl .now-playing-title { font-size: 42px; }
 .np-left-xl .now-playing-artist { font-size: 21px; }
 .np-left-xl .now-playing-album { font-size: 16px; }
+/* Fork: a window too narrow for the cover panel beside the tabs (np-narrow on the surface):
+   the track info sits above them, as wide as the window. */
+.np-narrow .now-playing-left,
+.np-narrow .now-playing-left-scrim { border-radius: 24px 24px 0 0; }
+.np-narrow .now-playing-right { border-radius: 0; }
+/* np-compact: no room for the cover above the info (narrow, or a short window), so it is a
+   thumb beside the title. */
+.np-compact .now-playing-title { font-size: 24px; }
+.np-compact .now-playing-info-card { padding: 16px; }
 
 .track-heart-btn { background: transparent; box-shadow: none; border: none; padding: 2px; min-width: 18px; min-height: 18px; border-radius: 99px; color: alpha(currentColor, 0.36); transition: all 0.2s; }
 .track-heart-btn image { -gtk-icon-size: 18px; }

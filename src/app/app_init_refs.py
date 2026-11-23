@@ -127,6 +127,8 @@ def _init_widget_refs(self):
     self.now_playing_anchor = None
     self.now_playing_revealer = None
     self.now_playing_surface = None
+    self.now_playing_layout = None
+    self.now_playing_thumb = None
     self.now_playing_left_stage = None
     self.now_playing_right_panel = None
     self.now_playing_switcher = None

@@ -25,6 +25,7 @@ from actions import up_next  # fork #25
 
 logger = logging.getLogger(__name__)
 
+NOW_PLAYING_NO_LYRICS = "No lyrics for this track"
 _NOW_PLAYING_LEFT_RADIUS = 24.0
 _NOW_PLAYING_RIGHT_EDGE_RADIUS = 0.0
 _NOW_PLAYING_LIST_BG_FALLBACK = (0.10, 0.11, 0.14)
@@ -673,7 +674,37 @@ def _draw_cover_in_box(cr, pixbuf, box):
     cr.restore()
 
 
-def _build_now_playing_cover_surface(pixbuf, width, height, dark_rgb=None, box=None):
+_NOW_PLAYING_TOP_SCRIM_H = 120.0
+
+
+def _now_playing_top_right_radius(narrow):
+    # Narrow layout: the panel spans the window, so both top corners are the surface's.
+    return _NOW_PLAYING_LEFT_RADIUS if narrow else _NOW_PLAYING_RIGHT_EDGE_RADIUS
+
+
+def _draw_now_playing_scrims(cr, width, height):
+    vertical_scrim = cairo.LinearGradient(0.0, 0.0, 0.0, float(height))
+    vertical_scrim.add_color_stop_rgba(0.00, 0.0, 0.0, 0.0, 0.02)
+    vertical_scrim.add_color_stop_rgba(0.54, 0.0, 0.0, 0.0, 0.08)
+    vertical_scrim.add_color_stop_rgba(1.00, 0.0, 0.0, 0.0, 0.58)
+    cr.rectangle(0.0, 0.0, float(width), float(height))
+    cr.set_source(vertical_scrim)
+    cr.fill()
+    # Fork: the close button and "Now Playing" lie on the top edge; white on a white cover
+    # could not be read.
+    top_h = min(_NOW_PLAYING_TOP_SCRIM_H, float(height))
+    top_scrim = cairo.LinearGradient(0.0, 0.0, 0.0, top_h)
+    top_scrim.add_color_stop_rgba(0.00, 0.0, 0.0, 0.0, 0.34)
+    top_scrim.add_color_stop_rgba(1.00, 0.0, 0.0, 0.0, 0.00)
+    cr.rectangle(0.0, 0.0, float(width), top_h)
+    cr.set_source(top_scrim)
+    cr.fill()
+
+
+def _build_now_playing_cover_surface(pixbuf, width, height, dark_rgb=None, box=None, backdrop=False, narrow=False):
+    """The cover panel's picture. box: the stacked cover's square; without one the cover
+    fills the panel under the info; backdrop: no cover at all, only the blurred backdrop;
+    narrow: the panel spans the window."""
     surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, width, height)
     cache_cr = cairo.Context(surface)
     cache_cr.set_operator(cairo.Operator.SOURCE)
@@ -688,7 +719,7 @@ def _build_now_playing_cover_surface(pixbuf, width, height, dark_rgb=None, box=N
         float(width),
         float(height),
         _NOW_PLAYING_LEFT_RADIUS,
-        _NOW_PLAYING_RIGHT_EDGE_RADIUS,
+        _now_playing_top_right_radius(narrow),
         0.0,
         0.0,
     )
@@ -696,18 +727,14 @@ def _build_now_playing_cover_surface(pixbuf, width, height, dark_rgb=None, box=N
 
     cache_cr.push_group()
     _draw_now_playing_cover_background(cache_cr, pixbuf, width, height, dark_rgb)
-    if box is not None:
+    stacked = box is not None and not backdrop
+    if not stacked and not backdrop:
+        _draw_cover_contain(cache_cr, pixbuf, width, height)  # the info lies over it, on the scrims
+    _draw_now_playing_scrims(cache_cr, width, height)
+    if stacked:
+        # Fork: over the scrims. They shaded the lower third of the stacked cover, so a white
+        # cover turned grey toward its bottom edge.
         _draw_cover_in_box(cache_cr, pixbuf, box)
-    else:
-        _draw_cover_contain(cache_cr, pixbuf, width, height)
-
-    vertical_scrim = cairo.LinearGradient(0.0, 0.0, 0.0, float(height))
-    vertical_scrim.add_color_stop_rgba(0.00, 0.0, 0.0, 0.0, 0.02)
-    vertical_scrim.add_color_stop_rgba(0.54, 0.0, 0.0, 0.0, 0.08)
-    vertical_scrim.add_color_stop_rgba(1.00, 0.0, 0.0, 0.0, 0.58)
-    cache_cr.rectangle(0.0, 0.0, float(width), float(height))
-    cache_cr.set_source(vertical_scrim)
-    cache_cr.fill()
 
     cover_group = cache_cr.pop_group()
     cache_cr.set_source(cover_group)
@@ -729,10 +756,14 @@ def _draw_now_playing_cover(area, cr, width, height, _data=None):
         # which can be reused by the GC for a different object.
         url = getattr(area, "_target_url", None) or ""
         box = getattr(area, "_cover_box", None)
-        cache_key = (url if url else id(pixbuf), width, height, tuple(dark_rgb or ()), box)
+        backdrop = bool(getattr(area, "_cover_backdrop", False))
+        narrow = bool(getattr(area, "_cover_narrow", False))
+        cache_key = (url if url else id(pixbuf), width, height, tuple(dark_rgb or ()), box, backdrop, narrow)
         cache_surface = getattr(area, "_cover_cache_surface", None)
         if cache_surface is None or getattr(area, "_cover_cache_key", None) != cache_key:
-            cache_surface = _build_now_playing_cover_surface(pixbuf, width, height, dark_rgb, box)
+            cache_surface = _build_now_playing_cover_surface(
+                pixbuf, width, height, dark_rgb, box, backdrop, narrow
+            )
             area._cover_cache_key = cache_key
             area._cover_cache_surface = cache_surface
         cr.set_source_surface(cache_surface, 0.0, 0.0)
@@ -748,12 +779,60 @@ def _draw_now_playing_cover(area, cr, width, height, _data=None):
         float(width),
         float(height),
         _NOW_PLAYING_LEFT_RADIUS,
-        _NOW_PLAYING_RIGHT_EDGE_RADIUS,
+        _now_playing_top_right_radius(bool(getattr(area, "_cover_narrow", False))),
         0.0,
         0.0,
     )
     cr.clip()
     _draw_now_playing_cover_background(cr, None, width, height, dark_rgb)
+
+
+_NOW_PLAYING_THUMB_RADIUS = 12.0
+
+
+def _draw_now_playing_thumb(area, cr, width, height, app=None):
+    """Narrow layout: the cover beside the title. It draws the pixbuf the cover panel holds."""
+    size = min(int(width or 0), int(height or 0))
+    if size <= 0:
+        return
+    art_img = getattr(app, "now_playing_art_img", None)
+    pixbuf = getattr(art_img, "_cover_pixbuf", None)
+    radius = _NOW_PLAYING_THUMB_RADIUS
+    _rounded_rect_path(cr, 0.0, 0.0, float(size), float(size), radius, radius, radius, radius)
+    if pixbuf is None:
+        cr.set_source_rgba(1.0, 1.0, 1.0, 0.08)
+        cr.fill()
+        return
+    cr.clip()
+    src_w = int(pixbuf.get_width() or 0)
+    src_h = int(pixbuf.get_height() or 0)
+    if src_w <= 0 or src_h <= 0:
+        return
+    try:
+        scale = max(1, int(area.get_scale_factor() or 1))
+    except Exception:
+        scale = 1
+    key = (getattr(art_img, "_target_url", None) or id(pixbuf), size, scale)
+    if getattr(area, "_thumb_key", None) != key:
+        # Scaled once with gdk-pixbuf's filter: cairo's would alias a 1280 px cover at this size.
+        factor = float(size * scale) / float(min(src_w, src_h))
+        small = pixbuf.scale_simple(
+            max(1, int(round(src_w * factor))), max(1, int(round(src_h * factor))), GdkPixbuf.InterpType.BILINEAR
+        )
+        area._thumb_pixbuf = small or pixbuf
+        area._thumb_key = key
+    small = getattr(area, "_thumb_pixbuf", None) or pixbuf
+    rect = _now_playing_cover_rect(
+        int(small.get_width() or 0), int(small.get_height() or 0), size, size, mode="cover"
+    )
+    _draw_pixbuf_to_rect(cr, small, rect)
+
+
+def _queue_now_playing_thumb_draw(self):
+    thumb = getattr(self, "now_playing_thumb", None)
+    if thumb is not None:
+        thumb._thumb_key = None
+        thumb.queue_draw()
 
 
 def _set_size_request_if_changed(widget, width, height):
@@ -871,21 +950,55 @@ def _now_playing_right_content_left_in_left_stage(self):
     return max(0.0, float(surface_w - right_panel_w - _NOW_PLAYING_CONTENT_INSET))
 
 
-_NOW_PLAYING_RIGHT_MIN_W = 340
+# Fork: how the overlay shares its width. Upstream gave the cover a square panel as tall as
+# the window and the tabs what was left, down to their minimum. But the track info under the
+# cover limits the cover's height, so in a 1337 x 1030 window the panel was 915 px for a 576 px
+# cover and Queue/Album/Lyrics kept 402 px. Now the cover panel is as wide as the cover can
+# use and the tabs get the rest; a window too narrow for both puts the info above the tabs.
+_NOW_PLAYING_RIGHT_MIN_W = 420  # the tabs' content is this wide at least (340 here overflowed)
+_NOW_PLAYING_LEFT_MIN_W = 320  # the info card's minimum plus its margins
+_NOW_PLAYING_META_MIN_W = 260  # the info card's minimum
+_NOW_PLAYING_RIGHT_SHARE = 0.46  # the tabs get this share of the width at least
+_NOW_PLAYING_RIGHT_CAP_W = 960  # past this, extra width goes around the cover instead
+_NOW_PLAYING_COVER_BREATH = 20  # air on each side of a stacked cover, when there is room
+_NOW_PLAYING_STACKED_MIN_COVER = 240  # under this the cover becomes a thumb beside the title
+_NOW_PLAYING_COMPACT_LEFT_W = 460  # the info panel's width then
+_NOW_PLAYING_INFO_H_GUESS = 300  # the track info's height until it has been measured
+_NOW_PLAYING_UNWRAPPED_W = 4000  # measuring the info this wide gives its height with no line wrapped
+_NOW_PLAYING_NARROW_TABS_MIN_H = 200  # narrow: under this the tabs give way to the info
+_NOW_PLAYING_THUMB_SIZE = 104  # narrow: the cover beside the title
 
 
-def _now_playing_split_widths(surface_w, surface_h=0):
+def _now_playing_is_narrow(surface_w):
+    """True when the window cannot hold the cover panel beside the tabs."""
+    available_w = int(surface_w) - _NOW_PLAYING_CONTENT_INSET
+    return available_w < _NOW_PLAYING_LEFT_MIN_W + _NOW_PLAYING_RIGHT_MIN_W
+
+
+def _now_playing_split_widths(surface_w, surface_h=0, info_h=0):
     available_w = max(0, int(surface_w) - _NOW_PLAYING_CONTENT_INSET)
     if surface_h > 0 and available_w > 0:
-        # Target a square left panel (width = height) so a 1:1 cover fills it
-        # completely at the default window size. Right panel gets the remainder,
-        # clamped to a minimum usable width.
-        left_w = min(int(surface_h), available_w)
-        right_w = max(0, available_w - left_w)
-        if right_w < _NOW_PLAYING_RIGHT_MIN_W and available_w > _NOW_PLAYING_RIGHT_MIN_W:
-            right_w = _NOW_PLAYING_RIGHT_MIN_W
-            left_w = max(0, available_w - right_w)
-        return (left_w, right_w)
+        pad = _NOW_PLAYING_CONTENT_INSET
+        room = int(surface_h) - _NOW_PLAYING_TOP_BAR_H - int(info_h or _NOW_PLAYING_INFO_H_GUESS) - pad
+        stacked = room >= _NOW_PLAYING_STACKED_MIN_COVER
+        # Stacked, the panel wraps the cover; in a window too short for that it holds the
+        # info alone (the cover is a thumb in it).
+        left_want = room + 2 * (pad + _NOW_PLAYING_COVER_BREATH) if stacked else _NOW_PLAYING_COMPACT_LEFT_W
+        right_w = max(
+            _NOW_PLAYING_RIGHT_MIN_W, available_w - left_want, int(available_w * _NOW_PLAYING_RIGHT_SHARE)
+        )
+        left_w = available_w - right_w
+        if stacked and right_w > _NOW_PLAYING_RIGHT_CAP_W:
+            # More than the tabs can use: the cover panel takes it, as long as the cover
+            # keeps its share of the panel.
+            left_w = min(
+                available_w - _NOW_PLAYING_RIGHT_CAP_W,
+                max(left_want, int(room / _NOW_PLAYING_STACKED_MIN_SHARE)),
+            )
+        if stacked:
+            left_w = min(left_w, int(surface_h))
+        left_w = max(0, min(left_w, available_w))
+        return (left_w, available_w - left_w)
     ratio_sum = max(1e-6, float(_NOW_PLAYING_LEFT_RATIO) + float(_NOW_PLAYING_RIGHT_RATIO))
     right_ratio = float(_NOW_PLAYING_RIGHT_RATIO) / ratio_sum
     right_w = int(round(float(available_w) * right_ratio))
@@ -1052,6 +1165,7 @@ def _load_now_playing_cover(self, cover_ref):
         area._cover_cache_surface = None
         _apply_now_playing_dynamic_color(self, _NOW_PLAYING_LIST_BG_FALLBACK)
         area.queue_draw()
+        _queue_now_playing_thumb_draw(self)
         return
 
     area._target_url = str(cover_ref)
@@ -1095,6 +1209,7 @@ def _load_now_playing_cover(self, cover_ref):
                 self.now_playing_cover_rgb_cache[cover_key] = tuple(dark_rgb)
             _apply_now_playing_dynamic_color(self, dark_rgb or _NOW_PLAYING_LIST_BG_FALLBACK)
             area.queue_draw()
+            _queue_now_playing_thumb_draw(self)
             return False
 
         GLib.idle_add(apply)
@@ -1104,27 +1219,38 @@ def _load_now_playing_cover(self, cover_ref):
 
 # Fork: the overlay's text grows with the room its panels get. Right tiers follow the
 # Queue/Album/Lyrics panel (width, and the height the lyrics need); left tiers follow the cover
-# panel. No class is the base size: every window under the thresholds looks as it did.
-_NOW_PLAYING_RIGHT_TIERS = (("np-right-xl", 1000, 860), ("np-right-l", 760, 720), ("np-right-m", 560, 560))
-_NOW_PLAYING_LEFT_TIERS = (("np-left-xl", 1200), ("np-left-l", 920))
+# the window affords. No class is the base size.
+_NOW_PLAYING_RIGHT_TIERS = (("np-right-xl", 1000, 860), ("np-right-l", 760, 720), ("np-right-m", 560, 420))
+_NOW_PLAYING_LEFT_TIERS = (("np-left-xl", 900), ("np-left-l", 700))
 _NOW_PLAYING_TIER_CLASSES = tuple(t[0] for t in _NOW_PLAYING_RIGHT_TIERS + _NOW_PLAYING_LEFT_TIERS)
 
 
-def _now_playing_size_tiers(left_w, right_w, surface_h):
-    """(right tier, left tier) for these panel sizes; "" is the base size."""
+def _now_playing_cover_metric(surface_w, surface_h):
+    """The cover size this window affords: the left tier's input. Built only from sizes that
+    no tier changes. The measured cover would not do: a bigger title makes the info taller and
+    the cover smaller, so at a threshold the tier would switch itself off and on again."""
+    pad = _NOW_PLAYING_CONTENT_INSET
+    available_w = int(surface_w) - pad
+    left_cap = available_w - max(_NOW_PLAYING_RIGHT_MIN_W, int(available_w * _NOW_PLAYING_RIGHT_SHARE))
+    return min(int(surface_h) - _NOW_PLAYING_TOP_BAR_H - _NOW_PLAYING_INFO_H_GUESS - pad, left_cap - 2 * pad)
+
+
+def _now_playing_size_tiers(cover_w, right_w, right_h):
+    """(right tier, left tier) for the tabs' size and the cover the window affords; "" is the
+    base size."""
     right = next(
-        (name for name, min_w, min_h in _NOW_PLAYING_RIGHT_TIERS if right_w >= min_w and surface_h >= min_h), ""
+        (name for name, min_w, min_h in _NOW_PLAYING_RIGHT_TIERS if right_w >= min_w and right_h >= min_h), ""
     )
-    left = next((name for name, min_w in _NOW_PLAYING_LEFT_TIERS if left_w >= min_w), "")
+    left = next((name for name, min_w in _NOW_PLAYING_LEFT_TIERS if cover_w >= min_w), "")
     return right, left
 
 
-def _apply_now_playing_size_tiers(self, left_w, right_w, surface_h):
+def _apply_now_playing_size_tiers(self, cover_w, right_w, right_h):
     """Put the tier classes on the surface; True when they changed."""
     surface = getattr(self, "now_playing_surface", None)
     if surface is None or not all(hasattr(surface, m) for m in ("has_css_class", "add_css_class", "remove_css_class")):
         return False
-    wanted = set(_now_playing_size_tiers(left_w, right_w, surface_h)) - {""}
+    wanted = set(_now_playing_size_tiers(cover_w, right_w, right_h)) - {""}
     changed = False
     for name in _NOW_PLAYING_TIER_CLASSES:
         has = surface.has_css_class(name)
@@ -1142,13 +1268,167 @@ def _resync_now_playing_surface_size(self):
     return False
 
 
-def _sync_now_playing_surface_size(self):
-    surface = getattr(self, "now_playing_surface", None)
+def _measure_now_playing_info(meta_panel, width):
+    """The info's height when its card is `width` wide. measure() counts the widget's own
+    margins inside the width it is given, and the card is placed with margins, so whatever
+    the last layout left there is added back."""
+    try:
+        margins = int(meta_panel.get_margin_start() or 0) + int(meta_panel.get_margin_end() or 0)
+        return int(meta_panel.measure(Gtk.Orientation.VERTICAL, int(width) + margins)[1])
+    except Exception:
+        return 0
+
+
+def _set_css_class(widget, name, on):
+    if widget is None or not hasattr(widget, "has_css_class"):
+        return
+    if on and not widget.has_css_class(name):
+        widget.add_css_class(name)
+    elif not on and widget.has_css_class(name):
+        widget.remove_css_class(name)
+
+
+def _set_now_playing_meta_width(self, meta_w, container_w):
+    """The info card: meta_w wide, centred in its container_w panel. With margins, not a size
+    request: an overlay child gets its natural width, so a long title or album line pushed the
+    card past the request, to the panel's edges."""
+    meta_panel = getattr(self, "now_playing_meta_panel", None)
+    if meta_panel is None:
+        return
+    margin = max(0, (int(container_w) - int(meta_w)) // 2)
+    if meta_panel.get_halign() != Gtk.Align.FILL:
+        meta_panel.set_halign(Gtk.Align.FILL)
+    if int(meta_panel.get_margin_start() or 0) != margin:
+        meta_panel.set_margin_start(margin)
+    if int(meta_panel.get_margin_end() or 0) != margin:
+        meta_panel.set_margin_end(margin)
+    _set_size_request_if_changed(meta_panel, -1, -1)
+    # The timeline fills the card by itself. Upstream requested the card's width for it too,
+    # which made the card 42 px (its padding and border) wider than asked.
+    progress_box = getattr(self, "now_playing_progress_box", None)
+    if progress_box is not None:
+        _set_size_request_if_changed(progress_box, -1, -1)
+
+
+def _set_now_playing_cover_box(self, box):
+    art_img = getattr(self, "now_playing_art_img", None)
+    if art_img is not None and getattr(art_img, "_cover_box", None) != box:
+        art_img._cover_box = box
+        art_img.queue_draw()
+
+
+def _set_now_playing_narrow(self, narrow):
+    """Switch between the cover panel beside the tabs and the track info above them."""
+    narrow = bool(narrow)
+    if getattr(self, "_now_playing_narrow", None) is narrow:
+        return
+    self._now_playing_narrow = narrow
+    layout = getattr(self, "now_playing_layout", None)
+    left = getattr(self, "now_playing_left_stage", None)
+    right = getattr(self, "now_playing_right_panel", None)
+    art_img = getattr(self, "now_playing_art_img", None)
+    if layout is not None:
+        layout.set_orientation(Gtk.Orientation.VERTICAL if narrow else Gtk.Orientation.HORIZONTAL)
+    if left is not None:
+        left.set_hexpand(narrow)
+        left.set_halign(Gtk.Align.FILL if narrow else Gtk.Align.CENTER)
+        if not narrow:
+            left.set_vexpand(True)
+    if right is not None:
+        right.set_hexpand(narrow)
+        if not narrow:
+            right.set_visible(True)
+    if art_img is not None:
+        art_img._cover_narrow = narrow  # the panel spans the window: both top corners round
+        art_img.queue_draw()
+    _set_css_class(getattr(self, "now_playing_surface", None), "np-narrow", narrow)
+
+
+def _set_now_playing_compact(self, compact):
+    """Compact: no room for the cover above the info, so it is a thumb beside the title and
+    the panel shows only the blurred backdrop. Upstream let the cover fill the panel under the
+    info instead, whose text then ran over the artwork's own lettering."""
+    compact = bool(compact)
+    if getattr(self, "_now_playing_compact", None) is compact:
+        return
+    self._now_playing_compact = compact
+    thumb = getattr(self, "now_playing_thumb", None)
+    art_img = getattr(self, "now_playing_art_img", None)
+    if thumb is not None:
+        thumb.set_visible(compact)
+    if art_img is not None:
+        art_img._cover_backdrop = compact
+        art_img.queue_draw()
+    _set_css_class(getattr(self, "now_playing_surface", None), "np-compact", compact)
+
+
+def _sync_now_playing_wide(self, surface_w, target_h):
+    """The cover panel beside the tabs."""
     left_stage = getattr(self, "now_playing_left_stage", None)
     meta_panel = getattr(self, "now_playing_meta_panel", None)
-    progress_box = getattr(self, "now_playing_progress_box", None)
     right_panel = getattr(self, "now_playing_right_panel", None)
-    art_img = getattr(self, "now_playing_art_img", None)
+    pad = _NOW_PLAYING_CONTENT_INSET
+    # The split follows the info's height with its title on one line, so the panels keep their
+    # widths from one track to the next: a title that wraps only makes the cover smaller.
+    nominal_h = _measure_now_playing_info(meta_panel, _NOW_PLAYING_UNWRAPPED_W) if meta_panel is not None else 0
+    left_w, right_w = _now_playing_split_widths(surface_w, target_h, nominal_h)
+    room = target_h - _NOW_PLAYING_TOP_BAR_H - (nominal_h or _NOW_PLAYING_INFO_H_GUESS) - pad
+    box = None
+    meta_w = max(_NOW_PLAYING_META_MIN_W, left_w - 2 * pad)
+    if room >= _NOW_PLAYING_STACKED_MIN_COVER and meta_panel is not None:
+        stacked_w = max(_NOW_PLAYING_META_MIN_W, min(left_w - 2 * pad, room))  # the cover's width
+        box = _now_playing_cover_box(left_w, target_h, _measure_now_playing_info(meta_panel, stacked_w))
+        if box is not None:
+            meta_w = stacked_w
+    _set_now_playing_compact(self, box is None)
+    if right_panel is not None:
+        _set_size_request_if_changed(right_panel, right_w, -1)
+    if left_stage is not None:
+        _set_size_request_if_changed(left_stage, left_w, -1)
+    self.now_playing_visible_left_w = left_w if left_stage is not None else 0
+    _set_now_playing_album_column(
+        self, right_w >= _NOW_PLAYING_ALBUM_COLUMN_MIN_W, _now_playing_album_chars_for(right_w)
+    )
+    _set_now_playing_meta_width(self, meta_w, left_w)
+    _set_now_playing_cover_box(self, box)
+    if _apply_now_playing_size_tiers(self, _now_playing_cover_metric(surface_w, target_h), right_w, target_h):
+        # The new font sizes change the track info's height: measure it again once they apply.
+        GLib.idle_add(_resync_now_playing_surface_size, self)
+
+
+def _sync_now_playing_narrow(self, surface_w, target_h):
+    """The track info above the tabs, both as wide as the window."""
+    left_stage = getattr(self, "now_playing_left_stage", None)
+    meta_panel = getattr(self, "now_playing_meta_panel", None)
+    right_panel = getattr(self, "now_playing_right_panel", None)
+    pad = _NOW_PLAYING_CONTENT_INSET
+    meta_w = max(_NOW_PLAYING_META_MIN_W, surface_w - 2 * pad)
+    _set_now_playing_compact(self, True)
+    _set_now_playing_meta_width(self, meta_w, surface_w)
+    info_h = _measure_now_playing_info(meta_panel, meta_w) if meta_panel is not None else 0
+    block_h = _NOW_PLAYING_TOP_BAR_H + (info_h or _NOW_PLAYING_INFO_H_GUESS)
+    tabs_h = target_h - block_h - pad
+    # Too short for both (half a screen's height, say): the info keeps the window.
+    show_tabs = tabs_h >= _NOW_PLAYING_NARROW_TABS_MIN_H
+    if right_panel is not None:
+        if bool(right_panel.get_visible()) != show_tabs:
+            right_panel.set_visible(show_tabs)
+        _set_size_request_if_changed(right_panel, -1, -1)
+    if left_stage is not None:
+        if bool(left_stage.get_vexpand()) == show_tabs:
+            left_stage.set_vexpand(not show_tabs)
+        _set_size_request_if_changed(left_stage, -1, block_h if show_tabs else -1)
+    self.now_playing_visible_left_w = 0
+    _set_now_playing_album_column(
+        self, surface_w >= _NOW_PLAYING_ALBUM_COLUMN_MIN_W, _now_playing_album_chars_for(surface_w)
+    )
+    _set_now_playing_cover_box(self, None)
+    if _apply_now_playing_size_tiers(self, 0, surface_w, tabs_h if show_tabs else 0):
+        GLib.idle_add(_resync_now_playing_surface_size, self)
+
+
+def _sync_now_playing_surface_size(self):
+    surface = getattr(self, "now_playing_surface", None)
     overlay = getattr(self, "content_overlay", None)
     if surface is None:
         return False
@@ -1230,43 +1510,13 @@ def _sync_now_playing_surface_size(self):
     target_h = max(320, int(overlay_h) - margin_top - margin_bottom)
     _set_size_request_if_changed(surface, target_surface_w, target_h)
     surface_w = int(target_surface_w)
-    left_target_w, right_panel_w = _now_playing_split_widths(surface_w, target_h)
-    if right_panel is not None:
-        _set_size_request_if_changed(right_panel, right_panel_w, -1)
-        _set_now_playing_album_column(
-            self, right_panel_w >= _NOW_PLAYING_ALBUM_COLUMN_MIN_W, _now_playing_album_chars_for(right_panel_w)
-        )
-    visible_left_w = None
-    if left_stage is not None:
-        visible_left_w = left_target_w
-        _set_size_request_if_changed(left_stage, left_target_w, -1)
-    self.now_playing_visible_left_w = visible_left_w or 0
-    if _apply_now_playing_size_tiers(self, left_target_w, right_panel_w, target_h):
-        # The new font sizes change the track info's height: measure it again once they apply.
-        GLib.idle_add(_resync_now_playing_surface_size, self)
-    if meta_panel is not None:
-        meta_target_w = max(280, int(surface_w * 0.36))
-        if visible_left_w is not None:
-            meta_target_w = max(280, int(visible_left_w * 0.80))
-            meta_target_w = min(meta_target_w, max(260, visible_left_w - 56))
-        try:
-            if int(meta_panel.get_margin_start() or 0) != 0:
-                meta_panel.set_margin_start(0)
-        except Exception:
-            meta_panel.set_margin_start(0)
-        _set_size_request_if_changed(meta_panel, meta_target_w, -1)
-        if progress_box is not None:
-            _set_size_request_if_changed(progress_box, meta_target_w, -1)
-        if art_img is not None and visible_left_w:
-            try:
-                info_h = int(meta_panel.measure(Gtk.Orientation.VERTICAL, meta_target_w)[1])
-            except Exception:
-                info_h = 0
-            box = _now_playing_cover_box(visible_left_w, target_h, info_h)
-            if getattr(art_img, "_cover_box", None) != box:
-                art_img._cover_box = box
-                art_img.queue_draw()
-    _apply_now_playing_scrim_css(self, visible_left_w or 0)
+    narrow = getattr(self, "now_playing_layout", None) is not None and _now_playing_is_narrow(surface_w)
+    _set_now_playing_narrow(self, narrow)
+    if narrow:
+        _sync_now_playing_narrow(self, surface_w, target_h)
+    else:
+        _sync_now_playing_wide(self, surface_w, target_h)
+    _apply_now_playing_scrim_css(self, getattr(self, "now_playing_visible_left_w", 0) or 0)
     return False
 
 
@@ -1382,7 +1632,18 @@ def _build_now_playing_left_panel(self, layout):
         hexpand=True,
         halign=Gtk.Align.FILL,
     ), lambda: getattr(self, "playing_track", None), "track")
-    info_card.append(track_meta_box)
+    # Fork: in a window too narrow for the cover panel, the info sits above the tabs and a small
+    # cover beside the title stands in for the big one (hidden otherwise).
+    thumb = Gtk.DrawingArea(css_classes=["now-playing-thumb"], visible=False, valign=Gtk.Align.START)
+    thumb.set_content_width(_NOW_PLAYING_THUMB_SIZE)
+    thumb.set_content_height(_NOW_PLAYING_THUMB_SIZE)
+    thumb.set_draw_func(_draw_now_playing_thumb, self)
+    context_menu.tag(thumb, lambda: getattr(self, "playing_track", None), "track")
+    self.now_playing_thumb = thumb
+    meta_row = Gtk.Box(spacing=14, hexpand=True, halign=Gtk.Align.FILL)
+    meta_row.append(thumb)
+    meta_row.append(track_meta_box)
+    info_card.append(meta_row)
 
     self.now_playing_source_label = Gtk.Label(label="", xalign=0, ellipsize=3, css_classes=["now-playing-source"])
     source_btn = Gtk.Button(
@@ -1762,6 +2023,7 @@ def build_now_playing_overlay(self):
         css_classes=["now-playing-layout"],
     )
     surface.append(layout)
+    self.now_playing_layout = layout
 
     _build_now_playing_left_panel(self, layout)
     _build_now_playing_right_panel(self, layout)
@@ -1809,6 +2071,7 @@ def show_now_playing_overlay(self, _btn=None):
         self.toggle_mini_mode(None)
     if hasattr(self, "close_queue_drawer"):
         self.close_queue_drawer()
+    _set_queue_handle_visible(self, False)
     hide_source = int(getattr(self, "_now_playing_hide_source", 0) or 0)
     if hide_source:
         GLib.source_remove(hide_source)
@@ -1872,6 +2135,14 @@ def show_now_playing_overlay(self, _btn=None):
         )
 
 
+def _set_queue_handle_visible(self, visible):
+    # Fork: the queue drawer's handle stayed on top of the open overlay, which has its own
+    # Queue tab; in a narrow window it sat on the tabs' edge.
+    anchor = getattr(self, "queue_anchor", None)
+    if anchor is not None and bool(anchor.get_visible()) != bool(visible):
+        anchor.set_visible(bool(visible))
+
+
 def hide_now_playing_overlay(self, _btn=None):
     revealer = getattr(self, "now_playing_revealer", None)
     if revealer is not None:
@@ -1897,6 +2168,7 @@ def hide_now_playing_overlay(self, _btn=None):
                 revealer.set_visible(False)
                 if getattr(self, "now_playing_backdrop", None) is not None:
                     self.now_playing_backdrop.set_visible(False)
+                _set_queue_handle_visible(self, True)
             return False
 
         if duration_ms > 0:
@@ -1905,6 +2177,7 @@ def hide_now_playing_overlay(self, _btn=None):
             revealer.set_visible(False)
             if getattr(self, "now_playing_backdrop", None) is not None:
                 self.now_playing_backdrop.set_visible(False)
+            _set_queue_handle_visible(self, True)
 
 
 def toggle_now_playing_overlay(self, _btn=None):
@@ -2159,7 +2432,7 @@ def _refresh_now_playing_from_track(self):
     if lyrics_obj is not None and (bool(getattr(lyrics_obj, "raw_text", "")) or bool(getattr(lyrics_obj, "time_points", []))):
         self._render_now_playing_lyrics(lyrics_obj, None)
     else:
-        self._render_now_playing_lyrics(None, "Loading Lyrics...")
+        self._render_now_playing_lyrics(None, "Loading lyrics…")
 
     try:
         pos_s, dur_s = self.player.get_position()
@@ -2471,12 +2744,9 @@ def _render_now_playing_lyrics(self, lyrics_obj=None, status_msg=None):
 
     if status_msg:
         if status_msg == NO_LYRICS_BOTTOM_HINT:
-            spacer = Gtk.Box(vexpand=True)
-            self.now_playing_lyrics_vbox.append(spacer)
-            bottom = Gtk.Label(label=status_msg, css_classes=["dim-label"], halign=Gtk.Align.CENTER)
-            bottom.set_margin_bottom(20)
-            self.now_playing_lyrics_vbox.append(bottom)
-            return
+            # Fork: an empty state in the middle of the tab. It was the visualizer's hint: a
+            # small dim line at the bottom edge of an otherwise blank panel.
+            status_msg = NOW_PLAYING_NO_LYRICS
 
         lbl = Gtk.Label(label=status_msg, css_classes=["title-4"], valign=Gtk.Align.CENTER)
         lbl.set_opacity(0.65)
@@ -2543,6 +2813,10 @@ def _render_now_playing_lyrics(self, lyrics_obj=None, status_msg=None):
 
         main_lbl = Gtk.Label(label=primary, css_classes=["lyric-line"], wrap=True, max_width_chars=36)
         main_lbl.set_justify(Gtk.Justification.CENTER)
+        if not lyrics_obj.has_synced:
+            # Fork: no line of unsynced lyrics ever becomes the active one, so the whole text
+            # stayed in the waiting lines' style: 35 % white at weight 200.
+            main_lbl.add_css_class("lyric-static")
         row.append(main_lbl)
 
         sub_lbl = None

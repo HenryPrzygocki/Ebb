@@ -278,6 +278,8 @@ def render_lyrics_list(app, lyrics_obj=None, status_msg=None):
 
             main_lbl = Gtk.Label(label=primary, css_classes=["lyric-line"], wrap=True, max_width_chars=40)
             main_lbl.set_justify(Gtk.Justification.CENTER)
+            if not lyrics_obj.has_synced:
+                main_lbl.add_css_class("lyric-static")  # fork: readable; no line is ever active
             row.append(main_lbl)
 
             sub_lbl = None
@@ -565,7 +567,7 @@ def play_track(app, index, from_history=False, engine_advanced=False):
             def apply_loading_lyrics():
                 if request_id != getattr(app, "_play_request_id", 0):
                     return False
-                app.render_lyrics_list(None, "Loading Lyrics...")
+                app.render_lyrics_list(None, "Loading lyrics…")
                 return False
 
             GLib.idle_add(apply_loading_lyrics)
