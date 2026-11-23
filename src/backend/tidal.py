@@ -18,6 +18,9 @@ except ImportError:  # older tidalapi
     _TidalAuthError = ()
 
 
+ARTIST_PAGE_FLOOR = 50  # fork: TIDAL list pages hold at least this many when asked
+
+
 def restore_failure_kind(exc):
     """Fork: why restoring the saved login failed. "auth" only when TIDAL refused it (a token
     refresh it turned down, or HTTP 400/401/403); anything else (no network, DNS, a timeout, a
@@ -2026,6 +2029,11 @@ class TidalBackend:
                     )
                     break
                 offset += len(page)
+                # Fork: a short page is the last one. Without this, every artist list cost one
+                # more request that came back empty (two per artist page). Under 50 only, in
+                # case the server caps pages below what was asked for.
+                if len(page) < min(size, ARTIST_PAGE_FLOOR):
+                    break
             return merged[:target]
 
         return list(self._call_with_session_recovery(_fetch, context=f"artist {method_name}") or [])

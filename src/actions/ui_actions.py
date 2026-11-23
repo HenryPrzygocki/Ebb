@@ -5143,12 +5143,26 @@ def _render_tabbed_page_dashboard(app, cfg, prefer_cache=True):
                 return (typ, str(item_id).strip())
             return (typ, str(it.get("name") or "").lower(), str(it.get("sub_title") or "").lower())
 
-        def _build(upto):
-            while state["built"] < min(upto, len(items)):
-                child = Gtk.FlowBoxChild()
-                child.set_child(_build_feed_item_button(app, items[state["built"]], _open_item))
-                flow.append(child)
-                state["built"] += 1
+        def _build(upto, then=None):
+            # 8 cards per idle callback: building every category's first row in one callback
+            # held the main loop ~126 ms when a Genres tab opened.
+            target = min(upto, len(items))
+
+            def _tick():
+                for _ in range(8):
+                    if state["built"] >= target:
+                        break
+                    child = Gtk.FlowBoxChild()
+                    child.set_child(_build_feed_item_button(app, items[state["built"]], _open_item))
+                    flow.append(child)
+                    state["built"] += 1
+                if state["built"] < target:
+                    return True
+                if then is not None:
+                    then()
+                return False
+
+            GLib.idle_add(_tick)
 
         def _fetch_more(then):
             if not more_path or state["fetched"]:
@@ -5184,13 +5198,13 @@ def _render_tabbed_page_dashboard(app, cfg, prefer_cache=True):
 
         first = shelf.MAX_PER_LINE
         _build(first)
-        pending = len(items) - state["built"] + (1 if more_path else 0)
+        pending = len(items) - min(first, len(items)) + (1 if more_path else 0)
         flow.reset(pending=pending, fill=_rest if pending else None)
         if len(items) < first and more_path:  # too few for a row: fill it now
             def _filled():
-                _build(first)
-                left = len(items) - state["built"]
+                left = len(items) - min(first, len(items))
                 flow.reset(pending=left, fill=_rest if left else None)
+                _build(first)
             _fetch_more(_filled)
 
     def _build_genre_tab(sec):

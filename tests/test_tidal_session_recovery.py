@@ -243,22 +243,20 @@ def test_get_artist_top_tracks_resolves_lightweight_artist():
 
 
 def test_get_artist_ep_singles_all_paginates_all_pages():
+    # Fork: a full page of 100, then a short last one, and no trailing empty request. It used
+    # to fake a server capping pages at 2, far below any real TIDAL page.
     backend = _make_backend()
     calls = []
 
     class _Artist:
         def get_ep_singles(self, limit=None, offset=0):
             calls.append((limit, offset))
-            if offset == 0:
-                return [SimpleNamespace(id="e1"), SimpleNamespace(id="e2")]
-            if offset == 2:
-                return [SimpleNamespace(id="e3")]
-            return []
+            return [SimpleNamespace(id=f"e{i}") for i in range(offset, min(offset + limit, 130))]
 
     backend.session = SimpleNamespace(artist=lambda _artist_id: _Artist())
     backend._call_with_session_recovery = lambda fn, context=None: fn()
 
-    result = backend.get_artist_ep_singles_all(SimpleNamespace(id="artist-9", name="Demo"), limit=5)
+    result = backend.get_artist_ep_singles_all(SimpleNamespace(id="artist-9", name="Demo"), limit=500)
 
-    assert [item.id for item in result] == ["e1", "e2", "e3"]
-    assert calls == [(5, 0), (5, 2), (5, 3)]
+    assert [item.id for item in result] == [f"e{i}" for i in range(130)]
+    assert calls == [(100, 0), (100, 100)]

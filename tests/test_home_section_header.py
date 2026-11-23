@@ -864,7 +864,12 @@ def test_render_genres_dashboard_keeps_tracks_category_to_two_rows(monkeypatch):
     )
     monkeypatch.setattr(ui_actions, "Gtk", fake_gtk)
     monkeypatch.setattr(ui_actions, "Thread", _RunThread)
-    monkeypatch.setattr(ui_actions.GLib, "idle_add", lambda fn, *args: fn(*args))
+    def _idle_until_done(fn, *args):  # like GLib: a callback returning True runs again
+        for _ in range(100):
+            if not fn(*args):
+                break
+
+    monkeypatch.setattr(ui_actions.GLib, "idle_add", _idle_until_done)
     monkeypatch.setattr(
         ui_actions,
         "_build_feed_item_button",
