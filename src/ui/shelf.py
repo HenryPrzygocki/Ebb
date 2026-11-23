@@ -102,7 +102,7 @@ class Shelf(Gtk.FlowBox):
     def _recount(self):
         self._idle = 0
         width, card, _count = self._seen
-        columns = fit(width, card)
+        columns = fit(width, card, self.get_column_spacing())
         if columns != self.columns:
             self.columns = columns
             self.set_max_children_per_line(columns)

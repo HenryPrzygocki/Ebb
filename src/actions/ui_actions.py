@@ -1493,6 +1493,7 @@ def render_search_tracks_page(app):
         add_btn.set_tooltip_text("Add to Playlist")
         add_btn.connect("clicked", lambda _b, tr=t: app.on_add_single_track_to_playlist(tr))
         row_box.append(add_btn)
+        row_box.append(_build_track_row_overflow_menu(app, t))  # fork #27: ⋮ like album rows
 
         lb_row = Gtk.ListBoxRow()
         lb_row.add_css_class("track-row")
@@ -3216,15 +3217,11 @@ def render_artist_detail(app, artist, render_token=None):
     eps_section.append(eps_loading)
 
     fans_section = _append_section_header("Fans Also Like", 0)
-    fans_flow = Gtk.FlowBox(
-        valign=Gtk.Align.START,
-        max_children_per_line=30,
-        selection_mode=Gtk.SelectionMode.NONE,
-        column_spacing=24,
-        row_spacing=28,
-        css_classes=["home-flow"],
-    )
-    fans_section.append(fans_flow)
+    # Fork #27: a shelf (one row + "Show all"), like the sections above; it replaced a
+    # hand-measured two-row limit with its own "Show more (N)" row.
+    fans_flow, _fans_more = _artist_shelf(fans_section)
+    fans_flow.set_column_spacing(24)
+    fans_flow.set_row_spacing(28)
     fans_section.set_visible(False)
 
     def _render_track_rows(tracks):
@@ -3464,84 +3461,8 @@ def render_artist_detail(app, artist, render_token=None):
             for sim_art in similar:
                 fans_flow.append(_build_artist_card(sim_art))
 
-            fans_more_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-            fans_more_row.append(Gtk.Box(hexpand=True))
-            more_btn = Gtk.Button(css_classes=["flat", "liked-action-btn"])
-            more_btn.set_visible(False)
-            fans_more_row.append(more_btn)
-            fans_more_row.set_visible(False)
-            fans_section.append(fans_more_row)
             fans_section.set_visible(True)
-
-            expanded = [False]
-
-            def _apply_2_row_limit():
-                if expanded[0]:
-                    return False
-                if fans_flow.get_parent() is None:
-                    return False
-                if fans_flow.get_height() == 0:
-                    GLib.idle_add(_apply_2_row_limit)
-                    return False
-                children = []
-                ch = fans_flow.get_first_child()
-                while ch:
-                    children.append(ch)
-                    ch = ch.get_next_sibling()
-                if not children:
-                    return False
-                row_ys = []
-                for ch in children:
-                    try:
-                        y = ch.get_allocation().y
-                    except Exception:
-                        continue
-                    if not row_ys or y > row_ys[-1] + 10:
-                        row_ys.append(y)
-                if len(row_ys) <= 2:
-                    for ch in children:
-                        ch.set_visible(True)
-                    fans_more_row.set_visible(False)
-                    return False
-                cutoff_y = row_ys[2]
-                hidden = 0
-                for ch in children:
-                    try:
-                        visible = ch.get_allocation().y < cutoff_y
-                    except Exception:
-                        visible = True
-                    ch.set_visible(visible)
-                    if not visible:
-                        hidden += 1
-                if hidden > 0:
-                    more_btn.set_label(f"Show more ({hidden})")
-                    more_btn.set_visible(True)
-                    fans_more_row.set_visible(True)
-                else:
-                    fans_more_row.set_visible(False)
-                return False
-
-            def _on_more(_btn):
-                expanded[0] = True
-                ch = fans_flow.get_first_child()
-                while ch:
-                    ch.set_visible(True)
-                    ch = ch.get_next_sibling()
-                fans_more_row.set_visible(False)
-
-            more_btn.connect("clicked", _on_more)
-            GLib.idle_add(_apply_2_row_limit)
-
-            # Re-apply on window width change
-            scroll = getattr(app, "alb_scroll", None)
-            if scroll is not None:
-                def _on_width_changed(*_):
-                    if not expanded[0] and fans_flow.get_parent() is not None:
-                        GLib.idle_add(_apply_2_row_limit)
-                hid = scroll.connect("notify::width", _on_width_changed)
-                existing = list(getattr(app, "_artist_detail_layout_handler_ids", []) or [])
-                existing.append((scroll, hid))
-                app._artist_detail_layout_handler_ids = existing
+            fans_flow.reset()
 
             return False
 
