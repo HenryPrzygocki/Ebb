@@ -18,6 +18,8 @@ except ImportError:  # older tidalapi
     _TidalAuthError = ()
 
 
+SEARCH_LIMIT = 50  # fork: results per kind (artists, albums, tracks, playlists)
+SEARCH_MODELS = [tidalapi.artist.Artist, tidalapi.album.Album, tidalapi.media.Track, tidalapi.playlist.Playlist]
 ARTIST_PAGE_FLOOR = 50  # fork: a first page shorter than this is the whole list
 
 
@@ -4028,9 +4030,9 @@ class TidalBackend:
             logger.warning("Artist search failed for query '%s': %s", query, e)
             return []
 
-    def _parse_search_results(self, res, limit_per_type=6):
+    def _parse_search_results(self, res, limit_per_type=SEARCH_LIMIT):
         """Parse tidal search results with compatibility for dict vs object."""
-        results = {'artists': [], 'albums': [], 'tracks': []}
+        results = {'artists': [], 'albums': [], 'tracks': [], 'playlists': []}
         for key in results:
             raw = None
             if hasattr(res, key):
@@ -4047,23 +4049,28 @@ class TidalBackend:
         
         if not self.session.check_login():
             logger.warning("Session expired or not logged in during search.")
-            return {'artists': [], 'albums': [], 'tracks': []}
+            return {'artists': [], 'albums': [], 'tracks': [], 'playlists': []}
 
         try:
-            res = self.session.search(query, limit=300)
+            # Fork #27: 50 of each of the four kinds the page shows. It asked for 300 of every
+            # kind, videos too (0.6-0.7 MB per query), parsed them all, and kept the first 6.
+            res = self.session.search(query, models=SEARCH_MODELS, limit=SEARCH_LIMIT)
             logger.debug("Raw search response type: %s", type(res))
-            results = self._parse_search_results(res, limit_per_type=6)
+            results = self._parse_search_results(res, limit_per_type=SEARCH_LIMIT)
             logger.info(
-                "Search parsed: %s artists, %s albums, %s tracks",
+                "Search parsed: %s artists, %s albums, %s tracks, %s playlists",
                 len(results['artists']),
                 len(results['albums']),
                 len(results['tracks']),
+                len(results['playlists']),
             )
             return results
 
         except Exception as e:
             logger.exception("Search critical failure [%s]: %s", classify_exception(e), e)
-            return results
+            # Fork: re-raise. `results` is unset when the request itself failed, so this raised
+            # UnboundLocalError instead, which the search page could not classify as a network error.
+            raise
 
     def get_lyrics(self, track_id):
         logger.debug("Fetching lyrics for track id: %s", track_id)

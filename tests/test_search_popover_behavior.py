@@ -61,6 +61,8 @@ def _make_app():
         res_art_flow=object(),
         res_alb_flow=object(),
         res_pl_flow=object(),
+        res_tpl_flow=object(),
+        res_tpl_box=_Box(),
         res_trk_list=object(),
         res_art_box=_Box(),
         res_alb_box=_Box(),

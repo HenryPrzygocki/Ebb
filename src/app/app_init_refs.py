@@ -294,7 +294,7 @@ def _init_runtime_refs(self):
     self._session_restore_pending = False
     self.search_selected_indices = set()
     self.search_tracks_page = 0
-    self.search_tracks_page_size = 50
+    self.search_tracks_page_size = 200  # fork: never pages; up to 50 per query, folded to 10
     self.track_list_select_mode = False
     self.track_list_selected_track_ids = set()
     self.collection_base_margin_bottom = 32

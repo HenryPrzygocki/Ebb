@@ -124,3 +124,22 @@ def test_liked_list_grows_only_near_the_bottom_and_while_rows_remain():
     assert ui_actions.liked_wants_more(50, 205, value=800, page=900, upper=2500)
     assert ui_actions.liked_wants_more(50, 205, value=0, page=1400, upper=1400)  # tall window, short list
     assert not ui_actions.liked_wants_more(205, 205, value=1600, page=900, upper=2500)
+
+
+def test_only_the_word_radio_makes_a_radio_card():
+    def circle(name):
+        return ui_actions._home_card_layout({"type": "Playlist", "name": name}, 170)["img_cls"] == "circular-avatar"
+    assert circle("Personal Radio") and circle("Radio Paradise")
+    assert not circle("Radiohead Essentials")  # was a 150 px circle, shrinking its whole shelf
+
+
+def test_search_playlist_byline():
+    pl = SimpleNamespace(creator=SimpleNamespace(name="Henry"), num_tracks=42)
+    assert ui_actions._search_playlist_byline(pl) == "By Henry · 42 tracks"
+    assert ui_actions._search_playlist_byline(SimpleNamespace(creator=None, num_tracks=12)) == "12 tracks"
+
+
+def test_search_merges_playlists_across_query_variants():
+    a, b, c = (SimpleNamespace(id=i) for i in ("p1", "p2", "p3"))
+    merged = ui_actions._merge_remote_results([{"playlists": [a, b]}, {"playlists": [b, c]}])
+    assert [p.id for p in merged["playlists"]] == ["p1", "p2", "p3"]

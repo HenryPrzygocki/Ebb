@@ -2,6 +2,7 @@ from threading import Thread
 import logging
 import os
 import random
+import re
 import time
 from datetime import datetime
 import subprocess
@@ -181,6 +182,9 @@ def _build_feed_media_overlay(media_widget, media_size, *shape_classes):
     return overlay
 
 
+_RADIO_WORD = re.compile(r"\bRadio\b")
+
+
 def _home_card_layout(item_data, cover_size):
     item_type = str((item_data or {}).get("type") or "")
     item_name = str((item_data or {}).get("name") or "")
@@ -190,7 +194,9 @@ def _home_card_layout(item_data, cover_size):
     if item_type == "Track":
         img_size = 88
         card_classes.append("home-track-card")
-    elif item_type == "Artist" or "Radio" in item_name:
+    elif item_type == "Artist" or _RADIO_WORD.search(item_name):
+        # Fork: the word, not the letters: "Radiohead Essentials" was drawn as a 150 px circle,
+        # and a shelf counts its columns from its first card, so the whole row shrank too.
         img_size = 150
         img_cls = "circular-avatar"
     # Keep Home feed cards as tight as possible to the media slot so hover
@@ -877,12 +883,12 @@ def _obj_identity(obj):
 
 
 def _merge_remote_results(results_list):
-    merged = {"artists": [], "albums": [], "tracks": []}
-    seen = {"artists": set(), "albums": set(), "tracks": set()}
+    merged = {"artists": [], "albums": [], "tracks": [], "playlists": []}
+    seen = {key: set() for key in merged}
     for res in results_list:
         if not isinstance(res, dict):
             continue
-        for key in ("artists", "albums", "tracks"):
+        for key in merged:
             for item in res.get(key, []) or []:
                 ident = _obj_identity(item)
                 if ident in seen[key]:
@@ -1275,6 +1281,9 @@ def _run_search(app, q):
     app.res_alb_box.set_visible(False)
     app.res_pl_box.set_visible(False)
     app.res_trk_box.set_visible(False)
+    if getattr(app, "res_tpl_flow", None) is not None:  # fork: TIDAL playlists
+        _clear_container(app.res_tpl_flow)
+        app.res_tpl_box.set_visible(False)
 
     def do_search():
         logger.debug("Background search thread started: variants=%s", query_variants)
@@ -1287,7 +1296,8 @@ def _run_search(app, q):
                 "artists": results.get("artists", []),
                 "albums": results.get("albums", []),
                 "tracks": results.get("tracks", []),
-                "playlists": local_results.get("playlists", []),
+                "playlists": results.get("playlists", []),  # fork: TIDAL's
+                "local_playlists": local_results.get("playlists", []),
                 "history_tracks": local_results.get("history_tracks", []),
             }
             if hasattr(app, "set_diag_health"):
@@ -1321,7 +1331,8 @@ def _run_search(app, q):
                         "artists": [],
                         "albums": [],
                         "tracks": [],
-                        "playlists": local_results.get("playlists", []),
+                        "playlists": [],
+                        "local_playlists": local_results.get("playlists", []),
                         "history_tracks": local_results.get("history_tracks", []),
                     }
                 )
@@ -1338,6 +1349,15 @@ def _run_search(app, q):
 
 
 _SEARCH_ARTIST_SIZE = 160
+SEARCH_TRACKS_FOLDED = 10  # fork #27: tracks shown before "Show all"
+
+
+def _search_playlist_byline(pl):
+    """'By <creator> · N tracks', or what of it TIDAL gives (editorial playlists have no creator)."""
+    creator = getattr(getattr(pl, "creator", None), "name", "") or ""
+    count = int(getattr(pl, "num_tracks", 0) or 0)
+    parts = [f"By {creator}" if creator else "", f"{count} tracks" if count else ""]
+    return " \u00b7 ".join(x for x in parts if x)
 
 
 def render_search_results(app, res):
@@ -1349,17 +1369,19 @@ def render_search_results(app, res):
     artists = res.get("artists", [])
     albums = res.get("albums", [])
     tracks = res.get("tracks", [])
-    playlists = res.get("playlists", [])
-    if artists or albums or tracks or playlists:
+    playlists = res.get("playlists", [])  # fork: TIDAL's; your own are "local_playlists"
+    local_playlists = res.get("local_playlists", [])
+    if artists or albums or tracks or playlists or local_playlists:
         set_search_status(app, None)
     else:
         set_search_status(app, "No results found.")
 
     logger.info(
-        "Rendering search results: %s artists, %s albums, %s playlists, %s tracks",
+        "Rendering search results: %s artists, %s albums, %s playlists (+%s yours), %s tracks",
         len(artists),
         len(albums),
         len(playlists),
+        len(local_playlists),
         len(tracks),
     )
 
@@ -1389,21 +1411,37 @@ def render_search_results(app, res):
 
     app.res_alb_box.set_visible(bool(albums))
     for alb in albums:
-        card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, css_classes=_feed_card_classes())
-        img = Gtk.Image(pixel_size=utils.COVER_SIZE, css_classes=["album-cover-img"])
-        url = app.backend.get_artwork_url(alb, 320)
-        alb_title = getattr(alb, "title", getattr(alb, "name", "Unknown Album"))
-        logger.debug("Album '%s' image URL: %s", alb_title, url)
-        utils.load_img(img, url, app.cache_dir, utils.COVER_SIZE)
-        card.append(_build_feed_media_overlay(img, utils.COVER_SIZE, "album-cover-img"))
-        card.append(Gtk.Label(label=alb_title, ellipsize=2, wrap=True, max_width_chars=14, css_classes=["home-card-title"]))
+        # Fork #27: the same card as Home and Genres (cover fills its column, artist under the
+        # title), not a fixed 240 px cover with the title alone.
+        item = {
+            "obj": alb,
+            "type": "Album",
+            "name": str(getattr(alb, "title", getattr(alb, "name", "Unknown Album")) or "Unknown Album"),
+            "sub_title": str(getattr(getattr(alb, "artist", None), "name", "") or ""),
+            "image_url": app.backend.get_artwork_url(alb, 320),
+        }
         child = Gtk.FlowBoxChild()
-        child.set_child(card)
+        child.set_child(_build_feed_item_button(app, item, lambda d: app.show_album_details(d["obj"])))
         child.data_item = {"obj": alb, "type": "Album"}
         app.res_alb_flow.append(child)
 
-    app.res_pl_box.set_visible(bool(playlists))
-    for p in playlists:
+    tpl_flow = getattr(app, "res_tpl_flow", None)
+    if tpl_flow is not None:
+        app.res_tpl_box.set_visible(bool(playlists))
+        for pl in playlists:
+            item = {
+                "obj": pl,
+                "type": "Playlist",
+                "name": str(getattr(pl, "name", "") or "Untitled Playlist"),
+                "sub_title": _search_playlist_byline(pl),
+                "image_url": app.backend.get_artwork_url(pl, 320),
+            }
+            child = Gtk.FlowBoxChild()
+            child.set_child(_build_feed_item_button(app, item, lambda d: app.on_remote_playlist_card_clicked(d["obj"])))
+            tpl_flow.append(child)
+
+    app.res_pl_box.set_visible(bool(local_playlists))
+    for p in local_playlists:
         card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, css_classes=_feed_card_classes())
         img = Gtk.Image(css_classes=["album-cover-img", "playlist-cover-img"])
         img.set_size_request(utils.COVER_SIZE, utils.COVER_SIZE)
@@ -1449,15 +1487,10 @@ def render_search_results(app, res):
         child.set_child(btn)
         app.res_pl_flow.append(child)
 
-    # Fork: search sections are one-row carousels; exactly one line for exactly these results
-    # (a larger min_children_per_line leaves a scrollable gap after the last card).
-    for flow in (app.res_art_flow, app.res_alb_flow, app.res_pl_flow):
-        n, c = 0, flow.get_first_child()
-        while c is not None:
-            n += 1
-            c = c.get_next_sibling()
-        flow.set_min_children_per_line(max(1, n))
-        flow.set_max_children_per_line(max(1, n))
+    # Fork #27: a new search folds every shelf back to its first row.
+    for flow in (app.res_art_flow, app.res_alb_flow, tpl_flow, app.res_pl_flow):
+        if hasattr(flow, "reset"):
+            flow.reset()
 
     app.res_trk_box.set_visible(bool(tracks))
     app.search_track_data = tracks
@@ -1514,6 +1547,7 @@ def render_search_results(app, res):
                 logger.exception("Rust search track ordering failed; fallback to Python order")
 
     app.search_tracks_page = 0
+    app.search_tracks_expanded = False  # fork #27: the first SEARCH_TRACKS_FOLDED, until Show all
     render_search_tracks_page(app)
 
     logger.debug("Search rendering complete")
@@ -1551,6 +1585,13 @@ def render_search_tracks_page(app):
     start = page * page_size
     end = min(total, start + page_size)
     page_items = ordered_pairs[start:end] if total > 0 else []
+    more_btn = getattr(app, "search_tracks_more_btn", None)
+    expanded = bool(getattr(app, "search_tracks_expanded", False))
+    if more_btn is not None:
+        more_btn.set_visible(len(page_items) > SEARCH_TRACKS_FOLDED)
+        more_btn.set_label("Show less" if expanded else "Show all")
+    if not expanded:
+        page_items = page_items[:SEARCH_TRACKS_FOLDED]
 
     prev_btn = getattr(app, "search_prev_page_btn", None)
     next_btn = getattr(app, "search_next_page_btn", None)

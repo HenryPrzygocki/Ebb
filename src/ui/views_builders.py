@@ -1200,25 +1200,11 @@ def build_settings_page(app):
     app.right_stack.add_named(settings_scroll, "settings")
 
 
-def _search_carousel(flow):
-    box = flow.get_parent()
-    if box is None:
-        return
-    box.remove(flow)
-    # Every result on one line: the scroller gives the flow its minimum width, which with
-    # min_children_per_line >= the result count is a single row.
-    flow.set_min_children_per_line(100)
-    flow.set_max_children_per_line(100)
-    flow.set_halign(Gtk.Align.START)
-    flow.set_valign(Gtk.Align.START)
-    scroller = Gtk.ScrolledWindow(
-        hscrollbar_policy=Gtk.PolicyType.AUTOMATIC,
-        vscrollbar_policy=Gtk.PolicyType.NEVER,
-        propagate_natural_height=True,
-        css_classes=["search-carousel"],
-    )
-    scroller.set_child(flow)
-    box.append(scroller)
+def _toggle_search_tracks(app):
+    from actions import ui_actions
+
+    app.search_tracks_expanded = not bool(getattr(app, "search_tracks_expanded", False))
+    ui_actions.render_search_tracks_page(app)
 
 
 def _show_ascii_parentheses(dropdown):
@@ -1281,43 +1267,27 @@ def build_search_view(app):
     app.search_status_label.set_visible(False)
     vbox.append(app.search_status_label)
 
-    app.res_art_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12, css_classes=["home-section"])
-    app.res_art_box.append(Gtk.Label(label="Artists", xalign=0, css_classes=["home-section-title"]))
-    app.res_art_flow = Gtk.FlowBox(
-        max_children_per_line=10,
-        selection_mode=Gtk.SelectionMode.NONE,
-        column_spacing=24,
-        row_spacing=24,
-    )
-    app.res_art_flow.connect("child-activated", app.on_grid_item_activated)
-    app.res_art_box.append(app.res_art_flow)
-    app.res_art_box.set_visible(False)
-    vbox.append(app.res_art_box)
+    # Fork #27: each result kind is a shelf (one row, "Show all" for the rest of up to 50), as on
+    # Home and artist pages. They were sideways-scrolling rows of the first 6.
+    def _result_shelf(title, activate=True):
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12, css_classes=["home-section"])
+        head, more = shelf.heading(title)
+        box.append(head)
+        flow = shelf.Shelf(button=more)
+        flow.set_column_spacing(24)
+        flow.set_row_spacing(24)
+        if activate:
+            flow.connect("child-activated", app.on_grid_item_activated)
+        box.append(flow)
+        box.set_visible(False)
+        vbox.append(box)
+        return box, flow
 
-    app.res_alb_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12, css_classes=["home-section"])
-    app.res_alb_box.append(Gtk.Label(label="Albums", xalign=0, css_classes=["home-section-title"]))
-    app.res_alb_flow = Gtk.FlowBox(
-        max_children_per_line=10,
-        selection_mode=Gtk.SelectionMode.NONE,
-        column_spacing=24,
-        row_spacing=24,
-    )
-    app.res_alb_flow.connect("child-activated", app.on_grid_item_activated)
-    app.res_alb_box.append(app.res_alb_flow)
-    app.res_alb_box.set_visible(False)
-    vbox.append(app.res_alb_box)
-
-    app.res_pl_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12, css_classes=["home-section"])
-    app.res_pl_box.append(Gtk.Label(label="Playlists", xalign=0, css_classes=["home-section-title"]))
-    app.res_pl_flow = Gtk.FlowBox(
-        max_children_per_line=10,
-        selection_mode=Gtk.SelectionMode.NONE,
-        column_spacing=24,
-        row_spacing=24,
-    )
-    app.res_pl_box.append(app.res_pl_flow)
-    app.res_pl_box.set_visible(False)
-    vbox.append(app.res_pl_box)
+    app.res_art_box, app.res_art_flow = _result_shelf("Artists")
+    app.res_alb_box, app.res_alb_flow = _result_shelf("Albums")
+    # TIDAL's playlists (fork: the search request dropped them), then your own that match.
+    app.res_tpl_box, app.res_tpl_flow = _result_shelf("Playlists", activate=False)
+    app.res_pl_box, app.res_pl_flow = _result_shelf("Your Playlists", activate=False)
 
     app.res_trk_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12, css_classes=["home-section"])
     trk_head = Gtk.Box(spacing=8)
@@ -1338,6 +1308,12 @@ def build_search_view(app):
     )
     app.search_select_btn.connect("toggled", app.on_search_select_mode_toggled)
     trk_head.append(app.search_select_btn)
+    # Fork #27: the first 10 tracks, then all of them (up to 50) on "Show all".
+    app.search_tracks_more_btn = Gtk.Button(
+        label="Show all", css_classes=["flat", "home-section-more"], valign=Gtk.Align.CENTER, visible=False,
+    )
+    app.search_tracks_more_btn.connect("clicked", lambda _b: _toggle_search_tracks(app))
+    trk_head.append(app.search_tracks_more_btn)
     # Fork: the pager reads "‹ 2 / 5 ›" as on Liked Songs (ui/pager.py); it said "Page 2/5 ‹ ›".
     app.search_prev_page_btn = Gtk.Button(icon_name="go-previous-symbolic", css_classes=["flat", "circular"], valign=Gtk.Align.CENTER)
     app.search_prev_page_btn.set_tooltip_text("Previous page")
@@ -1358,9 +1334,6 @@ def build_search_view(app):
     app.res_trk_box.set_visible(False)
     vbox.append(app.res_trk_box)
 
-    # Fork: result sections are one sideways-scrolling row each, and tracks come right after
-    # artists, so a grid of giant artist circles no longer pushes the tracks screens down.
-    for flow in (app.res_art_flow, app.res_alb_flow, app.res_pl_flow):
-        _search_carousel(flow)
+    # Fork: tracks come right after artists.
     vbox.reorder_child_after(app.res_trk_box, app.res_art_box)
     app.right_stack.add_named(app.search_scroll, "search_view")
