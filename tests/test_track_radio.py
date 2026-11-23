@@ -30,6 +30,12 @@ class _Label:
     def set_visible(self, value):
         self.visible = bool(value)
 
+    def add_css_class(self, name):
+        self.css = getattr(self, "css", set()) | {name}
+
+    def remove_css_class(self, name):
+        self.css = getattr(self, "css", set()) - {name}
+
     def get_text(self):
         return self.text
 

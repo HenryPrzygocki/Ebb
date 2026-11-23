@@ -2094,6 +2094,7 @@ def show_album_details(app, alb):
     app.current_album_artist_name = artist_name
     app.header_artist.set_text(artist_name)
     app.header_artist.set_visible(True)  # fork: a playlist with no known creator hides it
+    app.header_artist.remove_css_class("album-artist-plain")  # a link again (a playlist's creator is not)
     app.header_artist.set_tooltip_text(artist_name)
 
     utils.load_img(app.header_art, lambda: app.backend.get_artwork_url(alb, 640), app.cache_dir, utils.COVER_SIZE)

@@ -280,7 +280,9 @@ def build_tracks_view(app):
     tap.connect("pressed", app.on_header_artist_clicked)
     app.header_artist.add_controller(tap)
     motion = Gtk.EventControllerMotion()
-    motion.connect("enter", lambda c, x, y: utils.set_pointer_cursor(app.header_artist, True))
+    motion.connect(  # fork: no hand over a playlist's creator, which leads nowhere
+        "enter", lambda c, x, y: utils.set_pointer_cursor(app.header_artist, not app.header_artist.has_css_class("album-artist-plain"))
+    )
     motion.connect("leave", lambda c: utils.set_pointer_cursor(app.header_artist, False))
     app.header_artist.add_controller(motion)
     app.header_meta = Gtk.Label(xalign=0, css_classes=["album-meta", "album-meta-pill"])
@@ -304,7 +306,8 @@ def build_tracks_view(app):
     app.remote_playlist_visibility_btn.set_tooltip_text("Set public/private")
     app.remote_playlist_visibility_btn.set_visible(False)
     app.remote_playlist_visibility_btn.connect("clicked", lambda _b: app.on_remote_playlist_toggle_public_clicked())
-    app.remote_playlist_more_btn = Gtk.Button(icon_name="open-menu-symbolic", css_classes=["flat", "circular", "history-scroll-btn"], valign=Gtk.Align.CENTER)
+    # Fork: the album page's overflow icon (it was open-menu-symbolic, a different glyph).
+    app.remote_playlist_more_btn = Gtk.Button(icon_name="view-more-symbolic", css_classes=["flat", "circular", "history-scroll-btn"], valign=Gtk.Align.CENTER)
     app.remote_playlist_more_btn.set_tooltip_text("More")
     app.remote_playlist_more_btn.set_visible(False)
     app.remote_playlist_more_pop = Gtk.Popover()
@@ -396,10 +399,12 @@ def build_tracks_view(app):
     )
     app.hires_chip.set_margin_end(4)
     app.album_action_btns_box.append(app.hires_chip)
-    app.album_action_btns_box.append(app.remote_playlist_more_btn)
     app.album_action_btns_box.append(app.fav_btn)
     app.album_action_btns_box.append(app.track_list_select_btn)
     app.album_action_btns_box.append(app.add_playlist_btn)
+    # Fork: the overflow menu is the last button, as the album page's is (appended after this
+    # one, and only one of them shows). On playlists it came second, after the Hi-Res chip.
+    app.album_action_btns_box.append(app.remote_playlist_more_btn)
 
     # Top row: cover + textual info (no action icons here anymore).
     album_header_top.append(app.header_art)

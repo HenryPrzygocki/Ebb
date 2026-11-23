@@ -238,7 +238,7 @@ def test_opening_a_mix_leaves_the_sidebar_on_the_page_it_was_opened_from(monkeyp
 
     btn = SimpleNamespace(set_sensitive=lambda *_a: None, set_visible=lambda *_a: None)
     label = SimpleNamespace(set_text=lambda *_a: None, set_tooltip_text=lambda *_a: None,
-                            set_visible=lambda *_a: None)
+                            set_visible=lambda *_a: None, remove_css_class=lambda *_a: None)
     app = SimpleNamespace(
         right_stack=_Stack(), nav_history=[], current_album=None, back_btn=btn,
         header_title=label, header_artist=label, header_meta=label, header_kicker=label, header_art=object(),

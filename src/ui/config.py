@@ -1828,6 +1828,9 @@ flowboxchild { background-color: transparent; padding: 0; margin: 0; }
 label.track-link-hot { text-decoration: underline; }
 label.dim-label.track-link-hot { opacity: 1; }
 .album-artist-medium:hover { text-decoration: underline; }
+/* fork: a playlist's creator leads nowhere (You, TIDAL): not drawn as a link */
+.album-artist-medium.album-artist-plain { color: @window_fg_color; opacity: 0.85; }
+.album-artist-medium.album-artist-plain:hover { text-decoration: none; }
 .queue-up-next-caption { font-size: 10px; font-weight: 700; color: @accent_color; }
 .ebb-step-badge { min-width: 26px; min-height: 26px; border-radius: 999px; font-weight: 700; font-size: 12px; color: @accent_color; background-color: alpha(@accent_bg_color, 0.16); }
 .settings-container { padding: 32px; }  /* fork: the page inset every page uses (views_builders.PAGE_INSET) */
