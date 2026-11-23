@@ -315,9 +315,13 @@ def _set_login_view_pending(self):
 
 
 def _set_overlay_handles_visible(self, visible):
+    # Fork: Now Playing hides the queue handle while it is open and puts it back when it
+    # closes, so it has to know whether the handle is wanted at all (not when signed out).
+    self._overlay_handles_wanted = bool(visible)
+    overlay_open = getattr(self, "is_now_playing_overlay_open", None)
     queue_anchor = getattr(self, "queue_anchor", None)
     if queue_anchor is not None:
-        queue_anchor.set_visible(bool(visible))
+        queue_anchor.set_visible(bool(visible) and not (callable(overlay_open) and overlay_open()))
 
     viz_handle_box = getattr(self, "viz_handle_box", None)
     if viz_handle_box is not None:

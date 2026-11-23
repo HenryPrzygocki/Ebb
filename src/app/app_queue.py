@@ -100,6 +100,14 @@ def _size_queue_drawer(self):
 
 
 def toggle_queue_drawer(self, _btn=None):
+    # Fork: with Now Playing open, the queue is its Queue tab. The drawer's anchor is hidden
+    # under the overlay, so opening it there showed nothing until the overlay closed.
+    overlay_open = getattr(self, "is_now_playing_overlay_open", None)
+    if callable(overlay_open) and overlay_open():
+        stack = getattr(self, "now_playing_stack", None)
+        if stack is not None:
+            stack.set_visible_child_name("queue")
+        return
     revealer = getattr(self, "queue_revealer", None)
     if revealer is None:
         return

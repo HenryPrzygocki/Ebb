@@ -961,7 +961,7 @@ _NOW_PLAYING_META_MIN_W = 260  # the info card's minimum
 _NOW_PLAYING_RIGHT_SHARE = 0.46  # the tabs get this share of the width at least
 _NOW_PLAYING_RIGHT_CAP_W = 960  # past this, extra width goes around the cover instead
 _NOW_PLAYING_COVER_BREATH = 20  # air on each side of a stacked cover, when there is room
-_NOW_PLAYING_STACKED_MIN_COVER = 240  # under this the cover becomes a thumb beside the title
+_NOW_PLAYING_STACKED_MIN_COVER = 320  # under this the cover becomes a thumb beside the title
 _NOW_PLAYING_COMPACT_LEFT_W = 460  # the info panel's width then
 _NOW_PLAYING_INFO_H_GUESS = 300  # the track info's height until it has been measured
 _NOW_PLAYING_UNWRAPPED_W = 4000  # measuring the info this wide gives its height with no line wrapped
@@ -2138,9 +2138,10 @@ def show_now_playing_overlay(self, _btn=None):
 def _set_queue_handle_visible(self, visible):
     # Fork: the queue drawer's handle stayed on top of the open overlay, which has its own
     # Queue tab; in a narrow window it sat on the tabs' edge.
+    visible = bool(visible) and bool(getattr(self, "_overlay_handles_wanted", True))  # not signed out
     anchor = getattr(self, "queue_anchor", None)
-    if anchor is not None and bool(anchor.get_visible()) != bool(visible):
-        anchor.set_visible(bool(visible))
+    if anchor is not None and bool(anchor.get_visible()) != visible:
+        anchor.set_visible(visible)
 
 
 def hide_now_playing_overlay(self, _btn=None):

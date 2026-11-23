@@ -328,6 +328,46 @@ def test_the_queue_handle_hides_while_now_playing_is_open():
     np._set_queue_handle_visible(SimpleNamespace(), False)  # no drawer built: nothing to do
 
 
+def test_closing_now_playing_does_not_show_the_handle_when_signed_out():
+    from app import app_auth
+
+    anchor, viz = _W(), _W()
+    app = SimpleNamespace(
+        queue_anchor=anchor, viz_handle_box=viz, is_now_playing_overlay_open=lambda: False, close_queue_drawer=lambda: None
+    )
+    app_auth._set_overlay_handles_visible(app, False)  # signed out
+    np._set_queue_handle_visible(app, True)  # the overlay's close
+    assert anchor.visible is False
+    app_auth._set_overlay_handles_visible(app, True)  # signed in again
+    assert anchor.visible is True and viz.visible is True
+
+
+def test_signing_in_under_an_open_overlay_keeps_the_handle_hidden():
+    from app import app_auth
+
+    anchor = _W()
+    app = SimpleNamespace(queue_anchor=anchor, viz_handle_box=None, is_now_playing_overlay_open=lambda: True)
+    anchor.visible = False
+    app_auth._set_overlay_handles_visible(app, True)
+    assert anchor.visible is False
+    np._set_queue_handle_visible(app, True)  # the overlay closes
+    assert anchor.visible is True
+
+
+def test_q_with_now_playing_open_shows_its_queue_tab_not_the_hidden_drawer():
+    from app import app_queue
+
+    shown = []
+    revealer = SimpleNamespace(get_reveal_child=lambda: False, set_reveal_child=lambda v: shown.append(("drawer", v)))
+    app = SimpleNamespace(
+        is_now_playing_overlay_open=lambda: True,
+        now_playing_stack=SimpleNamespace(set_visible_child_name=lambda name: shown.append(("tab", name))),
+        queue_revealer=revealer,
+    )
+    app_queue.toggle_queue_drawer(app)
+    assert shown == [("tab", "queue")]
+
+
 # --- the album column ------------------------------------------------------------------------
 
 def test_the_album_column_widens_in_steps_with_the_panel():
