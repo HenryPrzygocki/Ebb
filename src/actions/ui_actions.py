@@ -1439,6 +1439,36 @@ _SEARCH_ARTIST_SIZE = 160
 SEARCH_TRACKS_FOLDED = 10  # fork #27: tracks shown before "Show all"
 
 
+def _show_collage_fallback(widget, display_size, icon_name):
+    widget.set_pixel_size(display_size)
+    widget.set_from_icon_name(icon_name)
+    return False
+
+
+def _load_collage_cover(app, widget, refs, display_size, fallback_icon=None, **collage_kwargs):
+    """Fork: build a playlist collage in load_img's worker, not on the main thread.
+
+    A collage that is not cached yet downloads up to four covers and decodes them, and gdk-pixbuf
+    decodes through glycin and GIO: on the main thread that waited on the network, and on a hung
+    gvfsd-metadata for 25 s per cover (the D-Bus timeout).
+    """
+    if not refs:
+        if fallback_icon:
+            _show_collage_fallback(widget, display_size, fallback_icon)
+        return
+    collage_dir = os.path.join(app.cache_dir, "playlist_covers")
+
+    def build():
+        path = utils.generate_auto_collage_cover(
+            refs, image_cache_dir=app.cache_dir, collage_cache_dir=collage_dir, **collage_kwargs
+        )
+        if not path and fallback_icon:
+            GLib.idle_add(_show_collage_fallback, widget, display_size, fallback_icon)
+        return path
+
+    utils.load_img(widget, build, app.cache_dir, display_size)
+
+
 def _search_playlist_byline(pl):
     """'By <creator> · N tracks', or what of it TIDAL gives (editorial playlists have no creator)."""
     creator = getattr(getattr(pl, "creator", None), "name", "") or ""
@@ -1533,21 +1563,17 @@ def render_search_results(app, res):
         img = Gtk.Image(css_classes=["album-cover-img", "playlist-cover-img"])
         img.set_size_request(utils.COVER_SIZE, utils.COVER_SIZE)
         refs = app.playlist_mgr.get_cover_refs(p, limit=4) if hasattr(app, "playlist_mgr") else []
-        collage_dir = os.path.join(app.cache_dir, "playlist_covers")
-        collage = utils.generate_auto_collage_cover(
+        _load_collage_cover(
+            app,
+            img,
             refs,
-            image_cache_dir=app.cache_dir,
-            collage_cache_dir=collage_dir,
+            utils.COVER_SIZE,
+            fallback_icon="audio-x-generic-symbolic",
             key_prefix=f"playlist_search_{p.get('id', 'x')}_{p.get('updated_at', 0)}",
             size=256,
             overlay_alpha=0.34,
             overlay_style="mix",
         )
-        if collage:
-            utils.load_img(img, collage, app.cache_dir, utils.COVER_SIZE)
-        else:
-            img.set_pixel_size(utils.COVER_SIZE)
-            img.set_from_icon_name("audio-x-generic-symbolic")
         card.append(_build_feed_media_overlay(img, utils.COVER_SIZE, "album-cover-img"))
         card.append(
             Gtk.Label(
@@ -7241,21 +7267,17 @@ def render_playlist_detail(app, playlist_id):
     cover = Gtk.Image(pixel_size=utils.COVER_SIZE, css_classes=["header-art"])
     cover.set_size_request(utils.COVER_SIZE, utils.COVER_SIZE)
     refs = app.playlist_mgr.get_cover_refs(p, limit=4)
-    collage_dir = os.path.join(app.cache_dir, "playlist_covers")
-    collage = utils.generate_auto_collage_cover(
+    _load_collage_cover(
+        app,
+        cover,
         refs,
-        image_cache_dir=app.cache_dir,
-        collage_cache_dir=collage_dir,
+        utils.COVER_SIZE,
+        fallback_icon="audio-x-generic-symbolic",
         key_prefix=f"playlist_{p.get('id', 'x')}_{p.get('updated_at', 0)}",
         size=256,
         overlay_alpha=0.34,
         overlay_style="mix",
     )
-    if collage:
-        utils.load_img(cover, collage, app.cache_dir, utils.COVER_SIZE)
-    else:
-        cover.set_pixel_size(utils.COVER_SIZE)
-        cover.set_from_icon_name("audio-x-generic-symbolic")
     header_box.append(cover)
 
     info = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4, valign=Gtk.Align.CENTER, hexpand=True)
@@ -7543,16 +7565,9 @@ def render_daily_mixes(app, mixes):
                 cover_refs.append(u)
             if len(cover_refs) >= 4:
                 break
-        collage_dir = os.path.join(app.cache_dir, "playlist_covers")
-        collage_path = utils.generate_auto_collage_cover(
-            cover_refs,
-            image_cache_dir=app.cache_dir,
-            collage_cache_dir=collage_dir,
-            key_prefix=f"daily_mix_{mix.get('date_label', 'today')}",
-            size=256,
+        _load_collage_cover(
+            app, collage, cover_refs, 42, key_prefix=f"daily_mix_{mix.get('date_label', 'today')}", size=256
         )
-        if collage_path:
-            utils.load_img(collage, collage_path, app.cache_dir, 42)
         head.append(collage)
         title = Gtk.Label(
             label=f"{mix.get('title', 'Daily Mix')} · {mix.get('date_label', '')}",

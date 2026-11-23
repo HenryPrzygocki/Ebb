@@ -611,27 +611,70 @@ def test_load_now_playing_cover_applies_cached_cover_color_before_async(monkeypa
     assert applied == [(0.2, 0.3, 0.4)]
 
 
-def test_cached_cover_color_reuses_player_artwork_cache_file(monkeypatch):
+def _forbid_file_decodes(monkeypatch):
+    # Fork: gdk-pixbuf decodes through glycin and GIO. With gvfsd-metadata hung, a decode on the
+    # main thread froze the whole UI for the 25 s D-Bus timeout, on every track change.
+    def decode(*_args, **_kwargs):
+        raise AssertionError("decoded an image file on the main thread")
+
+    monkeypatch.setattr(app_now_playing.GdkPixbuf.Pixbuf, "new_from_file_at_scale", decode)
+    monkeypatch.setattr(app_now_playing.GdkPixbuf.Pixbuf, "new_from_file", decode)
+    monkeypatch.setattr(app_now_playing, "_sample_cached_cover_dark_rgb", decode)
+
+
+def _write_cached_covers(cache_dir, *urls):
+    for url in urls:
+        with open(os.path.join(cache_dir, hashlib.md5(url.encode()).hexdigest()), "wb") as handle:
+            handle.write(b"fake")
+
+
+def test_cached_cover_color_never_decodes_a_file(monkeypatch):
     with tempfile.TemporaryDirectory() as cache_dir:
         player_url = "https://resources.tidal.com/images/ab/cd/ef/320x320.jpg"
         now_playing_url = "https://resources.tidal.com/images/ab/cd/ef/1280x1280.jpg"
-        cached_path = os.path.join(cache_dir, hashlib.md5(player_url.encode()).hexdigest())
-        with open(cached_path, "wb") as handle:
-            handle.write(b"fake")
-
+        _write_cached_covers(cache_dir, player_url, now_playing_url)
         app = SimpleNamespace(
             now_playing_cover_rgb_cache={},
             cache_dir=cache_dir,
-            art_img=SimpleNamespace(_target_url=player_url),
+            art_img=SimpleNamespace(_target_url=player_url),  # not loaded yet
         )
+        _forbid_file_decodes(monkeypatch)
 
-        monkeypatch.setattr(app_now_playing.GdkPixbuf.Pixbuf, "new_from_file_at_scale", lambda *_args: object())
-        monkeypatch.setattr(app_now_playing, "_dominant_dark_rgb_from_pixbuf", lambda _pb: (0.4, 0.3, 0.2))
+        assert app_now_playing._get_now_playing_cached_cover_dark_rgb(app, now_playing_url) is None
 
-        rgb = app_now_playing._get_now_playing_cached_cover_dark_rgb(app, now_playing_url)
 
-        assert rgb == (0.4, 0.3, 0.2)
-        assert app.now_playing_cover_rgb_cache["ab/cd/ef"] == (0.4, 0.3, 0.2)
+def test_cached_cover_color_reuses_the_player_artwork_in_memory(monkeypatch):
+    player_url = "https://resources.tidal.com/images/ab/cd/ef/320x320.jpg"
+    now_playing_url = "https://resources.tidal.com/images/ab/cd/ef/1280x1280.jpg"
+    app = SimpleNamespace(
+        now_playing_cover_rgb_cache={},
+        cache_dir="/nonexistent",
+        art_img=SimpleNamespace(_target_url=player_url, _loaded_pixbuf=object()),
+    )
+    _forbid_file_decodes(monkeypatch)
+    monkeypatch.setattr(app_now_playing, "_dominant_dark_rgb_from_pixbuf", lambda _pb: (0.4, 0.3, 0.2))
+
+    assert app_now_playing._get_now_playing_cached_cover_dark_rgb(app, now_playing_url) == (0.4, 0.3, 0.2)
+    assert app.now_playing_cover_rgb_cache["ab/cd/ef"] == (0.4, 0.3, 0.2)
+    # Another album's cover in the player bar is no help.
+    other = "https://resources.tidal.com/images/12/34/56/1280x1280.jpg"
+    assert app_now_playing._get_now_playing_cached_cover_dark_rgb(app, other) is None
+
+
+def test_load_now_playing_cover_leaves_every_decode_to_the_worker(monkeypatch):
+    with tempfile.TemporaryDirectory() as cache_dir:
+        url = "https://resources.tidal.com/images/ab/cd/ef/1280x1280.jpg"
+        _write_cached_covers(cache_dir, url)
+        tasks = []
+        area = _Area()
+        app = SimpleNamespace(now_playing_art_img=area, now_playing_cover_rgb_cache={}, cache_dir=cache_dir)
+        _forbid_file_decodes(monkeypatch)
+        monkeypatch.setattr(app_now_playing, "submit_daemon", tasks.append)
+
+        app_now_playing._load_now_playing_cover(app, url)
+
+        assert area._target_url == url
+        assert len(tasks) == 1  # the cover is decoded there, off the main thread
 
 
 def test_prime_cover_color_ignores_stale_track(monkeypatch):

@@ -950,6 +950,14 @@ def _get_now_playing_player_art_dark_rgb(self):
 
 
 def _get_now_playing_cached_cover_dark_rgb(self, cover_ref):
+    """The cover's tint when it is already in memory, else None. Runs on the main thread.
+
+    Fork: this used to decode the cached cover file here. gdk-pixbuf 2.44 decodes through glycin,
+    which deletes a temp file through GIO, and GVfs reports that delete to gvfsd-metadata with a
+    synchronous D-Bus call: with that daemon hung, each decode waited out the 25 s D-Bus timeout
+    and the whole UI froze on every track change. Files are sampled off the main thread, by the
+    worker in _load_now_playing_cover and by _prime_now_playing_cover_color.
+    """
     cover_key = _normalize_now_playing_cover_key(cover_ref)
     if not cover_key:
         return None
@@ -959,25 +967,19 @@ def _get_now_playing_cached_cover_dark_rgb(self, cover_ref):
     if cached_rgb is not None:
         return tuple(cached_rgb)
 
-    cache_dir = str(getattr(self, "cache_dir", "") or "")
-    if not cache_dir:
-        return None
-
-    candidate_refs = [str(cover_ref or "")]
+    # The player bar's cover, when it shows this album, is already decoded.
     player_art = getattr(self, "art_img", None)
     player_art_target = str(getattr(player_art, "_target_url", "") or "")
-    if player_art_target and _normalize_now_playing_cover_key(player_art_target) == cover_key:
-        candidate_refs.append(player_art_target)
-
-    for candidate_ref in candidate_refs:
-        cached_path = _cached_cover_path_for_ref(cache_dir, candidate_ref)
-        if not cached_path:
-            continue
-        dark_rgb = _sample_cached_cover_dark_rgb(cached_path)
-        if dark_rgb is not None:
-            cache[cover_key] = tuple(dark_rgb)
-            return dark_rgb
-    return None
+    pixbuf = getattr(player_art, "_loaded_pixbuf", None)
+    if pixbuf is None or not player_art_target:
+        return None
+    if _normalize_now_playing_cover_key(player_art_target) != cover_key:
+        return None
+    dark_rgb = _dominant_dark_rgb_from_pixbuf(pixbuf)
+    if dark_rgb is None:
+        return None
+    cache[cover_key] = tuple(dark_rgb)
+    return tuple(dark_rgb)
 
 
 def _sync_now_playing_dynamic_color_for_current_track(self):
