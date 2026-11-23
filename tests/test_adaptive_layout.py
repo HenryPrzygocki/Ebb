@@ -219,6 +219,24 @@ def test_track_columns_drive_every_bound_cell():
     assert track_table.track_columns(app) is cols  # one shared state per app
 
 
+class _SizedCell(_Cell):
+    width_request = GObject.Property(type=int, default=-1)
+
+
+def test_wide_tiers_widen_every_artist_and_album_cell_but_not_the_under_title_line():
+    app = SimpleNamespace()
+    artist, album, under = _SizedCell(), _SizedCell(), _SizedCell()
+    track_table.bind_track_column(app, artist, "artist-column")
+    track_table.bind_track_column(app, album, "album-column")
+    track_table.bind_track_column(app, under, "artist-column", invert=True)
+    layout = track_table.LAYOUT
+    assert (artist.props.width_request, album.props.width_request) == (layout["artist_width"], layout["album_width"])
+    cols = track_table.track_columns(app)
+    cols.props.artist_width, cols.props.album_width = 270, 320
+    assert (artist.props.width_request, album.props.width_request) == (270, 320)
+    assert under.props.width_request == -1
+
+
 def test_cells_built_while_narrow_start_hidden():
     app = SimpleNamespace()
     track_table.track_columns(app).props.album_column = False

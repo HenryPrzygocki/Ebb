@@ -1709,6 +1709,9 @@ def _install_content_breakpoints(app):
     """Content-width breakpoints (independent of the sidebar): which track columns fit, album hero size.
 
     Content width   Track table                         Album / playlist hero
+    >= 1600         artist 270 px, album 320 px          full
+    >= 1350         artist 220 px, album 260 px          full
+    >= 1100         artist 170 px, album 210 px          full
     >= 960          title | artist | album | time       full
     820 - 959       title over artist | album | time    full
     680 - 819       title over artist | time            full
@@ -1753,8 +1756,15 @@ def _install_content_breakpoints(app):
         if select_bar is not None
         else []
     )
-    # Several conditions can match at once; AdwBreakpointBin applies the last matching one.
+    def widths(artist, album):
+        return [(cols, "artist-width", artist), (cols, "album-width", album)]
+
+    # Several conditions can match at once; AdwBreakpointBin applies the last matching one, so
+    # the min-width tiers go in ascending order (none of them overlaps a max-width one).
     for condition, setters, plain_bar in (
+        ("min-width: 1100px", widths(170, 210), False),
+        ("min-width: 1350px", widths(220, 260), False),
+        ("min-width: 1600px", widths(270, 320), False),
         ("max-width: 959px", no_artist, False),
         ("max-width: 819px", no_album, False),
         ("max-width: 679px", no_album + tight, False),

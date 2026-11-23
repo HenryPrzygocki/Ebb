@@ -51,6 +51,17 @@ def test_home_section_header_uses_context_kicker_as_small_line():
     }
 
 
+def test_seed_header_names_the_seed_albums_artist():
+    result = ui_actions._home_section_header_lines(
+        {
+            "title": "Because you listened to",
+            "section_type": "HORIZONTAL_LIST_WITH_CONTEXT",
+            "context_header": {"name": "The Dark Side of the Moon", "sub_title": "Pink Floyd"},
+        }
+    )
+    assert result == {"title": "The Dark Side of the Moon", "kicker": "Because you listened to", "secondary": "Pink Floyd"}
+
+
 def test_home_section_header_keeps_full_context_sentence_as_secondary():
     result = ui_actions._home_section_header_lines(
         {"title": "Recommended Tracks", "subtitle": "Because you liked Hello", "section_type": "HORIZONTAL_LIST"}

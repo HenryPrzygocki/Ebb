@@ -10,8 +10,9 @@ from gi.repository import GLib, Gtk
 
 
 def holds_control(widget):
-    """True for a Button, or an Overlay drawn over a Button (cards with badges)."""
-    if isinstance(widget, Gtk.Button):
+    """True for a Button, an Overlay drawn over a Button (cards with badges), or a widget that
+    says it holds its own controls (a Home track column: three row buttons)."""
+    if isinstance(widget, Gtk.Button) or getattr(widget, "keynav_holds_controls", False):
         return True
     return isinstance(widget, Gtk.Overlay) and isinstance(widget.get_child(), Gtk.Button)
 

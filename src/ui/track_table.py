@@ -153,6 +153,11 @@ class TrackColumns(GObject.Object):
 
     artist_column = GObject.Property(type=bool, default=True)
     album_column = GObject.Property(type=bool, default=True)
+    # Fork #27: on wide content the artist and album columns grow too (min-width tiers in
+    # ui.builders). At a fixed 130/170 px, a 1920 px window gave the title ~1000 px of mostly
+    # empty space while "The Brook & The…" and "I Love You, Honeybear…" were cut short.
+    artist_width = GObject.Property(type=int, default=LAYOUT["artist_width"])
+    album_width = GObject.Property(type=int, default=LAYOUT["album_width"])
 
 
 def track_columns(app):
@@ -163,11 +168,21 @@ def track_columns(app):
     return cols
 
 
+_COLUMN_WIDTH = {"artist-column": "artist-width", "album-column": "album-width"}
+
+
 def bind_track_column(app, widget, prop, invert=False):
     flags = GObject.BindingFlags.SYNC_CREATE
     if invert:
         flags |= GObject.BindingFlags.INVERT_BOOLEAN
-    track_columns(app).bind_property(prop, widget, "visible", flags)
+    cols = track_columns(app)
+    cols.bind_property(prop, widget, "visible", flags)
+    width = _COLUMN_WIDTH.get(prop)
+    # The column cell itself (not the inverted under-title line) follows the width tier. Its
+    # label's max-width-chars keeps its natural width under the request, so every row's cell
+    # gets exactly the tier's width and the columns stay aligned.
+    if width and not invert and widget.find_property("width-request") is not None:
+        cols.bind_property(width, widget, "width-request", GObject.BindingFlags.SYNC_CREATE)
     return widget
 
 

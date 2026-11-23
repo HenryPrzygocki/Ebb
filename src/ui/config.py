@@ -1293,6 +1293,13 @@ flowboxchild { background-color: transparent; padding: 0; margin: 0; }
    own and read as body text, below their pages' subtitles. */
 .home-section-title { font-size: 17px; font-weight: 700; }
 .home-section-more { font-weight: 600; padding-left: 12px; padding-right: 12px; }
+/* Fork #27: Home track sections are columns of compact rows (cover, title, artist). */
+.home-track-tile { padding: 6px 8px; border-radius: 10px; }
+.home-track-title { font-weight: 600; }
+.home-track-artist { font-size: 13px; font-weight: 400; } /* buttons bold their labels */
+/* A section whose items all fit hides Show all; without a floor its heading row shrank to the
+   title's height, so that section sat closer to the one above than the others did. */
+.home-section-head { min-height: 38px; }  /* the height Show all gives it */
 
 .home-subtitle,
 .album-artist-medium,

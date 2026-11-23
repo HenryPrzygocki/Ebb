@@ -74,7 +74,10 @@ def _home_section_header_lines(section):
     context_header = (section or {}).get("context_header") or {}
     context_title = str((context_header or {}).get("name", "") or "").strip()
     if section_type == "HORIZONTAL_LIST_WITH_CONTEXT" and title and context_title:
-        return {"title": context_title, "kicker": title, "secondary": ""}
+        # Fork #21: "Because you liked <album>" also names its artist, as TIDAL's apps do.
+        by = str((context_header or {}).get("sub_title", "") or "").strip()
+        return {"title": context_title, "kicker": title,
+                "secondary": by if by.casefold() != context_title.casefold() else ""}
     if section_type == "HORIZONTAL_LIST_WITH_CONTEXT" and title and subtitle:
         return {"title": subtitle, "kicker": title, "secondary": ""}
     if title and subtitle and _is_home_context_kicker(title):
@@ -203,6 +206,123 @@ def _home_card_layout(item_data, cover_size):
         "card_classes": card_classes,
         "text_width_chars": text_width_chars,
     }
+
+
+# Fork #27: a Home section made only of tracks shows them as columns of compact rows (cover,
+# title, artist), like TIDAL's track modules. As cards they were 88 px covers whose titles were
+# cut at about nine characters ("Narcissis…"), in rows that left most of a wide window empty.
+HOME_TRACK_ROWS = 3
+HOME_TRACK_COVER = 48
+HOME_TRACK_COLUMN_WIDTH = 260
+
+
+def _is_track_section(items):
+    return len(items) >= 2 and all(str((it or {}).get("type") or "") == "Track" for it in items)
+
+
+def _track_columns(items):
+    """[(index, item), …] groups of HOME_TRACK_ROWS, column by column."""
+    pairs = list(enumerate(items))
+    return [pairs[i:i + HOME_TRACK_ROWS] for i in range(0, len(pairs), HOME_TRACK_ROWS)]
+
+
+def _play_track_section(app, items, index, name):
+    """A track in a track section plays the section from there. (Each card used to play its one
+    track alone, so the queue ended with it.)"""
+    tracks = [(it or {}).get("obj") for it in items]
+    if not (0 <= index < len(tracks)) or tracks[index] is None:
+        return
+    start = tracks[index]
+    tracks = [t for t in tracks if t is not None]
+    gtl = getattr(app, "grid_title_label", None)
+    page = str(gtl.get_text() or "").strip() if gtl is not None else ""
+    app.playback_source = {"type": page or "Home", "name": name or page or "Home"}
+    app.current_track_list = tracks
+    app._set_play_queue(tracks)
+    app.play_track(tracks.index(start))
+
+
+def _build_track_tile(app, item_data, on_click):
+    row = Gtk.Box(spacing=12)
+    url = str(item_data.get("image_url") or "")
+    img = Gtk.Image(pixel_size=HOME_TRACK_COVER, css_classes=["album-cover-img"])
+    img.set_size_request(HOME_TRACK_COVER, HOME_TRACK_COVER)
+    if url:
+        utils.load_img(img, url, app.cache_dir, HOME_TRACK_COVER)
+    else:
+        img.set_from_icon_name("audio-x-generic-symbolic")
+    row.append(img)
+    text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2, valign=Gtk.Align.CENTER, hexpand=True)
+    title = str(item_data.get("name") or "Unknown")
+    artist = str(item_data.get("sub_title") or "").strip()
+    # max-width-chars keeps each label's natural width (and so the column's) near the column
+    # width, whatever the title's length: the shelf counts its columns from that width.
+    text.append(Gtk.Label(label=title, xalign=0, ellipsize=3, max_width_chars=20, css_classes=["home-track-title"]))
+    if artist:
+        text.append(Gtk.Label(label=artist, xalign=0, ellipsize=3, max_width_chars=20,
+                              css_classes=["dim-label", "home-track-artist"]))
+    row.append(text)
+    btn = Gtk.Button(css_classes=["flat", "home-track-tile"])
+    btn.set_child(row)
+    btn.set_tooltip_text(f"{title} \u00b7 {artist}" if artist else title)
+    btn.connect("clicked", lambda _b: on_click())
+    context_menu.tag(btn, item_data.get("obj"), "Track")
+    return btn
+
+
+def _column_tiles(col):
+    tiles, child = [], col.get_first_child() if col is not None else None
+    while child is not None:
+        tiles.append(child)
+        child = child.get_next_sibling()
+    return tiles
+
+
+def _track_column_step(col, focus, keyval):
+    """Arrow keys in a track column: Up/Down move between its rows, Left/Right to the same row
+    of the next shown column. At a column's ends Up/Down fall through to the FlowBox (the line
+    above or below, when the shelf is open). Returns the tile to focus, or None."""
+    tiles = _column_tiles(col)
+    cur = next((i for i, t in enumerate(tiles) if focus is t or (focus is not None and focus.is_ancestor(t))), None)
+    if cur is None:
+        return None
+    if keyval in (Gdk.KEY_Down, Gdk.KEY_KP_Down):
+        return tiles[cur + 1] if cur + 1 < len(tiles) else None
+    if keyval in (Gdk.KEY_Up, Gdk.KEY_KP_Up):
+        return tiles[cur - 1] if cur > 0 else None
+    if keyval not in (Gdk.KEY_Left, Gdk.KEY_KP_Left, Gdk.KEY_Right, Gdk.KEY_KP_Right):
+        return None
+    forward = keyval in (Gdk.KEY_Right, Gdk.KEY_KP_Right)
+    cell = col.get_parent()
+    while cell is not None:
+        cell = cell.get_next_sibling() if forward else cell.get_prev_sibling()
+        if cell is not None and cell.get_child_visible():  # the shelf hides lines it has folded
+            others = _column_tiles(cell.get_child())
+            return others[min(cur, len(others) - 1)] if others else None
+    return None
+
+
+def _build_track_column(app, pairs, on_play):
+    col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2, hexpand=True, css_classes=["home-track-column"])
+    col.set_size_request(HOME_TRACK_COLUMN_WIDTH, -1)
+    col.keynav_holds_controls = True  # ui/keynav.py: the cell takes no Tab stop of its own
+    for index, item in pairs:
+        col.append(_build_track_tile(app, item, lambda i=index: on_play(i)))
+    keys = Gtk.EventControllerKey()
+
+    def _on_key(_ctl, keyval, _code, state):
+        if state & (Gdk.ModifierType.CONTROL_MASK | Gdk.ModifierType.ALT_MASK | Gdk.ModifierType.SHIFT_MASK):
+            return False
+        root = col.get_root()
+        target = _track_column_step(col, root.get_focus() if root is not None else None, keyval)
+        if target is None:
+            return False
+        target.grab_focus()
+        return True
+
+    keys.connect("key-pressed", _on_key)
+    col.add_controller(keys)
+    return col
 
 
 def _build_feed_item_button(app, item_data, on_click):
@@ -3610,7 +3730,17 @@ def batch_load_home(app, sections):
         flow = shelf.Shelf(button=more_btn)
         section_box.append(flow)
         app.collection_content_box.append(section_box)
-        render_queue.append({"flow": flow, "items": list(sec["items"]), "index": 0})
+        items = list(sec["items"])
+        if _is_track_section(items):
+            def _play(index, items=items, name=header_lines["title"]):
+                _play_track_section(app, items, index, name)
+
+            render_queue.append({
+                "flow": flow, "items": _track_columns(items), "index": 0,
+                "build": lambda pairs, play=_play: _build_track_column(app, pairs, play),
+            })
+        else:
+            render_queue.append({"flow": flow, "items": items, "index": 0, "build": _build_home_item_button})
 
     # Render cards progressively to avoid one long UI stall on Home.
     def _render_home_chunk():
@@ -3630,7 +3760,7 @@ def batch_load_home(app, sections):
                 render_queue.pop(0)
                 continue
             item_data = items[i]
-            btn = _build_home_item_button(item_data)
+            btn = ctx["build"](item_data)
             child = Gtk.FlowBoxChild()
             child.set_child(btn)
             ctx["flow"].append(child)
