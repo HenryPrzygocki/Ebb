@@ -386,6 +386,7 @@ def test_batch_load_albums_uses_explicit_flow_target_and_token(monkeypatch):
             Button=_FakeGtkButton,
             Orientation=SimpleNamespace(VERTICAL="vertical"),
             Align=SimpleNamespace(CENTER="center"),
+            Justification=SimpleNamespace(CENTER="center"),
         ),
     )
     monkeypatch.setattr(ui_actions, "_build_feed_media_overlay", lambda *_args, **_kwargs: object())
@@ -463,6 +464,7 @@ def test_batch_load_artists_uses_explicit_flow_target(monkeypatch):
             FlowBoxChild=_FakeGtkFlowBoxChild,
             Orientation=SimpleNamespace(VERTICAL="vertical"),
             Align=SimpleNamespace(CENTER="center"),
+            Justification=SimpleNamespace(CENTER="center"),
         ),
     )
     monkeypatch.setattr(ui_actions, "_build_feed_media_overlay", lambda *_args, **_kwargs: object())
@@ -611,6 +613,7 @@ def test_render_artists_dashboard_places_prev_next_in_search_toolbar(monkeypatch
             Button=_FakeGtkButton,
             StringList=_FakeGtkStringList,
             Align=SimpleNamespace(CENTER="center"),
+            Justification=SimpleNamespace(CENTER="center"),
         ),
     )
     monkeypatch.setattr(ui_actions, "Thread", _ImmediateThread)
@@ -767,6 +770,7 @@ def test_render_artists_dashboard_moves_total_count_to_grid_subtitle(monkeypatch
             Button=_FakeGtkButton,
             StringList=_FakeGtkStringList,
             Align=SimpleNamespace(CENTER="center"),
+            Justification=SimpleNamespace(CENTER="center"),
         ),
     )
     monkeypatch.setattr(ui_actions, "Thread", _RunThread)

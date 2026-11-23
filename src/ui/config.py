@@ -667,6 +667,7 @@ button.circular {
     background-color: rgb(247, 249, 252);
 }
 
+.queue-anchor .queue-drawer-list .queue-track-artist { font-size: 12px; }
 .queue-anchor .queue-drawer-list {
     background-color: rgb(247, 249, 252);
 }

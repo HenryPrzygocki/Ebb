@@ -82,11 +82,30 @@ def _sync_queue_handle_state(self, expanded):
             anchor.remove_css_class("open")
 
 
+def queue_drawer_width(window_width):
+    """Fork #27: about a third of the window, 320–440 px, and never more than the window minus
+    120 px (a strip of page stays visible to click away on). It was a fixed 240 px: at half a
+    1920 screen its titles had about 120 px."""
+    w = int(window_width or 0)
+    if w <= 0:
+        return 320
+    return max(200, min(440, max(320, round(w * 0.36)), w - 120))
+
+
+def _size_queue_drawer(self):
+    box = getattr(self, "queue_drawer_box", None)
+    win = getattr(self, "win", None)
+    if box is not None:
+        box.set_size_request(queue_drawer_width(win.get_width() if win is not None else 0), -1)
+
+
 def toggle_queue_drawer(self, _btn=None):
     revealer = getattr(self, "queue_revealer", None)
     if revealer is None:
         return
     show = not revealer.get_reveal_child()
+    if show:
+        _size_queue_drawer(self)
     revealer.set_reveal_child(show)
     if getattr(self, "queue_backdrop", None) is not None:
         self.queue_backdrop.set_visible(show)

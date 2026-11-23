@@ -814,6 +814,11 @@ def _build_queue_track_row(app, track, i, current_idx, compact):
         title_lbl = Gtk.Label(label=title, xalign=0, ellipsize=3, css_classes=["track-title", "queue-track-title"])
         title_lbl.set_tooltip_text(title)
         info.append(title_lbl)
+        # Fork #27: the artist under the title, as in Now Playing's queue (the drawer is wider now).
+        artist_name = str(getattr(getattr(track, "artist", None), "name", "") or "")
+        if artist_name:
+            info.append(Gtk.Label(label=artist_name, xalign=0, ellipsize=3,
+                                  css_classes=["dim-label", "queue-track-artist"]))
         box.append(info)
     else:
         title_lbl = Gtk.Label(label=title, xalign=0, ellipsize=3, hexpand=True, css_classes=["track-title"])
@@ -1223,7 +1228,8 @@ def render_search_results(app, res):
         card.append(
             Gtk.Label(
                 label=getattr(art, "name", "Unknown"),
-                ellipsize=2,
+                ellipsize=3,
+                lines=2, justify=Gtk.Justification.CENTER, wrap_mode=Pango.WrapMode.WORD_CHAR,  # fork: names on two lines, not cut in the middle
                 wrap=True,
                 max_width_chars=12,
                 css_classes=["heading", "home-card-title"],
@@ -2157,7 +2163,8 @@ def batch_load_artists(app, artists, batch=10, _token=None, _flow=None):
         v.append(
             Gtk.Label(
                 label=art.name,
-                ellipsize=2,
+                ellipsize=3,
+                lines=2, justify=Gtk.Justification.CENTER, wrap_mode=Pango.WrapMode.WORD_CHAR,  # fork: names on two lines, not cut in the middle
                 halign=Gtk.Align.CENTER,
                 wrap=True,
                 max_width_chars=14,
@@ -3448,7 +3455,8 @@ def render_artist_detail(app, artist, render_token=None):
                                      "circular-avatar", "avatar-default-symbolic"))
             v.append(Gtk.Label(
                 label=str(getattr(sim_art, "name", "") or ""),
-                ellipsize=2, halign=Gtk.Align.CENTER,
+                ellipsize=3, halign=Gtk.Align.CENTER,
+                lines=2, justify=Gtk.Justification.CENTER, wrap_mode=Pango.WrapMode.WORD_CHAR,  # fork: names on two lines, not cut in the middle
                 wrap=True, max_width_chars=14,
                 css_classes=["heading", "home-card-title"],
             ))

@@ -38,3 +38,10 @@ def test_count_phrase_drops_zero_counts():
     assert f(0, "folder", "folders", 20, "playlist", "playlists") == "20 playlists"
     assert f(2, "folder", "folders", 1, "playlist", "playlists") == "2 folders • 1 playlist"
     assert f(0, "folder", "folders", 0, "playlist", "playlists") == "0 playlists"
+
+
+def test_queue_drawer_width_follows_the_window():
+    from app.app_queue import queue_drawer_width as w
+    assert w(960) == 346 and w(1920) == 440 and w(1280) == 461 - 21  # 0.36·1280 = 461 → capped 440
+    assert w(420) == 300  # narrow window: leave 120 px of page
+    assert w(0) == 320
