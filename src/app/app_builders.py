@@ -3402,6 +3402,20 @@ def _focus_in_text_input(self):
     return False
 
 
+def _dialog_open(self):
+    """A dialog shown inside the window (Adw.Dialog, Adw.AlertDialog) is open.
+
+    Fork: such a dialog shares the window's key controllers. While it is open the keys are its
+    own: Space toggled playback instead of pressing its focused button, and W, Q and E opened
+    panels behind it.
+    """
+    getter = getattr(getattr(self, "win", None), "get_visible_dialog", None)
+    try:
+        return callable(getter) and getter() is not None
+    except Exception:
+        return False
+
+
 def on_global_key_pressed(self, controller, keyval, keycode, state):
     """Capture-phase shortcuts: these run before the focused widget sees the key.
 
@@ -3409,6 +3423,8 @@ def on_global_key_pressed(self, controller, keyval, keycode, state):
     row activates on Space, so Space restarted the song instead of pausing it, and a focused
     button or album tile swallowed it. Focused album grids likewise ate Ctrl+Left/Right.
     """
+    if _dialog_open(self):
+        return False
     mods = state & _SHORTCUT_MODS
     if keyval in _SPACE_KEYS and not mods:
         if _focus_in_text_input(self):
@@ -3607,6 +3623,8 @@ def show_shortcuts_dialog(self, *_args):
 def on_key_pressed(self, controller, keyval, keycode, state):
     typing = _focus_in_text_input(self)
     ctrl = bool(state & Gdk.ModifierType.CONTROL_MASK)
+    if _dialog_open(self) and not (ctrl and keyval in (Gdk.KEY_q, Gdk.KEY_Q)):
+        return False  # only quitting works past an open dialog
     # Fork: the panel letters are plain keys, outside text fields only. Upstream also let Q/W
     # close an open panel from inside a text field, which ate the letter (typing "queen" into
     # search with the queue open closed the queue), and fired on Ctrl+Q / Ctrl+W too.

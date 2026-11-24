@@ -16,6 +16,17 @@ def _alert(heading, body):
     return Adw.AlertDialog(heading=str(heading or ""), body=str(body or ""))
 
 
+def present(app, dialog):
+    """Show an in-window dialog. From the mini player the full window comes back first: its
+    strip is far smaller than any dialog."""
+    if getattr(app, "is_mini_mode", False) and callable(getattr(app, "toggle_mini_mode", None)):
+        try:
+            app.toggle_mini_mode(None)
+        except Exception:
+            pass
+    dialog.present(app.win)
+
+
 def message(app, heading, body, on_close=None, ok_label="OK"):
     """Something to read. on_close runs however it is dismissed."""
     dialog = _alert(heading, body)
@@ -24,7 +35,7 @@ def message(app, heading, body, on_close=None, ok_label="OK"):
     dialog.set_close_response(CONFIRM)
     if on_close is not None:
         dialog.connect("response", lambda _d, _response: on_close())
-    dialog.present(app.win)
+    present(app, dialog)
     return dialog
 
 
@@ -40,7 +51,7 @@ def confirm(app, heading, body, confirm_label, on_confirm, destructive=False, ca
     dialog.set_default_response(CANCEL if destructive else CONFIRM)
     dialog.set_close_response(CANCEL)
     dialog.connect("response", lambda _d, response: on_confirm() if response == CONFIRM else None)
-    dialog.present(app.win)
+    present(app, dialog)
     return dialog
 
 
@@ -60,7 +71,7 @@ def prompt_text(app, heading, body, initial, on_submit, placeholder=None, save_l
         "response", lambda _d, response: on_submit(entry.get_text().strip()) if response == CONFIRM else None
     )
     dialog.set_focus(entry)
-    dialog.present(app.win)
+    present(app, dialog)
     return dialog
 
 
@@ -101,7 +112,7 @@ def choose(app, heading, body, labels, confirm_label, on_choose, extra_child=Non
             callbacks[response]()
 
     dialog.connect("response", _on_response)
-    dialog.present(app.win)
+    present(app, dialog)
     return dialog
 
 

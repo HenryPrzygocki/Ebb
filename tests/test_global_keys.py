@@ -343,3 +343,44 @@ def test_bit_perfect_volume_stays_put_unless_the_dac_has_hardware_volume():
 def test_ctrl_up_down_are_left_to_text_fields():
     app = _volume_app(focus=_Text())
     assert _press(app, Gdk.KEY_Up, CTRL) is False and app.vol_scale.value == 50.0
+
+
+# --- Fork: a dialog inside the window keeps its keys -----------------------------------------
+# Adw dialogs are shown inside the window and share its key controllers. Space toggled playback
+# instead of pressing the dialog's focused button, and W, Q and E opened panels behind it.
+
+def _app_with_dialog(focus=None):
+    app = _app(focus)
+    app.win.get_visible_dialog = lambda: object()
+    app.toggle_now_playing_overlay = lambda: app.calls.append("now_playing")
+    app.toggle_queue_drawer = lambda: app.calls.append("queue")
+    app.toggle_visualizer = lambda _btn: app.calls.append("visualizer")
+    app.viz_btn = object()
+    app._quit_from_tray = lambda: app.calls.append("quit")
+    return app
+
+
+def test_space_goes_to_an_open_dialogs_focused_button():
+    app = _app_with_dialog(focus=_Row())
+    assert _press(app, Gdk.KEY_space) is False  # not consumed: the button gets it
+    assert app.calls == []
+
+
+def test_panel_letters_do_nothing_behind_an_open_dialog():
+    app = _app_with_dialog()
+    for keyval in (Gdk.KEY_w, Gdk.KEY_q, Gdk.KEY_e):
+        assert ab.on_key_pressed(app, None, keyval, 0, 0) is False
+    assert app.calls == []
+
+
+def test_ctrl_q_still_quits_past_an_open_dialog():
+    app = _app_with_dialog()
+    assert ab.on_key_pressed(app, None, Gdk.KEY_q, 0, Gdk.ModifierType.CONTROL_MASK) is True
+    assert app.calls == ["quit"]
+
+
+def test_without_a_dialog_the_keys_work_as_before():
+    app = _app_with_dialog()
+    app.win.get_visible_dialog = lambda: None
+    assert _press(app, Gdk.KEY_space) is True and app.calls == ["play_pause"]
+    assert ab._dialog_open(SimpleNamespace(win=SimpleNamespace())) is False  # a window without dialogs

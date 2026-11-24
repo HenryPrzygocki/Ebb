@@ -15,6 +15,8 @@ gi.require_version("Adw", "1")
 gi.require_version("Gtk", "4.0")
 from gi.repository import Adw, GLib, Gtk  # noqa: E402
 
+from ui import dialogs  # noqa: E402  (fork: shared present)
+
 logger = logging.getLogger(__name__)
 
 
@@ -33,7 +35,7 @@ def show(app, track):
     view.set_content(stack)
     dialog.set_child(view)
     app._credits_dialog = dialog
-    dialog.present(getattr(app, "win", None))
+    dialogs.present(app, dialog)  # fork: leaves the mini player first
 
     def finish(credits):
         stack.add_named(content(app, dialog, title, artist, credits), "credits")

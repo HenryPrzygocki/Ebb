@@ -261,3 +261,15 @@ def test_the_name_prompt_and_the_message_dialog_use_the_shared_look(inline, monk
     monkeypatch.setattr(app_builders.dialogs, "message", lambda *a, **k: shown.append(a))
     app_builders._show_simple_dialog(app, "Playback blocked", "Why it is blocked.")
     assert shown == [(app, "Playback blocked", "Why it is blocked.")]
+
+
+def test_a_dialog_from_the_mini_player_brings_the_full_window_back_first(toolkit):
+    # The mini strip is far smaller than any dialog, and these now open inside the window.
+    order = []
+    toolkit.is_mini_mode = True
+    toolkit.toggle_mini_mode = lambda _btn: order.append("leave mini")
+    dialog = dialogs.message(toolkit, "Playback blocked", "Not available in your region.")
+    assert order == ["leave mini"] and dialog.parent == "the window"
+    toolkit.is_mini_mode = False
+    dialogs.confirm(toolkit, "Delete?", "", "Delete", lambda: None, destructive=True)
+    assert order == ["leave mini"]  # the full window is left alone

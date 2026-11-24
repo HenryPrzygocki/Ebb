@@ -624,7 +624,7 @@ def _open_cloud_playlist_editor(
     cancel_btn.connect("clicked", lambda _b: dialog.close())
     save_btn.connect("clicked", _submit)
     title_entry.connect("activate", _submit)  # Enter in the title saves
-    dialog.present(self.win)
+    dialogs.present(self, dialog)
 
 
 def on_remote_playlist_rename_clicked(self, playlist_obj=None):
