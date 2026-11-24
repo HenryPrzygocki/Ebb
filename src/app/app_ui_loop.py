@@ -241,6 +241,11 @@ def update_layout_proportions(self, w, p):
             return False
 
         self._artist_detail_layout_sync_source = GLib.timeout_add(140, _retry_artist_detail)
+    # Fork: the DSP signal chain reflowed on notify::width, which GTK 4 never emits: it kept the
+    # row length it was built with and ran off the panel in a narrower window.
+    rebuild_chain = getattr(self, "_queue_rebuild_dsp_overview_chain", None)
+    if callable(rebuild_chain):
+        rebuild_chain()
     # Fork: History's grids picked their columns on notify::default-width only, which a tiled
     # window never sends (see app_bootstrap._watch_content_size).
     refresh_history = getattr(self, "_history_grid_layout_refresh", None)

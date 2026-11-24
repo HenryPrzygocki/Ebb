@@ -1728,6 +1728,10 @@ def _refresh_dsp_order_edit_ui(self):
             btn.set_visible(visible)
 
 
+_DSP_CHAIN_WINDOW_MARGIN = 72  # the panel's and the card's side margins
+_DSP_CHAIN_MIN_MODULES = 2  # fork: it was 3, which a 571 px column cannot hold (488 px + margins)
+
+
 def _dsp_overview_modules_per_row(self):
     available_width = 0
     chain_flow = getattr(self, "dsp_chain_flow", None)
@@ -1763,10 +1767,25 @@ def _dsp_overview_modules_per_row(self):
             available_width = 0
     if available_width <= 0:
         available_width = int(getattr(ui_config, "WINDOW_WIDTH", 1250) or 1250)
+    # Fork: never more than the window holds. A card that already overflows reports its own
+    # too-wide width, so after the window narrowed the chain kept its old row length.
+    if win is not None:
+        try:
+            win_now = int(win.get_width() or 0)
+        except Exception:
+            win_now = 0
+        if win_now > 0:
+            sidebar = 0
+            if not getattr(self, "_sidebar_collapsed", False):  # docked: the panel sits beside it
+                try:
+                    sidebar = max(0, int(self.paned.get_position() or 0))
+                except Exception:
+                    sidebar = 0
+            available_width = min(available_width, max(0, win_now - sidebar - _DSP_CHAIN_WINDOW_MARGIN))
     # Subtract CSS padding (16px each side) to get the usable inner content width.
     # Each module slot = 136px button + 40px connector; n slots need n*176 - 40px.
-    usable_width = max(360, available_width - 32)
-    return max(3, min(7, int((usable_width + 40) // 176) or 5))
+    usable_width = max(_DSP_CHAIN_MIN_MODULES * 176 - 40, available_width - 32)
+    return max(_DSP_CHAIN_MIN_MODULES, min(7, int((usable_width + 40) // 176) or 5))
 
 
 def _queue_rebuild_dsp_overview_chain(self):
