@@ -13,6 +13,7 @@ gi.require_version('Gtk', '4.0')
 from gi.repository import Gtk, GLib, Gdk
 
 from core.executor import submit_daemon
+from ui import dialogs  # fork: the small dialogs, one look
 from actions.pipewire_sink_watch import PipeWireSinkWatch
 
 logger = logging.getLogger(__name__)
@@ -1581,39 +1582,14 @@ def _normalize_pipewire_device_id(device_id):
 
 
 def _show_pro_audio_switch_info(app, on_confirm):
-    """Informational dialog: device will be auto-switched to pro-audio. Calls on_confirm after OK."""
-    dialog = Gtk.Dialog(title="Pro-Audio Mode", transient_for=app.win, modal=True)
-    root = Gtk.Box(
-        orientation=Gtk.Orientation.VERTICAL,
-        spacing=12,
-        margin_top=16,
-        margin_bottom=16,
-        margin_start=20,
-        margin_end=20,
+    """Informational: the device will be switched to Pro-Audio. on_confirm runs when it closes."""
+    dialogs.message(
+        app,
+        "Pro-Audio Mode",
+        "The selected device is not in Pro-Audio mode.\n\n"
+        "It will be switched to Pro-Audio automatically, to enable adaptive sample rate switching.",
+        on_close=on_confirm,
     )
-    msg = Gtk.Label(
-        label=(
-            "The selected device is not in Pro-Audio mode.\n\n"
-            "It will be automatically switched to Pro-Audio to enable adaptive sample rate switching."
-        ),
-        wrap=True,
-        xalign=0.0,
-        max_width_chars=48,
-    )
-    root.append(msg)
-    action_row = Gtk.Box(spacing=8, halign=Gtk.Align.END)
-    ok_btn = Gtk.Button(label="OK", css_classes=["suggested-action"])
-    ok_btn.connect("clicked", lambda _b: dialog.response(Gtk.ResponseType.OK))
-    action_row.append(ok_btn)
-    root.append(action_row)
-    dialog.set_child(root)
-
-    def _on_response(d, _resp):
-        d.destroy()
-        on_confirm()
-
-    dialog.connect("response", _on_response)
-    dialog.present()
 
 
 def on_device_changed(app, dd, p):

@@ -14,6 +14,7 @@ gi.require_version("Adw", "1")
 gi.require_version("Gdk", "4.0")
 from gi.repository import Gtk, Adw, Pango, GLib, Gdk
 from core import brand  # fork
+from ui import dialogs  # fork
 
 from background_viz import BackgroundVisualizer
 from visualizer import HybridVisualizer as _HybridVisualizer
@@ -79,6 +80,7 @@ def _build_community_action_row(icon_name: str, title: str, subtitle: str, butto
 
 def _present_community_window(app):
     win = Adw.Window(transient_for=getattr(app, "win", None), modal=True)
+    dialogs.close_on_escape(win)  # fork
     win.set_title("Community")
     win.set_default_size(520, 520)
 
@@ -175,7 +177,9 @@ def present_update_window(app):
     error_text = str(state.get("error") or "").strip()
     available = bool(state.get("update_available"))
 
+    no_feed = bool(state.get("no_feed"))
     win = Adw.Window(transient_for=getattr(app, "win", None), modal=True)
+    dialogs.close_on_escape(win)  # fork
     win.set_title("Software Update")
     win.set_default_size(520, 440)
 
@@ -201,7 +205,14 @@ def present_update_window(app):
     title_icon.set_pixel_size(24)
     title_box.append(title_icon)
 
-    if error_text:
+    if no_feed:
+        # Fork: a private repository has no public releases. This said "Update Check Failed".
+        heading = "No Release Feed"
+        subtitle = (
+            f"This build of {brand.APP_NAME} comes as a package built from its repository, which "
+            "publishes no releases. A newer build arrives as a new package."
+        )
+    elif error_text:
         heading = "Update Check Failed"
         subtitle = "GitHub releases could not be reached just now. You can still open the releases page manually."
     elif available:
@@ -225,9 +236,10 @@ def present_update_window(app):
 
     meta_list = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE, css_classes=["boxed-list"])
     meta_list.append(_build_update_meta_row("Current Version", current_version))
-    meta_list.append(_build_update_meta_row("Latest Release", latest_name or latest_version or "No newer release"))
-    meta_list.append(_build_update_meta_row("Published", published_at or "Unknown"))
-    if error_text:
+    if not no_feed:
+        meta_list.append(_build_update_meta_row("Latest Release", latest_name or latest_version or "No newer release"))
+        meta_list.append(_build_update_meta_row("Published", published_at or "Unknown"))
+    if error_text and not no_feed:
         meta_list.append(_build_update_meta_row("Status", error_text))
     root.append(meta_list)
 
@@ -248,9 +260,10 @@ def present_update_window(app):
         root.append(notes_label)
 
     actions = Gtk.Box(spacing=10)
-    open_release_btn = Gtk.Button(label="Open Release Page")
-    open_release_btn.connect("clicked", lambda _btn: _open_external_url(latest_url))
-    actions.append(open_release_btn)
+    if not no_feed:
+        open_release_btn = Gtk.Button(label="Open Release Page")
+        open_release_btn.connect("clicked", lambda _btn: _open_external_url(latest_url))
+        actions.append(open_release_btn)
 
     close_btn = Gtk.Button(label="Close")
     close_btn.connect("clicked", lambda _btn: win.close())

@@ -12,6 +12,7 @@ from core.settings import read_json, write_json
 from core.executor import submit_daemon
 from ui import config as ui_config
 from ui import context_menu, keynav  # fork
+from ui import dialogs  # fork: the small dialogs, one look
 
 logger = logging.getLogger(__name__)
 
@@ -3856,21 +3857,6 @@ def _lock_volume_controls(self, locked):
 
 
 def _show_simple_dialog(self, title, message):
-    dialog = Gtk.Dialog(title=title, transient_for=self.win, modal=True)
-    root = Gtk.Box(
-        orientation=Gtk.Orientation.VERTICAL,
-        spacing=12,
-        margin_top=12,
-        margin_bottom=12,
-        margin_start=12,
-        margin_end=12,
-    )
-    root.append(Gtk.Label(label=str(message or ""), xalign=0, wrap=True))
-    action_row = Gtk.Box(spacing=8, halign=Gtk.Align.END)
-    ok_btn = Gtk.Button(label="OK")
-    ok_btn.connect("clicked", lambda _b: dialog.response(Gtk.ResponseType.OK))
-    action_row.append(ok_btn)
-    root.append(action_row)
-    dialog.set_child(root)
-    dialog.connect("response", lambda d, _resp: d.destroy())
-    dialog.present()
+    # Fork: the title was in a title bar; where the compositor draws none, the message had no
+    # heading at all.
+    dialogs.message(self, title, message)

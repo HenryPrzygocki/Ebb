@@ -91,3 +91,68 @@ def test_init_update_check_state_recomputes_cached_beta_visibility():
     assert app._update_check_state["current_version"] == "1.9.0"
     assert app._update_check_state["latest_version"] == "1.9.1-beta1"
     assert app._update_check_state["update_available"] is False
+
+
+# --- Fork: a private repository has no release feed ---------------------------------------------
+
+def _no_feed_session(calls):
+    class _Response:
+        status_code = 404
+
+        def raise_for_status(self):
+            raise AssertionError("a 404 from the releases API is a result, not an error")
+
+    class _Session:
+        def get(self, *args, **kwargs):
+            calls.append(args)
+            return _Response()
+
+    return _Session()
+
+
+def test_a_missing_release_feed_is_a_result_not_a_failure(monkeypatch):
+    pytest.importorskip("gi")
+    from services import update_check as mod
+
+    calls = []
+    monkeypatch.setattr(mod, "get_global_session", lambda: _no_feed_session(calls))
+
+    state = mod._fetch_update_state("0.1.0")
+
+    assert state["no_feed"] is True and state["error"] == "" and state["update_available"] is False
+    assert state["last_checked_at"] > 0  # cached, so it is not asked again at every launch
+
+
+def test_no_feed_survives_a_restart_and_keeps_the_startup_check_quiet(monkeypatch):
+    pytest.importorskip("gi")
+    from types import SimpleNamespace
+
+    from services import update_check as mod
+
+    calls = []
+    monkeypatch.setattr(mod, "get_global_session", lambda: _no_feed_session(calls))
+    app = SimpleNamespace(app_version="0.1.0", settings={})
+    app._update_check_state = mod._fetch_update_state("0.1.0")
+    mod._persist_update_state(app)
+    assert app.settings["update_check"]["no_feed"] is True
+
+    restarted = SimpleNamespace(app_version="0.1.0", settings=dict(app.settings))
+    mod.init_update_check_state(restarted)
+    assert restarted._update_check_state["no_feed"] is True
+    assert mod._is_cache_fresh(restarted) is True  # no request this launch
+    assert mod._is_cache_fresh(restarted, force=True) is False  # the menu entry still asks
+
+
+def test_a_real_failure_is_still_a_failure(monkeypatch):
+    pytest.importorskip("gi")
+    from services import update_check as mod
+
+    class _Response:
+        status_code = 503
+
+        def raise_for_status(self):
+            raise RuntimeError("503 Server Error")
+
+    monkeypatch.setattr(mod, "get_global_session", lambda: type("S", (), {"get": lambda self, *a, **k: _Response()})())
+    with pytest.raises(RuntimeError):
+        mod._fetch_update_state("0.1.0")

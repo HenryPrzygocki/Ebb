@@ -39,6 +39,7 @@ def _default_update_state(current_version: str = "") -> dict[str, Any]:
         "update_available": False,
         "last_checked_at": 0,
         "error": "",
+        "no_feed": False,
     }
 
 
@@ -159,6 +160,7 @@ def init_update_check_state(app) -> None:
         except Exception:
             state["last_checked_at"] = 0
         state["error"] = _coerce_text(cached.get("error"))
+        state["no_feed"] = bool(cached.get("no_feed"))
     state["update_available"] = _compute_update_available(
         state["current_version"],
         state["latest_version"],
@@ -181,6 +183,7 @@ def _persist_update_state(app) -> None:
         "latest_notes": _coerce_text(state.get("latest_notes")),
         "last_checked_at": int(state.get("last_checked_at", 0) or 0),
         "error": _coerce_text(state.get("error")),
+        "no_feed": bool(state.get("no_feed")),
         "source": _RELEASES_URL,  # fork
     }
     saver = getattr(app, "schedule_save_settings", None)
@@ -254,6 +257,13 @@ def _fetch_update_state(current_version: str) -> dict[str, Any]:
             "User-Agent": f"{brand.APP_NAME}/{state['current_version']}",
         },
     )
+    if getattr(response, "status_code", 200) == 404:
+        # Fork: the repository is private or has no releases API for us. That is not a failed
+        # check: there is nothing to check. It is a result like any other, so it is cached and
+        # the request is not repeated at every launch (a failure never is cached).
+        state["no_feed"] = True
+        state["last_checked_at"] = int(time.time())
+        return state
     response.raise_for_status()
     payload = response.json()
     if not isinstance(payload, list):
@@ -330,7 +340,11 @@ def check_for_updates_async(app, user_initiated: bool = False, force: bool = Fal
             _persist_update_state(app)
             _sync_update_widgets(app)
             if user_initiated:
-                if result.get("error"):
+                if result.get("no_feed"):
+                    notice = getattr(app, "show_output_notice", None)
+                    if callable(notice):
+                        notice("This build has no release feed.", "info", 2600)
+                elif result.get("error"):
                     notice = getattr(app, "show_output_notice", None)
                     if callable(notice):
                         notice("Update check failed.", "warn", 2600)

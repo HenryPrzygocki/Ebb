@@ -3,11 +3,12 @@ Playlist management for TidalApp.
 Contains playlist creation, editing and management methods.
 """
 import logging
-from gi.repository import Gtk, GLib
+from gi.repository import Adw, Gtk, GLib
 from core.executor import submit_daemon
 import copy
 from ui.track_table import clear_track_rows, set_track_rows_hidden  # fork
 from ui import track_table  # fork: header meta helpers
+from ui import dialogs  # fork: the small dialogs, one look
 
 logger = logging.getLogger(__name__)
 
@@ -151,31 +152,7 @@ def on_playlist_folder_delete_clicked(self, folder_obj=None):
     if folder_obj is None:
         return
     fname = str(getattr(folder_obj, "name", "") or "this folder")
-    dialog = Gtk.Dialog(title="Delete Folder", transient_for=self.win, modal=True)
-    root = Gtk.Box(
-        orientation=Gtk.Orientation.VERTICAL,
-        spacing=12,
-        margin_top=12,
-        margin_bottom=12,
-        margin_start=12,
-        margin_end=12,
-    )
-    root.append(Gtk.Label(label=f"Delete '{fname}' permanently?", xalign=0))
-    action_row = Gtk.Box(spacing=8, halign=Gtk.Align.END)
-    cancel_btn = Gtk.Button(label="Cancel")
-    delete_btn = Gtk.Button(label="Delete")
-    cancel_btn.connect("clicked", lambda _b: dialog.response(Gtk.ResponseType.CANCEL))
-    delete_btn.connect("clicked", lambda _b: dialog.response(Gtk.ResponseType.OK))
-    action_row.append(cancel_btn)
-    action_row.append(delete_btn)
-    root.append(action_row)
-    dialog.set_child(root)
-
-    def _on_response(d, resp):
-        if resp != Gtk.ResponseType.OK:
-            d.destroy()
-            return
-        d.destroy()
+    def _delete():
         self.show_output_notice("Deleting folder...", "ok", 1600)
 
         def task():
@@ -197,8 +174,9 @@ def on_playlist_folder_delete_clicked(self, folder_obj=None):
 
         submit_daemon(task)
 
-    dialog.connect("response", _on_response)
-    dialog.present()
+    dialogs.confirm(
+        self, "Delete Folder?", f"“{fname}” will be deleted permanently.", "Delete", _delete, destructive=True
+    )
 
 
 def on_playlist_card_clicked(self, playlist_id):
@@ -487,6 +465,10 @@ def on_remote_playlist_toggle_public_clicked(self, _btn=None, playlist_obj=None)
     submit_daemon(task)
 
 
+_EDITOR_COVER_SIZE = 120
+_EDITOR_COVER_MIN_WINDOW_W = 520  # under this the form needs the whole width
+
+
 def _open_cloud_playlist_editor(
     self,
     dialog_title,
@@ -499,8 +481,9 @@ def _open_cloud_playlist_editor(
     initial_folder_id="root",
     on_submit=None,
 ):
-    dialog = Gtk.Dialog(title=dialog_title, transient_for=self.win, modal=True)
-    dialog.set_default_size(586, 413)
+    # Fork: a dialog inside the window, with its title and buttons in a header bar. It was a
+    # Gtk.Dialog titled only in the window's title bar, which niri does not draw.
+    dialog = Adw.Dialog(title=str(dialog_title or ""), content_width=600)
     root = Gtk.Box(
         orientation=Gtk.Orientation.VERTICAL,
         spacing=12,
@@ -511,20 +494,22 @@ def _open_cloud_playlist_editor(
     )
     content = Gtk.Box(spacing=16)
 
-    left = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
     import utils.helpers as utils
-    cover = Gtk.Image(css_classes=["album-cover-img", "playlist-cover-img"])
-    cover.set_size_request(utils.COVER_SIZE, utils.COVER_SIZE)
-    if playlist_obj is not None:
-        utils.load_img(cover, lambda: self.backend.get_artwork_url(playlist_obj, 640), self.cache_dir, utils.COVER_SIZE)
-    else:
-        cover.set_from_icon_name("audio-x-generic-symbolic")
-    left.append(cover)
-    change_btn = Gtk.Button(label="Change image")
-    change_btn.set_sensitive(False)
-    change_btn.set_tooltip_text("Not available in this version")
-    left.append(change_btn)
-    content.append(left)
+
+    try:
+        roomy = int(self.win.get_width() or 0) >= _EDITOR_COVER_MIN_WINDOW_W
+    except Exception:
+        roomy = True
+    if playlist_obj is not None and roomy:
+        # Fork: only an existing playlist has a cover to show, and only where there is room
+        # beside the form. A new one got an empty square, and under it a "Change image" button
+        # that was never enabled.
+        cover = Gtk.Image(css_classes=["album-cover-img", "playlist-cover-img"], valign=Gtk.Align.START)
+        cover.set_size_request(_EDITOR_COVER_SIZE, _EDITOR_COVER_SIZE)
+        utils.load_img(
+            cover, lambda: self.backend.get_artwork_url(playlist_obj, 640), self.cache_dir, _EDITOR_COVER_SIZE
+        )
+        content.append(cover)
 
     right = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12, hexpand=True)
     right.append(Gtk.Label(label="Title", xalign=0))
@@ -561,7 +546,15 @@ def _open_cloud_playlist_editor(
     public_row = Gtk.Box(spacing=8, margin_top=6)
     public_lbl_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2, hexpand=True)
     public_lbl_box.append(Gtk.Label(label="Make it public", xalign=0))
-    public_lbl_box.append(Gtk.Label(label="Your playlist will be visible on your profile and accessible by anyone.", xalign=0, css_classes=["dim-label"]))
+    # Fork: wraps. On one line it made the form 430 px wide at least, past a narrow window's edge.
+    public_lbl_box.append(
+        Gtk.Label(
+            label="Your playlist will be visible on your profile and accessible by anyone.",
+            xalign=0,
+            wrap=True,
+            css_classes=["dim-label"],
+        )
+    )
     public_switch = Gtk.Switch(active=bool(initial_public), halign=Gtk.Align.END, valign=Gtk.Align.CENTER)
     public_row.append(public_lbl_box)
     public_row.append(public_switch)
@@ -570,16 +563,17 @@ def _open_cloud_playlist_editor(
     content.append(right)
     root.append(content)
 
-    action_row = Gtk.Box(spacing=8, halign=Gtk.Align.END)
     cancel_btn = Gtk.Button(label="Cancel")
-    save_btn = Gtk.Button(label=save_label)
-    save_btn.add_css_class("suggested-action")
-    cancel_btn.connect("clicked", lambda _b: dialog.response(Gtk.ResponseType.CANCEL))
-    save_btn.connect("clicked", lambda _b: dialog.response(Gtk.ResponseType.OK))
-    action_row.append(cancel_btn)
-    action_row.append(save_btn)
-    root.append(action_row)
-    dialog.set_child(root)
+    save_btn = Gtk.Button(label=save_label, css_classes=["suggested-action"])
+    header = Adw.HeaderBar(show_start_title_buttons=False, show_end_title_buttons=False)
+    header.pack_start(cancel_btn)
+    header.pack_end(save_btn)
+    view = Adw.ToolbarView()
+    view.add_top_bar(header)
+    view.set_content(root)
+    dialog.set_child(view)
+    dialog.set_default_widget(save_btn)
+    dialog.set_focus(title_entry)
 
     def _update_count(_buf=None):
         txt = desc_buf.get_text(desc_buf.get_start_iter(), desc_buf.get_end_iter(), True) or ""
@@ -593,9 +587,21 @@ def _open_cloud_playlist_editor(
     desc_buf.connect("changed", _update_count)
     _update_count()
 
-    def _on_response(d, resp):
-        if resp != Gtk.ResponseType.OK:
-            d.destroy()
+    def _valid():
+        title = str(title_entry.get_text() or "").strip()
+        desc = desc_buf.get_text(desc_buf.get_start_iter(), desc_buf.get_end_iter(), True) or ""
+        return bool(title) and len(desc) <= 500
+
+    def _sync_save(*_args):
+        # Fork: both were checked after the dialog had closed, so what had been typed was lost.
+        save_btn.set_sensitive(_valid())
+
+    title_entry.connect("changed", _sync_save)
+    desc_buf.connect("changed", _sync_save)
+    _sync_save()
+
+    def _submit(*_args):
+        if not _valid():
             return
         title = str(title_entry.get_text() or "").strip()
         desc = desc_buf.get_text(desc_buf.get_start_iter(), desc_buf.get_end_iter(), True) or ""
@@ -605,7 +611,7 @@ def _open_cloud_playlist_editor(
             idx = int(folder_dd.get_selected())
             if 0 <= idx < len(folder_ids):
                 selected_folder_id = folder_ids[idx]
-        d.destroy()
+        dialog.close()
         if not title:
             self.show_output_notice("Playlist title cannot be empty.", "warn", 2600)
             return
@@ -615,8 +621,10 @@ def _open_cloud_playlist_editor(
         if callable(on_submit):
             on_submit(title, desc, is_public, selected_folder_id)
 
-    dialog.connect("response", _on_response)
-    dialog.present()
+    cancel_btn.connect("clicked", lambda _b: dialog.close())
+    save_btn.connect("clicked", _submit)
+    title_entry.connect("activate", _submit)  # Enter in the title saves
+    dialog.present(self.win)
 
 
 def on_remote_playlist_rename_clicked(self, playlist_obj=None):
@@ -668,31 +676,7 @@ def on_remote_playlist_delete_clicked(self, playlist_obj=None):
     if pl is None:
         return
     pname = str(getattr(pl, "name", None) or "this playlist")
-    dialog = Gtk.Dialog(title="Delete Playlist", transient_for=self.win, modal=True)
-    root = Gtk.Box(
-        orientation=Gtk.Orientation.VERTICAL,
-        spacing=12,
-        margin_top=12,
-        margin_bottom=12,
-        margin_start=12,
-        margin_end=12,
-    )
-    root.append(Gtk.Label(label=f"Delete '{pname}' permanently?", xalign=0))
-    action_row = Gtk.Box(spacing=8, halign=Gtk.Align.END)
-    cancel_btn = Gtk.Button(label="Cancel")
-    delete_btn = Gtk.Button(label="Delete")
-    cancel_btn.connect("clicked", lambda _b: dialog.response(Gtk.ResponseType.CANCEL))
-    delete_btn.connect("clicked", lambda _b: dialog.response(Gtk.ResponseType.OK))
-    action_row.append(cancel_btn)
-    action_row.append(delete_btn)
-    root.append(action_row)
-    dialog.set_child(root)
-
-    def _on_response(d, resp):
-        if resp != Gtk.ResponseType.OK:
-            d.destroy()
-            return
-        d.destroy()
+    def _delete():
         self.show_output_notice("Deleting playlist...", "ok", 1600)
 
         def task():
@@ -712,50 +696,22 @@ def on_remote_playlist_delete_clicked(self, playlist_obj=None):
 
         submit_daemon(task)
 
-    dialog.connect("response", _on_response)
-    dialog.present()
+    dialogs.confirm(
+        self,
+        "Delete Playlist?",
+        f"“{pname}” will be deleted from your TIDAL account. This cannot be undone.",
+        "Delete",
+        _delete,
+        destructive=True,
+    )
 
 
 def on_remote_playlist_move_to_folder_clicked(self, playlist_obj=None):
     pl = playlist_obj or getattr(self, "current_remote_playlist", None)
     if pl is None:
         return
-    folders = [{"id": "root", "path": "Root"}] + list(self.backend.get_all_playlist_folders(limit=1000) or [])
-    options = [(str(f.get("id", "root")), str(f.get("path", "Root"))) for f in folders]
-    if not options:
-        self.show_output_notice("No folders available.", "warn", 2400)
-        return
-    dialog = Gtk.Dialog(title="Move to Folder", transient_for=self.win, modal=True)
-    root = Gtk.Box(
-        orientation=Gtk.Orientation.VERTICAL,
-        spacing=12,
-        margin_top=12,
-        margin_bottom=12,
-        margin_start=12,
-        margin_end=12,
-    )
-    root.append(Gtk.Label(label="Select destination folder:", xalign=0))
-    dd = Gtk.DropDown(model=Gtk.StringList.new([label for _fid, label in options]))
-    dd.set_selected(0)
-    root.append(dd)
-    action_row = Gtk.Box(spacing=8, halign=Gtk.Align.END)
-    cancel_btn = Gtk.Button(label="Cancel")
-    move_btn = Gtk.Button(label="Move")
-    move_btn.add_css_class("suggested-action")
-    cancel_btn.connect("clicked", lambda _b: dialog.response(Gtk.ResponseType.CANCEL))
-    move_btn.connect("clicked", lambda _b: dialog.response(Gtk.ResponseType.OK))
-    action_row.append(cancel_btn)
-    action_row.append(move_btn)
-    root.append(action_row)
-    dialog.set_child(root)
 
-    def _on_response(d, resp):
-        if resp != Gtk.ResponseType.OK:
-            d.destroy()
-            return
-        idx = int(dd.get_selected())
-        target_id = options[idx][0] if 0 <= idx < len(options) else "root"
-        d.destroy()
+    def _move(target_id):
         self.show_output_notice("Moving playlist...", "ok", 1800)
 
         def task():
@@ -776,8 +732,25 @@ def on_remote_playlist_move_to_folder_clicked(self, playlist_obj=None):
 
         submit_daemon(task)
 
-    dialog.connect("response", _on_response)
-    dialog.present()
+    # Fork: listing the folders is a request. It ran on the main thread before the dialog opened.
+    def _fetch():
+        folders = [{"id": "root", "path": "Root"}] + list(self.backend.get_all_playlist_folders(limit=1000) or [])
+        options = [(str(f.get("id", "root")), str(f.get("path", "Root"))) for f in folders]
+
+        def _present():
+            dialogs.choose(
+                self,
+                "Move to Folder",
+                "",
+                [label for _fid, label in options],
+                "Move",
+                lambda index: _move(options[index][0]),
+            )
+            return False
+
+        GLib.idle_add(_present)
+
+    submit_daemon(_fetch)
 
 
 # Fork: removing a track from your own TIDAL playlist hides it at once and offers Undo. The
@@ -998,53 +971,18 @@ def _prompt_playlist_pick(self, on_pick):
                 _create_and_pick(True)
                 return False
 
-            dialog = Gtk.Dialog(title="Add to Playlist", transient_for=self.win, modal=True)
-            root = Gtk.Box(
-                orientation=Gtk.Orientation.VERTICAL,
-                spacing=12,
-                margin_top=12,
-                margin_bottom=12,
-                margin_start=12,
-                margin_end=12,
-            )
-            box_wrap = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, margin_top=12, margin_bottom=12, margin_start=12, margin_end=12)
-            box_wrap.append(Gtk.Label(label="Select a playlist:", xalign=0))
-
             names = [getattr(p, "name", None) or "Untitled Playlist" for p in playlists]
-            dd = Gtk.DropDown(model=Gtk.StringList.new(names))
-            dd.set_selected(0)
-            box_wrap.append(dd)
-            dedupe_ck = Gtk.CheckButton(label="Auto de-duplicate", active=True)
-            box_wrap.append(dedupe_ck)
-            root.append(box_wrap)
-            action_row = Gtk.Box(spacing=8, halign=Gtk.Align.END)
-            cancel_btn = Gtk.Button(label="Cancel")
-            new_btn = Gtk.Button(label="New Playlist")
-            add_btn = Gtk.Button(label="Add")
-            cancel_btn.connect("clicked", lambda _b: dialog.response(Gtk.ResponseType.CANCEL))
-            new_btn.connect("clicked", lambda _b: dialog.response(Gtk.ResponseType.APPLY))
-            add_btn.connect("clicked", lambda _b: dialog.response(Gtk.ResponseType.OK))
-            action_row.append(cancel_btn)
-            action_row.append(new_btn)
-            action_row.append(add_btn)
-            root.append(action_row)
-            dialog.set_child(root)
-
-            def _on_response(d, resp):
-                if resp == Gtk.ResponseType.OK:
-                    idx = dd.get_selected()
-                    if 0 <= idx < len(playlists):
-                        on_pick(playlists[idx], dedupe_ck.get_active())
-                    d.destroy()
-                elif resp == Gtk.ResponseType.APPLY:
-                    use_dedupe = dedupe_ck.get_active()
-                    d.destroy()
-                    _create_and_pick(use_dedupe)
-                else:
-                    d.destroy()
-
-            dialog.connect("response", _on_response)
-            dialog.present()
+            dedupe_ck = Gtk.CheckButton(label="Skip tracks already in the playlist", active=True)
+            dialogs.choose(
+                self,
+                "Add to Playlist",
+                "",
+                names,
+                "Add",
+                lambda index: on_pick(playlists[index], dedupe_ck.get_active()),
+                extra_child=dedupe_ck,
+                extra_responses=(("New Playlist", lambda: _create_and_pick(dedupe_ck.get_active())),),
+            )
             return False
 
         GLib.idle_add(_present)
@@ -1106,47 +1044,10 @@ def _prompt_playlist_name(
     save_label="Save",
     dialog_size=None,
 ):
-    dialog = Gtk.Dialog(title=title, transient_for=self.win, modal=True)
-    if dialog_size:
-        try:
-            dialog.set_default_size(int(dialog_size[0]), int(dialog_size[1]))
-        except Exception:
-            pass
-    root = Gtk.Box(
-        orientation=Gtk.Orientation.VERTICAL,
-        spacing=14,
-        margin_top=14,
-        margin_bottom=14,
-        margin_start=14,
-        margin_end=14,
+    # dialog_size: unused now that the prompt is a dialog inside the window; the callers pass it.
+    dialogs.prompt_text(
+        self, title, subtitle, initial_name, on_submit, placeholder=placeholder, save_label=save_label
     )
-    title_lbl = Gtk.Label(label=str(title or ""), xalign=0, css_classes=["home-section-title"])
-    root.append(title_lbl)
-    if subtitle:
-        root.append(Gtk.Label(label=str(subtitle), xalign=0, css_classes=["dim-label"]))
-    entry = Gtk.Entry(text=initial_name or "")
-    if placeholder:
-        entry.set_placeholder_text(str(placeholder))
-    entry.connect("activate", lambda _e: dialog.response(Gtk.ResponseType.OK))
-    root.append(entry)
-    action_row = Gtk.Box(spacing=8, halign=Gtk.Align.END)
-    cancel_btn = Gtk.Button(label="Cancel")
-    save_btn = Gtk.Button(label=str(save_label or "Save"), css_classes=["suggested-action"])
-    cancel_btn.connect("clicked", lambda _b: dialog.response(Gtk.ResponseType.CANCEL))
-    save_btn.connect("clicked", lambda _b: dialog.response(Gtk.ResponseType.OK))
-    action_row.append(cancel_btn)
-    action_row.append(save_btn)
-    root.append(action_row)
-    dialog.set_child(root)
-
-    def _on_response(d, resp):
-        if resp == Gtk.ResponseType.OK:
-            on_submit(entry.get_text().strip())
-        d.destroy()
-
-    dialog.connect("response", _on_response)
-    dialog.present()
-    entry.grab_focus()
 
 
 def on_playlist_start_inline_rename(self, playlist_id):
@@ -1168,35 +1069,14 @@ def on_playlist_cancel_inline_rename(self, playlist_id):
 
 
 def on_playlist_delete_clicked(self, playlist_id):
-    dialog = Gtk.Dialog(title="Delete Playlist", transient_for=self.win, modal=True)
-    root = Gtk.Box(
-        orientation=Gtk.Orientation.VERTICAL,
-        spacing=12,
-        margin_top=12,
-        margin_bottom=12,
-        margin_start=12,
-        margin_end=12,
+    def _delete():
+        self.playlist_mgr.delete_playlist(playlist_id)
+        self.current_playlist_id = None
+        self.render_playlists_home()
+
+    dialogs.confirm(
+        self, "Delete Playlist?", "This playlist will be deleted permanently.", "Delete", _delete, destructive=True
     )
-    root.append(Gtk.Label(label="Delete this playlist permanently?", xalign=0))
-    action_row = Gtk.Box(spacing=8, halign=Gtk.Align.END)
-    cancel_btn = Gtk.Button(label="Cancel")
-    delete_btn = Gtk.Button(label="Delete")
-    cancel_btn.connect("clicked", lambda _b: dialog.response(Gtk.ResponseType.CANCEL))
-    delete_btn.connect("clicked", lambda _b: dialog.response(Gtk.ResponseType.OK))
-    action_row.append(cancel_btn)
-    action_row.append(delete_btn)
-    root.append(action_row)
-    dialog.set_child(root)
-
-    def _on_response(d, resp):
-        if resp == Gtk.ResponseType.OK:
-            self.playlist_mgr.delete_playlist(playlist_id)
-            self.current_playlist_id = None
-            self.render_playlists_home()
-        d.destroy()
-
-    dialog.connect("response", _on_response)
-    dialog.present()
 
 
 def on_playlist_remove_track_clicked(self, playlist_id, track_index):
