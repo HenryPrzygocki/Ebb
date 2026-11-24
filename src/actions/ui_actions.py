@@ -2199,33 +2199,43 @@ def show_album_details(app, alb):
 
 
 def _build_overflow_popover(actions):
-    """Build a compact popover with a list of (label, callback) menu items.
+    """Build a compact popover with a list of menu items: (label, callback), or
+    (label, callback, checked) for a menu of choices, whose current one gets a check mark.
 
     Uses Gtk.ListBox + Gtk.ListBoxRow rather than Gtk.Button to sidestep
     Adwaita's bulky default button padding.
     """
     pop = Gtk.Popover()
     pop.add_css_class("track-row-overflow-popover")
-
     list_box = Gtk.ListBox(css_classes=["track-row-overflow-menu"])
     list_box.set_selection_mode(Gtk.SelectionMode.NONE)
-
+    choices = any(len(item) > 2 for item in actions)
     rows = []
-    for label_text, _cb in actions:
+    for item in actions:
         row = Gtk.ListBoxRow(css_classes=["track-row-overflow-item"])
         lbl = Gtk.Label(
-            label=label_text, xalign=0.0, halign=Gtk.Align.START,
+            label=item[0], xalign=0.0, halign=Gtk.Align.START, hexpand=True,
             margin_top=8, margin_bottom=8, margin_start=14, margin_end=14,
         )
-        row.set_child(lbl)
+        if choices:
+            # Fork: every row keeps the mark's room, so the labels line up.
+            box = Gtk.Box(spacing=0)
+            box.append(lbl)
+            mark = Gtk.Image.new_from_icon_name("object-select-symbolic")
+            mark.set_margin_end(12)
+            mark.set_opacity(1.0 if len(item) > 2 and item[2] else 0.0)
+            box.append(mark)
+            row.set_child(box)
+        else:
+            row.set_child(lbl)
         list_box.append(row)
         rows.append(row)
 
     def _on_row_activated(_lb, activated_row):
         pop.popdown()
-        for row, (_label, cb) in zip(rows, actions):
+        for row, item in zip(rows, actions):
             if row is activated_row:
-                cb()
+                item[1]()
                 return
 
     list_box.connect("row-activated", _on_row_activated)
@@ -7013,29 +7023,16 @@ def render_playlists_home(app):
     sort_btn_label = Gtk.Label(label=sort_label + (sort_arrow if current_sort != "default" else ""))
     sort_btn_content.append(sort_btn_label)
     sort_btn.set_child(sort_btn_content)
-    sort_pop = Gtk.Popover()
-    sort_box = Gtk.Box(
-        orientation=Gtk.Orientation.VERTICAL,
-        spacing=2,
-        margin_top=8,
-        margin_bottom=8,
-        margin_start=8,
-        margin_end=8,
-    )
-    for key, label in sort_options:
-        display = label
-        if key == current_sort and key != "default":
-            display = label + sort_arrow
-        btn = Gtk.Button(label=display, css_classes=["flat"])
-        if key == current_sort:
-            btn.add_css_class("suggested-action")
-        btn.connect(
-            "clicked",
-            lambda _b, k=key, p=sort_pop: (p.popdown(), app.on_playlists_home_sort_changed(k)),
+    # Fork: the menu the album page's "More actions" is, with a check on the current order. It
+    # was a column of bold, centred buttons with nothing marking the one in use.
+    sort_btn.set_popover(_build_overflow_popover([
+        (
+            label + (sort_arrow if key == current_sort and key != "default" else ""),
+            lambda k=key: app.on_playlists_home_sort_changed(k),
+            key == current_sort,
         )
-        sort_box.append(btn)
-    sort_pop.set_child(sort_box)
-    sort_btn.set_popover(sort_pop)
+        for key, label in sort_options
+    ]))
     head.append(sort_btn)
 
     up_btn = Gtk.Button(icon_name="go-up-symbolic", css_classes=["flat", "playlist-add-top-btn"])
@@ -7055,25 +7052,10 @@ def render_playlists_home(app):
     if not stack:
         create_btn = Gtk.MenuButton(icon_name="list-add-symbolic", css_classes=["playlist-add-top-btn"])
         create_btn.set_tooltip_text("Create...")
-        create_pop = Gtk.Popover()
-        create_box = Gtk.Box(
-            orientation=Gtk.Orientation.VERTICAL,
-            spacing=4,
-            margin_top=8,
-            margin_bottom=8,
-            margin_start=8,
-            margin_end=8,
-        )
-        new_folder_btn = Gtk.Button(label="New Folder", css_classes=["flat"])
-        new_folder_btn.connect("clicked", lambda _b: (create_pop.popdown(), app.on_create_playlist_folder_clicked()))
-        create_box.append(new_folder_btn)
-
-        new_playlist_btn = Gtk.Button(label="New Playlist", css_classes=["flat"])
-        new_playlist_btn.connect("clicked", lambda _b: (create_pop.popdown(), app.on_create_playlist_clicked()))
-        create_box.append(new_playlist_btn)
-
-        create_pop.set_child(create_box)
-        create_btn.set_popover(create_pop)
+        create_btn.set_popover(_build_overflow_popover([
+            ("New Folder", lambda: app.on_create_playlist_folder_clicked()),
+            ("New Playlist", lambda: app.on_create_playlist_clicked()),
+        ]))
     else:
         create_btn = Gtk.Button(icon_name="list-add-symbolic", css_classes=["playlist-add-top-btn"])
         create_btn.set_tooltip_text("Create Playlist")

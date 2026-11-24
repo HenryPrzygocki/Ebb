@@ -3062,6 +3062,9 @@ def _update_volume_device_label(self):
 
 def _build_volume_popover(self, scale_attr="vol_scale"):
     pop = Gtk.Popover()
+    # Fork: above its button. It only opened upward where the screen edge forced it to; in a
+    # tile with room below the window it dropped down over whatever was there.
+    pop.set_position(Gtk.PositionType.TOP)
     vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12, margin_top=12, margin_bottom=12, margin_start=12, margin_end=12)
 
     # dB label at the top of the volume popover

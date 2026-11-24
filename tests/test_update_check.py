@@ -156,3 +156,30 @@ def test_a_real_failure_is_still_a_failure(monkeypatch):
     monkeypatch.setattr(mod, "get_global_session", lambda: type("S", (), {"get": lambda self, *a, **k: _Response()})())
     with pytest.raises(RuntimeError):
         mod._fetch_update_state("0.1.0")
+
+
+def test_the_tools_menu_drops_the_update_entry_while_there_is_no_feed():
+    pytest.importorskip("gi")
+    from types import SimpleNamespace
+
+    from ui import builders
+
+    class _Row:
+        visible = sensitive = True
+
+        def set_visible(self, on):
+            self.visible = on
+
+        def set_sensitive(self, on):
+            self.sensitive = on
+
+        def set_tooltip_text(self, _text):
+            pass
+
+    row = _Row()
+    app = SimpleNamespace(_update_check_state={"no_feed": True}, _update_check_inflight=False, tools_update_row_btn=row)
+    builders.refresh_update_widgets(app)
+    assert row.visible is False  # it could only answer "there is nothing to check"
+    app._update_check_state = {"no_feed": False}
+    builders.refresh_update_widgets(app)
+    assert row.visible is True  # a feed appeared: the startup check brings it back

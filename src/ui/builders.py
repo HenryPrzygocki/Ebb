@@ -303,6 +303,9 @@ def refresh_update_widgets(app):
         else:
             row_label.set_text("Check for Updates")
     if row_btn is not None:
+        # Fork: no entry that can only answer "there is nothing to check" (a private
+        # repository). The startup check brings it back if a feed appears.
+        row_btn.set_visible(not bool(state.get("no_feed")))
         row_btn.set_sensitive(not inflight)
         row_btn.set_tooltip_text(
             f"Latest release: {latest_version}" if available and latest_version else "Check GitHub releases for a newer version"
