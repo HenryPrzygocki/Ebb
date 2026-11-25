@@ -45,6 +45,10 @@ depends=(
   'libglvnd'
   'polkit'
   'acl'
+  'curl'
+  'glibc'
+  'hicolor-icon-theme'
+  'libgcc'
 )
 makedepends=(
   'cargo'
@@ -58,8 +62,9 @@ optdepends=(
   'python-pystray: system tray integration'
   'python-qrcode: QR-code login flow'
 )
-# hiresTI's packages install the same symbolic icons and udev rule.
+# hiresTI's packages install the same symbolic icons and udev rule; ebb-git is Ebb from the AUR.
 conflicts=(
+  'ebb-git'
   'hiresti'
   'hiresti-bin'
   'hiresti-git'
@@ -104,8 +109,8 @@ package() {
   # The launcher crate keeps upstream's name; only the installed command is Ebb's.
   install -Dm755 src_rust/rust_launcher/target/release/hiresti "${pkgdir}/usr/bin/ebb-player"
 
-  # The app looks its symbolic icons up in the system theme, so they go there; upstream's
-  # own app icon (hiresti.png/svg) does not.
+  # The theme icons go into hicolor, as hiresTI's packages install them; upstream's own app icon
+  # (hiresti.png/svg) does not.
   install -d "${pkgdir}/usr/share/icons/hicolor"
   cp -a icons/hicolor/. "${pkgdir}/usr/share/icons/hicolor/"
   find "${pkgdir}/usr/share/icons/hicolor" -path '*/apps/hiresti.*' -delete

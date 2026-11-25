@@ -69,18 +69,23 @@ The complete list is the git history after `v1.9.12`.
 
 ## Install
 
-**Arch Linux**, from a checkout:
+**Arch Linux**: [`ebb-git`](https://aur.archlinux.org/packages/ebb-git) on the AUR builds the newest
+commit on `main`. With an AUR helper, `paru -S ebb-git` or `yay -S ebb-git`; by hand:
 
 ```sh
-cd aur/ebb && makepkg -si
+git clone https://aur.archlinux.org/ebb-git.git
+cd ebb-git && makepkg -si
 ```
 
-This replaces `hiresti` and `hiresti-fork` (answer `y` when pacman offers to remove them). Start
-Ebb from your app launcher, or run `ebb-player`: plain `ebb` is a TeX Live tool. On first start Ebb moves hiresTI's login, settings,
-history and caches from `~/.config/hiresti`, `~/.cache/hiresti`, `~/.local/share/hiresti` and
-`~/.local/state/hiresti` to the matching `ebb` directories, leaving symlinks at the old names.
+Later commits come in with `paru -Syu --devel` or `yay -Syu --devel`, or by running `makepkg -si`
+again. The package replaces `hiresti` (answer `y` when pacman offers to remove it). Start Ebb from
+your app launcher, or run `ebb-player`: plain `ebb` is a TeX Live tool. On first start Ebb moves
+hiresTI's login, settings, history and caches from `~/.config/hiresti`, `~/.cache/hiresti`,
+`~/.local/share/hiresti` and `~/.local/state/hiresti` to the matching `ebb` directories, leaving
+symlinks at the old names.
 
-**From source**, with the libraries listed under `depends` in [aur/ebb/PKGBUILD](aur/ebb/PKGBUILD):
+**From source**, with the libraries listed under `depends` in
+[aur/ebb-git/PKGBUILD](aur/ebb-git/PKGBUILD):
 
 ```sh
 cargo build --release --manifest-path src_rust/rust_audio_core/Cargo.toml
