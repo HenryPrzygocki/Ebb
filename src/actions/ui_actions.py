@@ -3207,6 +3207,16 @@ def _artist_release_initial_visible_count(app):
     return max(1, columns * 2)
 
 
+# Fork: the artist page's Top Tracks took two columns at any width: in a 571 px window each was
+# about 250 px and titles were cut to eight characters. Two columns from a 760 px page: each is
+# then at least 340 px (the page's 64 px of margins and the 16 px gap taken off).
+_ARTIST_TOP_TRACKS_TWO_COLUMNS_MIN = 760
+
+
+def _artist_top_tracks_cols(available_width):
+    return 2 if int(available_width or 0) >= _ARTIST_TOP_TRACKS_TWO_COLUMNS_MIN else 1
+
+
 def _artist_detail_available_width(app):
     available_width = 0
     try:
@@ -3401,6 +3411,8 @@ def render_artist_detail(app, artist, render_token=None):
     app._artist_hero_fav_btn = hero_fav_btn  # fork #24: a menu's Follow/Unfollow updates it too
     app.collection_content_box.append(hero)
 
+    hero_loaded = {"size": None}  # fork: the size the side images were last loaded for
+
     def _apply_hero_size(source="unknown"):
         live_width = 0
         try:
@@ -3447,6 +3459,13 @@ def render_artist_detail(app, artist, render_token=None):
                 int(side),
                 int(center_w),
             )
+        # Fork: every layout pass (two per size change, more while a docking sidebar settles)
+        # reloaded both side images, blanking them first: the same size again does nothing, and a
+        # new size keeps the old images up until the new crops land.
+        if (side_target, side, center_w) == hero_loaded["size"]:
+            return False
+        keep_images = hero_loaded["size"] is not None
+        hero_loaded["size"] = (side_target, side, center_w)
         try:
             hero.set_size_request(-1, side)
             left_panel.set_size_request(side_target, side)
@@ -3463,6 +3482,7 @@ def render_artist_detail(app, artist, render_token=None):
             target_height=side,
             anchor_x=1.0,
             anchor_y=0.5,
+            keep_current=keep_images,
         )
         utils.load_picture_cover_crop(
             right_pic,
@@ -3472,6 +3492,7 @@ def render_artist_detail(app, artist, render_token=None):
             target_height=side,
             anchor_x=0.0,
             anchor_y=0.5,
+            keep_current=keep_images,
         )
         return False
 
@@ -3489,7 +3510,15 @@ def render_artist_detail(app, artist, render_token=None):
             return False
         app._artist_hero_layout_pending_src = GLib.timeout_add(30, _do)
 
-    app._artist_detail_layout_refresh = lambda: _apply_hero_size("layout-proportions")
+    layout_hooks = []  # fork: the page's other width-dependent parts (Top Tracks' columns)
+
+    def _layout_refresh():
+        _apply_hero_size("layout-proportions")
+        for hook in list(layout_hooks):
+            hook()
+        return False  # also an idle callback
+
+    app._artist_detail_layout_refresh = _layout_refresh
     _layout_handler_ids = []
     hero.connect("notify::width", lambda *_args: _schedule_hero_size())
     if getattr(app, "collection_content_box", None) is not None:
@@ -3551,6 +3580,24 @@ def render_artist_detail(app, artist, render_token=None):
     top_section = _append_section_header("Top Tracks", 0)
     top_grid = Gtk.Grid(column_spacing=16, row_spacing=8, hexpand=True)
     top_section.append(top_grid)
+    top_tracks_layout = {"buttons": [], "cols": 0}
+
+    def _layout_top_tracks():
+        buttons = top_tracks_layout["buttons"]
+        if not buttons:
+            return
+        cols = _artist_top_tracks_cols(_artist_detail_available_width(app))
+        if cols == top_tracks_layout["cols"]:
+            return
+        top_tracks_layout["cols"] = cols
+        for button in buttons:
+            if button.get_parent() is top_grid:
+                top_grid.remove(button)
+        per_col = (len(buttons) + cols - 1) // cols  # upstream's order: down the first column first
+        for idx, button in enumerate(buttons):
+            top_grid.attach(button, idx // per_col, idx % per_col, 1, 1)
+
+    layout_hooks.append(_layout_top_tracks)
     top_loading = Gtk.Label(
         label="Loading top tracks...",
         xalign=0,
@@ -3598,6 +3645,7 @@ def render_artist_detail(app, artist, render_token=None):
 
     def _render_track_rows(tracks):
         _clear_container(top_grid)
+        top_tracks_layout["buttons"] = []  # an empty result must not bring old rows back
         if top_loading.get_parent() is not None:
             top_section.remove(top_loading)
         if not tracks:
@@ -3684,15 +3732,9 @@ def render_artist_detail(app, artist, render_token=None):
             )
             return btn
 
-        total = len(tracks)
-        left_count = (total + 1) // 2
-        right_count = total - left_count
-        for row in range(left_count):
-            left_idx = row
-            top_grid.attach(_build_top_track_btn(tracks[left_idx], left_idx, tracks), 0, row, 1, 1)
-            if row < right_count:
-                right_idx = left_count + row
-                top_grid.attach(_build_top_track_btn(tracks[right_idx], right_idx, tracks), 1, row, 1, 1)
+        top_tracks_layout["buttons"] = [_build_top_track_btn(track, idx, tracks) for idx, track in enumerate(tracks)]
+        top_tracks_layout["cols"] = 0
+        _layout_top_tracks()
 
     def _render_expandable_album_section(items, flow, more_btn, action_row, local_token):
         _clear_container(flow)

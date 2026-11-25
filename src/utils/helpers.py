@@ -345,8 +345,18 @@ def load_picture_cover_crop(
     target_height: int,
     anchor_x: float = 0.5,
     anchor_y: float = 0.5,
+    keep_current: bool = False,
 ) -> None:
-    if hasattr(picture, "set_paintable"):
+    """keep_current (fork): leave the picture's image up until the new crop is ready, for a new
+    size of the same image; blanking it first flashed the artist hero on every resize."""
+    # Fork: only the latest request lands. Loads run on an 8-worker pool and every size of one
+    # image passes the URL check, so an earlier size finishing last left its size request behind.
+    generation = int(getattr(picture, "_crop_generation", 0) or 0) + 1
+    try:
+        picture._crop_generation = generation
+    except Exception:
+        pass
+    if hasattr(picture, "set_paintable") and not keep_current:
         picture.set_paintable(None)
 
     def fetch():
@@ -384,6 +394,8 @@ def load_picture_cover_crop(
             texture = Gdk.Texture.new_for_pixbuf(scaled or cropped)
 
             def apply():
+                if getattr(picture, "_crop_generation", generation) != generation:
+                    return False
                 if getattr(picture, "_target_url", None) != u:
                     return False
                 try:
