@@ -77,9 +77,11 @@ def test_a_new_size_keeps_the_image_up_until_its_crop_lands(image, queues):
     assert picture.paintables[-1].get_width() == 321 and picture.size == (321, 321)
 
 
-def test_top_tracks_take_one_column_below_a_760_px_page():
+def test_top_tracks_take_one_column_below_an_820_px_page():
     from actions import ui_actions
 
-    # The page's width at Henry's tiles (sandbox): 571 -> 561, 954 -> 777, 1145 -> 964, 1912 -> 1616.
-    assert [ui_actions._artist_top_tracks_cols(w) for w in (561, 596, 753, 777, 964, 1616)] == [1, 1, 1, 2, 2, 2]
+    # The page at Henry's tiles (sandbox, the docked sidebar 166-290 px by resize history):
+    # 571 -> 561 (collapsed), 763 -> 596, 954 -> 664-788, 1145 -> 855-979, 1912 -> 1616.
+    pages = (561, 596, 664, 745, 788, 855, 886, 979, 1616)
+    assert [ui_actions._artist_top_tracks_cols(w) for w in pages] == [1, 1, 1, 1, 1, 2, 2, 2, 2]
     assert ui_actions._artist_top_tracks_cols(0) == 1

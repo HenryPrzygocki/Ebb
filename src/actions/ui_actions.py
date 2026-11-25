@@ -3208,9 +3208,12 @@ def _artist_release_initial_visible_count(app):
 
 
 # Fork: the artist page's Top Tracks took two columns at any width: in a 571 px window each was
-# about 250 px and titles were cut to eight characters. Two columns from a 760 px page: each is
-# then at least 340 px (the page's 64 px of margins and the 16 px gap taken off).
-_ARTIST_TOP_TRACKS_TWO_COLUMNS_MIN = 760
+# about 250 px and titles were cut to eight characters. Two columns from an 820 px page: each is
+# then at least 370 px (the page's 64 px of margins and the 16 px gap taken off). The page is the
+# window less a docked sidebar, which GtkPaned leaves at 166-290 px depending on the resize
+# history: Henry's 954 px tile gives a 664-788 px page and his 1145 px tile 855-979, so 820 keeps
+# one column up to the first and two from the second whatever the sidebar did.
+_ARTIST_TOP_TRACKS_TWO_COLUMNS_MIN = 820
 
 
 def _artist_top_tracks_cols(available_width):
