@@ -1,7 +1,7 @@
 """Fork: DSP Effects & Config follows the window's width, and the Presets row fits a long name.
 
 The page put the module list in one column of three (the list needs 250 px) and the module's card
-in the other two (the PEQ card needs 700). In four of Henry's six niri tiles one or both were cut:
+in the other two (the PEQ card needs 630). In three of Henry's six niri tiles one or both were cut:
 the list's switches, or the PEQ's right bands with its preset menu and Reset."""
 import os
 import sys
@@ -16,7 +16,7 @@ pytest.importorskip("gi")
 from app import app_builders  # noqa: E402
 
 # Henry's tiles: niri column presets 0.3-0.7 and full width of a 1920 px output.
-TILES = {571: (True, True), 763: (True, True), 954: (False, True), 1145: (False, True), 1337: (False, False), 1912: (False, False)}
+TILES = {571: (True, True), 763: (True, True), 954: (False, True), 1145: (False, False), 1337: (False, False), 1912: (False, False)}
 
 
 @pytest.mark.parametrize("tile", sorted(TILES))
@@ -199,3 +199,22 @@ def test_a_long_preset_name_is_cut_short_in_the_button_and_whole_in_the_list(mon
     kept = _DropDown(list_factory="its own")
     app_builders._ellipsize_selected_name(kept)
     assert kept.list_factory == "its own"
+
+
+def _chain_app(window, card):
+    flow = SimpleNamespace(get_parent=lambda: SimpleNamespace(get_width=lambda: card))
+    return SimpleNamespace(dsp_chain_flow=flow, win=SimpleNamespace(get_width=lambda: window))
+
+
+@pytest.mark.parametrize("tile, modules", [(571, 2), (763, 3), (954, 4), (1145, 5), (1337, 6), (1912, 7)])
+def test_the_signal_chain_fills_each_tile(tile, modules):
+    # The card measured window - 158 at every tile, the sidebar docked or collapsed.
+    assert app_builders._dsp_overview_modules_per_row(_chain_app(tile, tile - 158)) == modules
+
+
+def test_the_chain_reflows_from_a_card_still_wide_from_before(monkeypatch):
+    # Narrowed from 1912 to 620 px: the card still reports 1744 when the new row length is picked.
+    # The old cap (window - 72, the sidebar collapsed) chose 3 modules (488 px) for a 430 px card
+    # and stayed cut.
+    assert app_builders._dsp_overview_modules_per_row(_chain_app(620, 1744)) == 2
+    assert app_builders._dsp_overview_modules_per_row(_chain_app(600, 1744)) == 2

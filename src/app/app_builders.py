@@ -652,15 +652,18 @@ def _on_dsp_module_selected(self, _listbox, row):
     self._show_dsp_module(module_id, select_row=False)
 
 
-# Fork: Effects & Config in a tiled window. The page is a homogeneous three-column grid: the
+# Fork: Effects & Config in a narrow window. The page is a homogeneous three-column grid: the
 # module list in one column (.dsp-sidebar has min-width 250), the module's card in the other two.
-# Below a 910 px window the list column can't hold its 250 px and the switches were cut; below
-# 1183 px the PEQ card (ten bands, each value beside its slider: 700 px) lost its right side, its
-# preset menu and Reset with it. Four of Henry's six niri tiles were below one or both.
+# Below a 910 px window the list column can't hold its 250 px and the switches were cut; with a
+# pane under 630 px the PEQ card (ten bands, each value beside its slider) lost its right bands,
+# its preset menu and Reset. Henry's 571, 763 and 954 px niri tiles had one or both.
 _DSP_EFFECTS_GRID_INSET = 124  # the window's width minus the grid's: panel and page margins
 _DSP_EFFECTS_COLUMN_SPACING = 18
 _DSP_EFFECTS_LIST_NEED = 250  # .dsp-sidebar's min-width
-_DSP_PEQ_FULL_NEED = 700  # the PEQ card with each value beside its slider
+_DSP_PEQ_FULL_NEED = 630  # the PEQ card with each value beside its slider (Google Sans Flex 11)
+# The full card is kept only with this much to spare: the 763 px tile's single pane (639 px) would
+# otherwise hang on a few pixels of font rendering. Below a 1123 px window side by side, compact.
+_DSP_PEQ_FULL_SLACK = 30
 _DSP_PEQ_BAND_SPACING = 8
 _DSP_PEQ_COMPACT_BAND_SPACING = 2  # the bands are homogeneous and expand: this only sets the minimum
 
@@ -676,7 +679,7 @@ def _dsp_effects_layout(window_width):
     column = (grid - 2 * _DSP_EFFECTS_COLUMN_SPACING) / 3
     single = column < _DSP_EFFECTS_LIST_NEED
     detail = grid if single else 2 * column + _DSP_EFFECTS_COLUMN_SPACING
-    return single, detail < _DSP_PEQ_FULL_NEED
+    return single, detail < _DSP_PEQ_FULL_NEED + _DSP_PEQ_FULL_SLACK
 
 
 def _set_dsp_peq_compact(self, compact):
@@ -1839,7 +1842,11 @@ def _refresh_dsp_order_edit_ui(self):
             btn.set_visible(visible)
 
 
-_DSP_CHAIN_WINDOW_MARGIN = 72  # the panel's and the card's side margins
+# Fork: the window's width minus the chain card's (the panel's, the page's and the card's margins),
+# measured at every tile with the sidebar docked and collapsed alike: the panel spans the window,
+# over a docked sidebar too. It was 72 plus a docked sidebar: 52 px too generous with the sidebar
+# collapsed, which at 592-643 px picked a row the card can't hold and stayed there, cut.
+_DSP_CHAIN_WINDOW_MARGIN = 158
 _DSP_CHAIN_MIN_MODULES = 2  # fork: it was 3, which a 571 px column cannot hold (488 px + margins)
 
 
@@ -1886,13 +1893,7 @@ def _dsp_overview_modules_per_row(self):
         except Exception:
             win_now = 0
         if win_now > 0:
-            sidebar = 0
-            if not getattr(self, "_sidebar_collapsed", False):  # docked: the panel sits beside it
-                try:
-                    sidebar = max(0, int(self.paned.get_position() or 0))
-                except Exception:
-                    sidebar = 0
-            available_width = min(available_width, max(0, win_now - sidebar - _DSP_CHAIN_WINDOW_MARGIN))
+            available_width = min(available_width, max(0, win_now - _DSP_CHAIN_WINDOW_MARGIN))
     # Subtract CSS padding (16px each side) to get the usable inner content width.
     # Each module slot = 136px button + 40px connector; n slots need n*176 - 40px.
     usable_width = max(_DSP_CHAIN_MIN_MODULES * 176 - 40, available_width - 32)
