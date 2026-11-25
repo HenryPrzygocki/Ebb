@@ -246,6 +246,10 @@ def update_layout_proportions(self, w, p):
     rebuild_chain = getattr(self, "_queue_rebuild_dsp_overview_chain", None)
     if callable(rebuild_chain):
         rebuild_chain()
+    # Fork: Effects & Config shows one pane at a time, and the PEQ its compact bands, by width.
+    effects_layout = getattr(self, "_apply_dsp_effects_layout", None)
+    if callable(effects_layout):
+        effects_layout()
     # Fork: History's grids picked their columns on notify::default-width only, which a tiled
     # window never sends (see app_bootstrap._watch_content_size).
     refresh_history = getattr(self, "_history_grid_layout_refresh", None)

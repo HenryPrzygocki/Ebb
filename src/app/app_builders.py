@@ -6,7 +6,10 @@ import logging
 import os
 import hashlib
 
-from gi.repository import Gtk, Gdk, GLib, GObject, Pango
+import gi
+
+gi.require_version("Adw", "1")
+from gi.repository import Adw, Gtk, Gdk, GLib, GObject, Pango  # noqa: E402
 
 from core.settings import read_json, write_json
 from core.executor import submit_daemon
@@ -124,6 +127,25 @@ def _build_dsp_scroll_area(child, min_height=_DSP_WORKSPACE_MIN_HEIGHT, max_heig
         scroll.set_max_content_height(int(max_height))
     scroll.set_child(child)
     return scroll
+
+
+def _ellipsize_selected_name(dropdown, min_chars=8):
+    """Fork: the button shows a long name cut short; the open list still shows it whole.
+
+    A dropdown is as wide as the name it shows. A preset saved under a long name made the Presets
+    row 764 px wide, and in a 571 px window Load, Save As and Delete ran off the panel."""
+    builtin = dropdown.get_factory()  # the open list keeps it: whole names, the selection checked
+    if builtin is not None and dropdown.get_list_factory() is None:
+        dropdown.set_list_factory(builtin)
+    factory = Gtk.SignalListItemFactory()
+    factory.connect(
+        "setup",
+        lambda _f, item: item.set_child(
+            Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.END, width_chars=int(min_chars))
+        ),
+    )
+    factory.connect("bind", lambda _f, item: item.get_child().set_label(str(item.get_item().get_string())))
+    dropdown.set_factory(factory)
 
 
 def _build_dsp_detail_page(child):
@@ -430,6 +452,7 @@ def _build_eq_editor_content(self, sliders_attr="sliders", show_header=True):
         vb.append(Gtk.Label(label=f, css_classes=["caption"], halign=Gtk.Align.CENTER))
         hbox.append(vb)
     setattr(self, sliders_attr, sliders)
+    setattr(self, f"{sliders_attr}_row", hbox)  # fork: for the compact PEQ
     vbox.append(hbox)
     return vbox
 
@@ -627,6 +650,94 @@ def _on_dsp_module_selected(self, _listbox, row):
         return
     module_id = getattr(row, "dsp_module_id", "peq")
     self._show_dsp_module(module_id, select_row=False)
+
+
+# Fork: Effects & Config in a tiled window. The page is a homogeneous three-column grid: the
+# module list in one column (.dsp-sidebar has min-width 250), the module's card in the other two.
+# Below a 910 px window the list column can't hold its 250 px and the switches were cut; below
+# 1183 px the PEQ card (ten bands, each value beside its slider: 700 px) lost its right side, its
+# preset menu and Reset with it. Four of Henry's six niri tiles were below one or both.
+_DSP_EFFECTS_GRID_INSET = 124  # the window's width minus the grid's: panel and page margins
+_DSP_EFFECTS_COLUMN_SPACING = 18
+_DSP_EFFECTS_LIST_NEED = 250  # .dsp-sidebar's min-width
+_DSP_PEQ_FULL_NEED = 700  # the PEQ card with each value beside its slider
+_DSP_PEQ_BAND_SPACING = 8
+_DSP_PEQ_COMPACT_BAND_SPACING = 2  # the bands are homogeneous and expand: this only sets the minimum
+
+
+def _dsp_effects_layout(window_width):
+    """(single_pane, compact_peq) for a window this wide.
+
+    single_pane: the list or one module's card, not both; compact_peq: band values above the
+    sliders, which fits ten bands in 358 px. Both follow from the full forms' needs, so neither
+    depends on what the other mode did to the page.
+    """
+    grid = max(0, int(window_width or 0) - _DSP_EFFECTS_GRID_INSET)
+    column = (grid - 2 * _DSP_EFFECTS_COLUMN_SPACING) / 3
+    single = column < _DSP_EFFECTS_LIST_NEED
+    detail = grid if single else 2 * column + _DSP_EFFECTS_COLUMN_SPACING
+    return single, detail < _DSP_PEQ_FULL_NEED
+
+
+def _set_dsp_peq_compact(self, compact):
+    if compact == getattr(self, "_dsp_peq_compact", None):
+        return
+    self._dsp_peq_compact = compact
+    position = Gtk.PositionType.TOP if compact else Gtk.PositionType.RIGHT
+    for scale in getattr(self, "dsp_peq_sliders", None) or []:
+        scale.set_value_pos(position)
+    row = getattr(self, "dsp_peq_sliders_row", None)
+    if row is not None:
+        row.set_spacing(_DSP_PEQ_COMPACT_BAND_SPACING if compact else _DSP_PEQ_BAND_SPACING)
+
+
+def _apply_dsp_effects_layout(self):
+    if getattr(self, "dsp_effects_grid", None) is None:
+        return
+    try:
+        width = int(self.win.get_width() or 0)
+    except Exception:
+        width = 0
+    if width <= 0:
+        width = int(getattr(ui_config, "WINDOW_WIDTH", 1250) or 1250)
+    single, compact = _dsp_effects_layout(width)
+    if single != getattr(self, "_dsp_effects_single", None):
+        self._dsp_effects_single = single
+        # Only a single pane navigates on a click: the side-by-side list keeps upstream's rows.
+        row = self.dsp_module_list.get_first_child()
+        while row is not None:
+            if isinstance(row, Gtk.ListBoxRow):
+                row.set_activatable(single)
+            row = row.get_next_sibling()
+    detail_open = bool(getattr(self, "_dsp_effects_detail_open", False))
+    self.dsp_effects_list_pane.set_visible(not single or not detail_open)
+    self.dsp_effects_detail_pane.set_visible(not single or detail_open)
+    self.dsp_effects_back_btn.set_visible(single and detail_open)
+    _set_dsp_peq_compact(self, compact)
+
+
+def _dsp_effects_show_detail(self, focus=True):
+    self._dsp_effects_detail_open = True
+    self._apply_dsp_effects_layout()
+    if focus and getattr(self, "_dsp_effects_single", False):
+        # After this frame's layout: from a row's click the list (and its focused row) goes away
+        # under the click, and a focus taken now doesn't last.
+        GLib.idle_add(lambda: (self.dsp_effects_back_btn.grab_focus(), False)[1])
+
+
+def _dsp_effects_show_list(self):
+    self._dsp_effects_detail_open = False
+    self._apply_dsp_effects_layout()
+    row = self.dsp_module_list.get_selected_row()
+    if row is not None:
+        row.grab_focus()
+
+
+def _on_dsp_module_activated(self, _listbox, row):
+    """A click (or Enter) on a module in the single pane opens its card. Selecting alone can't:
+    clicking the module already selected emits no row-selected."""
+    if row is not None and getattr(self, "_dsp_effects_single", False):
+        self._dsp_effects_show_detail()
 
 
 def _update_dsp_ui_state(self):
@@ -2085,6 +2196,7 @@ def _build_dsp_overview_module_row(self, module_id, title, target_module=None, r
         if getattr(self, "dsp_workspace_stack", None) is not None:
             self.dsp_workspace_stack.set_visible_child_name("effects")
         self._show_dsp_module(target_module, select_row=True)
+        self._dsp_effects_show_detail(focus=False)  # fork: in a single pane too
 
     if target_module:
         button.connect("clicked", _open_module)
@@ -2280,6 +2392,7 @@ def _build_dsp_workspace(self):
     self.dsp_preset_dd = Gtk.DropDown(model=Gtk.StringList.new(["(no presets)"]))
     self.dsp_preset_dd.set_sensitive(False)
     self.dsp_preset_dd.set_hexpand(True)
+    _ellipsize_selected_name(self.dsp_preset_dd)
     preset_controls_row.append(self.dsp_preset_dd)
     self.dsp_preset_load_btn = Gtk.Button(label="Load", css_classes=["flat"])
     self.dsp_preset_load_btn.set_sensitive(False)
@@ -2322,6 +2435,7 @@ def _build_dsp_workspace(self):
     module_list = Gtk.ListBox(selection_mode=Gtk.SelectionMode.SINGLE, css_classes=["dsp-module-list"])
     module_list.set_margin_top(12)
     module_list.connect("row-selected", self._on_dsp_module_selected)
+    module_list.connect("row-activated", self._on_dsp_module_activated)  # fork: single pane
     self.dsp_module_list = module_list
     for module_id, title in _DSP_MODULES:
         row = Gtk.ListBoxRow()
@@ -2834,12 +2948,27 @@ def _build_dsp_workspace(self):
         )
     )
     detail_stack.add_titled(_build_dsp_detail_page(resampler_page), "resampler", "Resampler")
-    effects_page.attach(detail_stack, 1, 0, 2, 1)
+    # Fork: one pane at a time in a narrow window (_dsp_effects_layout). The back row is shown
+    # over the module's card only then.
+    detail_pane = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, hexpand=True, vexpand=True)
+    back_btn = Gtk.Button(css_classes=["flat"], halign=Gtk.Align.START, margin_start=12, margin_top=8)
+    back_btn.set_child(Adw.ButtonContent(icon_name="go-previous-symbolic", label="Modules"))
+    back_btn.set_tooltip_text("All DSP modules")
+    back_btn.connect("clicked", lambda _b: self._dsp_effects_show_list())
+    back_btn.set_visible(False)
+    detail_pane.append(back_btn)
+    detail_pane.append(detail_stack)
+    effects_page.attach(detail_pane, 1, 0, 2, 1)
+    self.dsp_effects_grid = effects_page
+    self.dsp_effects_list_pane = sidebar_scroll
+    self.dsp_effects_detail_pane = detail_pane
+    self.dsp_effects_back_btn = back_btn
     self.dsp_workspace_stack.add_titled(effects_page, "effects", "Effects & Config")
     self.dsp_workspace_stack.set_visible_child_name("overview")
 
     self._show_dsp_module(getattr(self, "_dsp_selected_module", "peq"), select_row=True)
     self._sync_dsp_preset_dropdown()
+    self._apply_dsp_effects_layout()
     self._update_dsp_ui_state()
     return root
 

@@ -68,6 +68,7 @@ def _layout_app(moved, resynced):
         body_overlay=SimpleNamespace(get_height=lambda: 980),
         queue_anchor=None,
         _schedule_now_playing_surface_resync=lambda: resynced.append("now-playing"),
+        _apply_dsp_effects_layout=lambda: resynced.append("dsp-effects"),
         _history_grid_layout_refresh=lambda: False,
         _schedule_viz_handle_realign=lambda animate=False: None,
     )
@@ -80,7 +81,7 @@ def test_a_size_change_resyncs_the_layout_but_leaves_the_sidebar(monkeypatch):
 
     app_ui_loop.update_layout_proportions(app, None, None)  # from the content-size watch
 
-    assert resynced == ["now-playing"]
+    assert resynced == ["now-playing", "dsp-effects"]
     assert app._history_grid_layout_refresh in idle
     assert moved == []  # in a tile the sidebar has always kept its width
 
@@ -92,7 +93,7 @@ def test_the_windows_own_resize_still_scales_the_sidebar(monkeypatch):
 
     app_ui_loop.update_layout_proportions(app, object(), None)  # notify::default-width
 
-    assert moved == [int(1912 * ui_config.SIDEBAR_RATIO)] and resynced == ["now-playing"]
+    assert moved == [int(1912 * ui_config.SIDEBAR_RATIO)] and resynced == ["now-playing", "dsp-effects"]
 
 
 def _win(allocated, default, state):
