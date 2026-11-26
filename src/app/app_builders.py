@@ -96,7 +96,8 @@ _DSP_MODULES = [
     ("tube", "Tube"),
     ("widener", "Stereo Widener"),
     ("limiter", "Limiter"),
-    ("resampler", "Resampler"),
+    # Fork #11: no Resampler row. The engine skips it on every output; its page is still built
+    # (its widgets are referenced elsewhere) but nothing opens it.
 ]
 _DSP_REORDERABLE_MODULE_IDS = ["peq", "convolver", "tape", "tube", "widener"]
 _DSP_MODULE_TITLES = {
@@ -104,6 +105,7 @@ _DSP_MODULE_TITLES = {
     "output_driver": "Output Driver",
     "output": "Output Device",
     **dict(_DSP_MODULES),
+    "resampler": "Resampler",
 }
 _DSP_WORKSPACE_MIN_HEIGHT = 300
 _DSP_WORKSPACE_MAX_HEIGHT = max(420, int(ui_config.WINDOW_HEIGHT * 0.48))
@@ -1836,7 +1838,7 @@ def _refresh_dsp_order_edit_ui(self):
         hint.set_text(
             "Drag PEQ / Convolution / Tape / Tube / Stereo Widener to reorder them, then save once to rebuild the chain."
             if editing
-            else "Enter edit mode to reorder the middle DSP stages. Limiter and Resampler stay fixed at the tail."
+            else "Enter edit mode to reorder the middle DSP stages. The Limiter stays fixed at the tail."
         )
     for attr, visible in [
         ("dsp_order_edit_btn", not editing),
@@ -2040,7 +2042,6 @@ def _rebuild_dsp_overview_chain(self):
     )
     processing_chain = [("decode", None)] + [(module_id, module_id) for module_id in order] + [
         ("limiter", "limiter"),
-        ("resampler", "resampler"),
         ("output_driver", None),
         ("output", None),
     ]
@@ -2331,7 +2332,7 @@ def _build_dsp_workspace(self):
     chain_title_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4, hexpand=True)
     chain_title_box.append(Gtk.Label(label="Signal Chain", xalign=0, css_classes=["title-4"]))
     self.dsp_chain_hint_label = Gtk.Label(
-        label="Enter edit mode to reorder the middle DSP stages. Limiter and Resampler stay fixed at the tail.",
+        label="Enter edit mode to reorder the middle DSP stages. The Limiter stays fixed at the tail.",
         xalign=0,
         wrap=True,
         css_classes=["dim-label"],

@@ -260,14 +260,15 @@ def test_diagnostics_text_includes_dsp_chain_details():
     assert "Output Format: 44.1kHz / 16-bit" in text
 
 
-def test_display_output_rate_prefers_resampler_target_when_active():
+def test_display_output_rate_ignores_the_resampler_target_the_engine_never_applies():
+    # Fork #11: upstream showed 96kHz here; the engine skips the resampler on every output.
     win = _make_window("ALSA", exclusive=True, bit_perfect=False)
     win.player.dsp_enabled = True
     win.player.resampler_enabled = True
     win.player.resampler_target_rate = 96000
     win.app = SimpleNamespace(settings={})
 
-    assert win._display_output_rate("44.1kHz") == "96kHz"
+    assert win._display_output_rate("44.1kHz") == "44.1kHz"
 
 
 def test_display_output_rate_keeps_runtime_rate_when_resampler_inactive():

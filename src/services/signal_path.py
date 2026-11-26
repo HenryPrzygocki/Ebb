@@ -497,18 +497,9 @@ class AudioSignalPathWindow(Adw.Window):
                 return self._format_rate_hz(src_rate) or rate_text
             return rate_text
 
-        dsp_snapshot = self._build_dsp_snapshot()
-        if not bool(dsp_snapshot.get("master_active", False)):
-            return _fallback_rate()
-        if not bool(getattr(player, "resampler_enabled", False)):
-            return _fallback_rate()
-        try:
-            target_rate = int(getattr(player, "resampler_target_rate", 0) or 0)
-        except Exception:
-            target_rate = 0
-        if target_rate <= 0:
-            return _fallback_rate()
-        return self._format_rate_hz(target_rate) or rate_text
+        # Fork #11: upstream showed the resampler's target here, but the engine never resamples,
+        # so that rate was not the output's (and it skewed the bit-perfect verdict).
+        return _fallback_rate()
 
     def _display_output_depth(self, runtime_depth):
         depth_text = str(runtime_depth or "").strip()
