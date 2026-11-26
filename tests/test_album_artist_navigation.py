@@ -850,3 +850,21 @@ def test_refresh_dashboard_playing_state_updates_artist_detail_top_track_row():
 
     assert "track-row-playing" in row.classes
     assert row._dashboard_playing_icon.visible is True
+
+
+def test_artist_detail_hero_stops_growing_on_wide_windows():
+    # Fork #27: at 1912 px the hero was 576 px tall in a 1030 px window.
+    content_box = _Container()
+    content_box._width = 1729
+    app = SimpleNamespace(
+        collection_content_box=content_box,
+        alb_scroll=_Scroll(_Adjustment(), width=1729),
+        body_overlay=_BodyOverlay(height=1030),
+        win=_Window(width=1912, height=1030),
+        saved_width=0,
+        saved_height=0,
+    )
+
+    assert ui_actions._artist_detail_column_width(app) == 576
+    assert ui_actions._artist_detail_hero_height(app) == 380
+    assert ui_actions._artist_detail_center_width(app) == 380

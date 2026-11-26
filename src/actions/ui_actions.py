@@ -3308,12 +3308,18 @@ def _artist_detail_column_width(app):
     return max(1, int(_artist_detail_available_width(app) // 3))
 
 
+# Fork #27: the hero was a third of the content width tall: 576 px of a 1030 px window at
+# 1912 px, leaving two rows of Top Tracks above the player bar. Past this, the blurred side
+# panels take the extra width and the square photo in the middle stops growing.
+_ARTIST_HERO_MAX_HEIGHT = 380
+
+
 def _artist_detail_hero_height(app):
-    return _artist_detail_column_width(app)
+    return min(_artist_detail_column_width(app), _ARTIST_HERO_MAX_HEIGHT)
 
 
 def _artist_detail_center_width(app):
-    return _artist_detail_column_width(app)
+    return _artist_detail_hero_height(app)  # the photo is square
 
 
 def render_artist_detail(app, artist, render_token=None):
@@ -3443,9 +3449,9 @@ def render_artist_detail(app, artist, render_token=None):
         except Exception:
             win_w = 0
         width_source = _artist_detail_available_width(app)
-        center_w = max(1, int(width_source // 3))
+        center_w = max(1, min(int(width_source // 3), _ARTIST_HERO_MAX_HEIGHT))  # fork #27: capped
         side = center_w
-        side_target = center_w
+        side_target = center_w  # a minimum: both side panels expand into the rest
         sig = (str(source), live_width, content_w, scroll_w, content_overlay_w, body_overlay_w, win_w, width_source, side, center_w)
         if sig != getattr(app, "_artist_detail_last_layout_log", None):
             app._artist_detail_last_layout_log = sig
