@@ -1401,12 +1401,13 @@ class AudioSignalPathWindow(Adw.Window):
     def _build_fix_suggestions(self, output_state, sample_rate, bit_depth):
         suggestions = []
         driver = self._get_current_driver()
-        if not self.player.bit_perfect_mode:
-            suggestions.append("Enable Bit-Perfect mode")
+        # Fork #15: Bit-Perfect implies exclusive output and hides PipeWire, and PipeWire's force-rate
+        # never runs since then, so neither "Enable Bit-Perfect" nor "Restart playback to apply
+        # force-rate" could work on PipeWire. Say what does.
         if driver == "PipeWire":
-            force_rate, _allowed = self._get_pipewire_clock_state()
-            if force_rate <= 0:
-                suggestions.append("Restart playback to apply PipeWire force-rate")
+            suggestions.append("For bit-perfect output, choose ALSA or USB Rawlink, then turn on Bit-Perfect")
+        elif not self.player.bit_perfect_mode:
+            suggestions.append("Enable Bit-Perfect mode")
         if output_state in ("fallback", "error"):
             suggestions.append("Click Recover in Settings")
         if sample_rate == "Unknown" or bit_depth == "Unknown":
