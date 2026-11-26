@@ -6570,7 +6570,7 @@ def render_liked_songs_dashboard(app, tracks=None):
         overlay.add_overlay(badge)
         badges[key] = badge
         card.append(overlay)
-        card.append(Gtk.Label(label=name, css_classes=["dim-label", "liked-artist-filter-name"], max_width_chars=16, ellipsize=3))
+        card.append(Gtk.Label(label=name, css_classes=["liked-artist-filter-name"], max_width_chars=16, ellipsize=3))
 
         btn = Gtk.Button(css_classes=["flat", "liked-artist-filter-btn"])
         btn.set_tooltip_text(f"Show {name} tracks")

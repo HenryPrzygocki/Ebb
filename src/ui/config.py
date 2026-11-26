@@ -2034,8 +2034,9 @@ label.dim-label.track-link-hot { opacity: 1; }
     min-height: 60px;
 }
 
+/* Fork #27: was dim-label at weight 300, about 2.8:1 on the light window (124 grey on 213). */
 .liked-artist-filter-name {
-    font-weight: 300;
+    font-weight: 400;
 }
 
 .liked-artist-count-badge {
