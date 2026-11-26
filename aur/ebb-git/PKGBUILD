@@ -59,7 +59,7 @@ optdepends=(
   'python-qrcode: QR-code login flow'
 )
 provides=('ebb')
-# hiresti installs the same icons into hicolor, and Ebb takes over hiresTI's config directories.
+# Ebb takes over hiresTI's config directories (moved, with symlinks left at the old names).
 conflicts=('ebb' 'hiresti')
 source=("${_pkgname}::git+${url}.git#branch=main")
 sha256sums=('SKIP')
@@ -115,11 +115,13 @@ package() {
   # The launcher crate keeps upstream's name; only the installed command is Ebb's.
   install -Dm755 src_rust/rust_launcher/target/release/hiresti "${pkgdir}/usr/bin/ebb-player"
 
-  # The theme icons go into hicolor, as hiresTI's packages install them; upstream's own app icon
-  # (hiresti.png/svg) does not.
-  install -d "${pkgdir}/usr/share/icons/hicolor"
-  cp -a icons/hicolor/. "${pkgdir}/usr/share/icons/hicolor/"
-  find "${pkgdir}/usr/share/icons/hicolor" -path '*/apps/hiresti.*' -delete
+  # Only the app icon goes into the system theme: the desktop entry and the shell look it up there.
+  # Every other icon is looked up inside the app, which puts /usr/share/ebb/icons first on its
+  # search path; installing them too put 84 generic names (go-next-symbolic, ...) into hicolor.
+  local icon
+  while IFS= read -r icon; do
+    install -Dm644 "${icon}" "${pkgdir}/usr/share/${icon}"
+  done < <(find icons/hicolor -path "*/apps/${_appid}.*")
 
   install -Dm644 "data/${_appid}.desktop" "${pkgdir}/usr/share/applications/${_appid}.desktop"
   install -Dm644 "data/${_appid}.metainfo.xml" "${pkgdir}/usr/share/metainfo/${_appid}.metainfo.xml"
