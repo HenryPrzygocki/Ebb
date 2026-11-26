@@ -6630,7 +6630,7 @@ def render_liked_songs_dashboard(app, tracks=None):
             continue
         lbl.set_xalign(0.0)
         lbl.set_halign(Gtk.Align.FILL)
-    append_header_action_spacers(tracks_head, ["fav", "add"])
+    append_header_action_spacers(tracks_head, ["fav", "add", "menu"], app=app)  # fork #27: Liked rows have ⋮
 
     table_box.append(tracks_head)
 
@@ -6882,9 +6882,12 @@ def render_liked_songs_dashboard(app, tracks=None):
             box.append(fav_btn)
 
             add_btn = Gtk.Button(icon_name="list-add-symbolic", css_classes=["flat", "circular", "history-scroll-btn"])
+            track_table.bind_row_tool(app, add_btn)  # fork #27: narrow windows keep ⋮, which offers it
             add_btn.set_tooltip_text("Add to Playlist")
             add_btn.connect("clicked", lambda _b, tr=t: app.on_add_single_track_to_playlist(tr))
             box.append(add_btn)
+            # Fork #27: the same ⋮ as every other track list; it was the only one without.
+            box.append(_build_track_row_overflow_menu(app, t))
             row.set_child(box)
             list_box.append(row)
         list_box.liked_built = max(start, upto)

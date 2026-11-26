@@ -167,7 +167,7 @@ class TrackColumns(GObject.Object):
     # Fork #27: below 520 px of content a row's fixed parts left its title ~22 px ("Ji…"): six
     # 16 px gaps, a 64 px cell for "4:59", and "+" (or a trash can) beside ⋮, whose menu has
     # both. The compact tier (ui.builders) narrows the first two and hides the third, in rows
-    # that have a ⋮ (search, album and TIDAL playlist pages, local playlists); Liked Songs,
+    # that have a ⋮ (search, album and TIDAL playlist pages, local playlists, Liked Songs);
     # Uploads and a playlist being edited have none, and keep theirs.
     row_gap = GObject.Property(type=int, default=LAYOUT["col_gap"])
     time_width = GObject.Property(type=int, default=LAYOUT["time_width"])

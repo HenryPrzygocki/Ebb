@@ -1378,9 +1378,11 @@ flowboxchild { background-color: transparent; padding: 0; margin: 0; }
 .heart-btn:hover { color: alpha(currentColor, 0.6); background-color: alpha(currentColor, 0.05); transform: scale(1.1); }
 .heart-btn.active { color: #e91e63; opacity: 1; }
 
+/* Fork #27: a scrim behind Now Playing. Transparent, the page showed at full strength in the
+   sheet's margins: a sliver of the sidebar's search field beside the cover. */
 .now-playing-shell {
     background: none;
-    background-color: transparent;
+    background-color: alpha(black, 0.45);
 }
 .now-playing-surface {
     border-radius: 24px 24px 0 0;
@@ -1872,6 +1874,9 @@ label.dim-label.track-link-hot { opacity: 1; }
 .settings-container .section-title { margin-left: 0; margin-right: 0; }  /* fork: on its group's edge */
 .settings-group { background-color: alpha(currentColor, 0.05); border-radius: 12px; padding: 6px; margin-bottom: 24px; }
 .settings-row { padding: 12px 16px; border-bottom: 1px solid alpha(currentColor, 0.05); }
+/* Fork #27: rows in a settings group are divided, as in a boxed list. Stacked two-line rows
+   (General) ran together with 16 px between them and nothing else. */
+.settings-group > box + box { border-top: 1px solid alpha(currentColor, 0.07); padding-top: 8px; }
 .settings-label { font-weight: 600; }
 .diag-chip {
     padding: 2px 8px;
