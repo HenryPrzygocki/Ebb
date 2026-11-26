@@ -43,6 +43,39 @@ _TNUM_ATTR_LIST = Pango.AttrList.from_string("font-features 'tnum=1'")
 _LYRICS_LOOKAHEAD_S = 0.3
 
 
+# Fork: Now Playing's volume popover opens above its button. In the narrow layout the button sits
+# about 250 px from the window's top, less than the popover's 277, so GTK flipped it down over the
+# progress bar and the transport controls. Its slider now gives up height to fit above instead.
+_NP_VOLUME_SCALE_MAX = 150  # the slider's height wherever it fits, as before
+_NP_VOLUME_SCALE_MIN = 90
+# Arrow, frame and shadow: the popover's surface (277 px) less its content's measure() (249).
+_NP_VOLUME_POPOVER_CHROME = 28
+_NP_VOLUME_ROOM_MARGIN = 8
+
+
+def _np_volume_scale_height(room_above, content_height, scale_height):
+    """Slider height that lets the popover fit in `room_above` px (window coordinates: the screen
+    gives at least that much). `content_height` is the content's natural height with the slider at
+    `scale_height`."""
+    fixed = content_height - scale_height
+    fit = int(room_above) - _NP_VOLUME_ROOM_MARGIN - _NP_VOLUME_POPOVER_CHROME - fixed
+    return max(_NP_VOLUME_SCALE_MIN, min(_NP_VOLUME_SCALE_MAX, fit))
+
+
+def _popup_now_playing_volume(app):
+    pop, btn = app.now_playing_vol_pop, app.now_playing_vol_btn
+    scale = getattr(app, "now_playing_vol_scale", None)
+    try:
+        ok, bounds = btn.compute_bounds(app.win)
+        if ok and scale is not None and scale.get_visible():
+            scale_height = scale.get_size_request()[1]
+            content_height = pop.get_child().measure(Gtk.Orientation.VERTICAL, -1)[1]
+            scale.set_size_request(-1, _np_volume_scale_height(bounds.get_y(), content_height, scale_height))
+    except Exception:
+        logger.debug("Now Playing volume: could not fit the popover", exc_info=True)
+    pop.popup()
+
+
 def _normalize_now_playing_cover_key(cover_ref):
     key = str(cover_ref or "").strip()
     if not key:
@@ -1750,7 +1783,7 @@ def _build_now_playing_left_panel(self, layout):
     self.now_playing_vol_btn.set_tooltip_text("Adjust Volume")
     self.now_playing_vol_pop = self._build_volume_popover(scale_attr="now_playing_vol_scale")
     self.now_playing_vol_pop.set_parent(self.now_playing_vol_btn)
-    self.now_playing_vol_btn.connect("clicked", lambda _b: self.now_playing_vol_pop.popup())
+    self.now_playing_vol_btn.connect("clicked", lambda _b: _popup_now_playing_volume(self))
     tool_row.append(self.now_playing_vol_btn)
 
     info_card.append(tool_row)
