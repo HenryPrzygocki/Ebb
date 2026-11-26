@@ -876,8 +876,14 @@ def _update_dsp_ui_state(self):
             resampler_status_text = "Resampler bypassed"
             resampler_state_text = "Bypassed"
         elif resampler_target_rate > 0:
-            resampler_status_text = f"Active: {_DSP_RESAMPLER_RATE_LABELS.get(resampler_target_rate, f'{resampler_target_rate} Hz')}"
-            resampler_state_text = "Active"
+            # Fork #11: the audio engine skips the resampler on every output (Rust logs "native-
+            # transport dsp unsupported skipped modules=resampler"); upstream showed it as Active.
+            rate_label = _DSP_RESAMPLER_RATE_LABELS.get(resampler_target_rate, f"{resampler_target_rate} Hz")
+            resampler_status_text = (
+                f"Not applied: the audio engine can't resample to {rate_label} yet. "
+                "PipeWire output resamples on its own."
+            )
+            resampler_state_text = "Not Applied"
         else:
             resampler_status_text = "Resampler enabled (passthrough)"
             resampler_state_text = "Passthrough"
@@ -945,7 +951,7 @@ def _update_dsp_ui_state(self):
         "tube": bool(dsp_enabled and tube_enabled and not bit_perfect_locked),
         "widener": bool(dsp_enabled and widener_enabled and not bit_perfect_locked),
         "limiter": bool(dsp_enabled and limiter_enabled and not bit_perfect_locked),
-        "resampler": bool(dsp_enabled and resampler_enabled and not bit_perfect_locked),
+        "resampler": False,  # fork #11: never applied by the engine, so never lit as active
         "output_driver": bool(driver_available and dsp_enabled and not bit_perfect_locked),
         "output": bool(output_available and dsp_enabled and not bit_perfect_locked),
     }

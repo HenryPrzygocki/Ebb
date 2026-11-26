@@ -30,6 +30,24 @@ _USB_FALLBACK_NAME_RE = re.compile(
 )
 
 
+_ALT_SETTING_RE = re.compile(r"no alt-setting for rate=(\d+)(?: bit_depth=(\d+))?", re.IGNORECASE)
+
+
+def _unsupported_rate_message(err_text):
+    """Fork #11: what the user reads when the DAC has no mode for the track's format."""
+    match = _ALT_SETTING_RE.search(str(err_text or ""))
+    if not match:
+        return "This device can't play this track's sample rate."
+    rate_khz = int(match.group(1)) / 1000.0
+    rate = f"{rate_khz:g} kHz"
+    if match.group(2):
+        rate = f"{rate} / {int(match.group(2))}-bit"
+    return (
+        f"This device can't play {rate}. Choose PipeWire as the output to have it resampled; "
+        "exclusive outputs send the track as it is."
+    )
+
+
 def _driver_key(driver_name):
     text = str(driver_name or "").strip().lower()
     text = text.replace("（", "(").replace("）", ")")
@@ -2386,6 +2404,10 @@ class RustAudioPlayerAdapter:
         # the missing udev rule.  Surfacing it lets the UI offer the fix flow.
         if any(k in t for k in self._ERR_USB_PERMISSION_KEYS):
             return "usb_permission"
+        # Fork #11: the DAC has no alt-setting for the track's rate/bit depth (a 44.1/48 kHz-only
+        # device and a 96 kHz track). Not a disconnect, and nothing to retry.
+        if "no alt-setting for rate" in t:
+            return "unsupported_rate"
         if any(k in t for k in self._ERR_DEVICE_KEYS):
             return "device"
         # "alsa" alone matches sink names like "rust-alsa-sink" and produces
@@ -2429,6 +2451,19 @@ class RustAudioPlayerAdapter:
                 return False
 
             GLib.idle_add(_retry_without_limiter)
+            return
+        if category == "unsupported_rate":
+            # Fork #11: stop on this track and say why. Upstream left the raw libusb text in the
+            # status and the player went on to the next track; the engine has no resampler on
+            # the Rawlink and ALSA paths, so retrying can't help.
+            self._cached_is_playing = False
+            try:
+                self._rust.stop()
+            except Exception:
+                pass
+            self._eos_blocked_uri = str(getattr(self, "_last_loaded_uri", "") or "")
+            self.output_state = "error"
+            self.output_error = _unsupported_rate_message(text)
             return
         if category == "usb_permission":
             # Raw USB (Rawlink) open was rejected for lack of device permission.
@@ -2925,7 +2960,11 @@ class RustAudioPlayerAdapter:
         if evt == _RustAudioCore.EVENT_EOS:
             self._cached_is_playing = False
             self._release_pipewire_clock_override(reason="eos")
-            if self._on_eos_callback is not None:
+            blocked = getattr(self, "_eos_blocked_uri", None)
+            if blocked is not None and blocked == str(getattr(self, "_last_loaded_uri", "") or ""):
+                # Fork #11: the track never played (the device can't take its rate); don't move on.
+                logger.info("EOS ignored: the output could not play this track's rate")
+            elif self._on_eos_callback is not None:
                 GLib.idle_add(self._on_eos_callback)
         elif evt == _RustAudioCore.EVENT_ERROR:
             err_text = str(msg or "rust-audio-error")
@@ -3600,6 +3639,7 @@ class RustAudioPlayerAdapter:
         self._pending_source_rate = int(sample_rate or 0)
 
     def load(self, uri):
+        self._eos_blocked_uri = None  # fork #11: a new load may play
         try:
             self._last_loaded_uri = str(uri or "")
         except Exception:
