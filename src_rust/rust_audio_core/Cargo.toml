@@ -25,7 +25,6 @@ debug-assertions = false
 overflow-checks = false
 
 [build-dependencies]
-pkg-config = "0.3"
 cc = "1"
 
 [dependencies]

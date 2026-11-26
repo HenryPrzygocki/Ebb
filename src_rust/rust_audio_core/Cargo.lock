@@ -633,7 +633,6 @@ dependencies = [
  "isahc",
  "libc",
  "libusb1-sys",
- "pkg-config",
  "quick-xml",
  "rusb",
  "rustfft",
