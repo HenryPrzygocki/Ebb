@@ -273,3 +273,74 @@ def test_a_dialog_from_the_mini_player_brings_the_full_window_back_first(toolkit
     toolkit.is_mini_mode = False
     dialogs.confirm(toolkit, "Delete?", "", "Delete", lambda: None, destructive=True)
     assert order == ["leave mini"]  # the full window is left alone
+
+
+def _preset_app(names, selected=0):
+    from gi.repository import Gtk
+
+    saved, deleted, refreshed = [], [], []
+    mgr = SimpleNamespace(
+        list_presets=lambda: list(names),
+        save_preset=lambda name, _settings: saved.append(name) or len(names) < 20,
+        delete_preset=deleted.append,
+    )
+    dd = SimpleNamespace(
+        get_selected_item=lambda: Gtk.StringObject.new(names[selected]) if names else None,
+        set_selected=lambda _i: None,
+    )
+    app = SimpleNamespace(win="the window", dsp_preset_mgr=mgr, dsp_preset_dd=dd, settings={})
+    return app, saved, deleted, refreshed
+
+
+def test_dsp_preset_dialogs_go_through_the_helpers(monkeypatch):
+    from actions import dsp_preset_actions
+
+    shown = {}
+    monkeypatch.setattr(dsp_preset_actions.dialogs, "confirm",
+                        lambda app, heading, body, label, on_confirm, **kw: shown.update(confirm=(heading, body, label, on_confirm, kw)))
+    monkeypatch.setattr(dsp_preset_actions.dialogs, "prompt_text",
+                        lambda app, heading, body, initial, on_submit, **kw: shown.update(prompt=(heading, initial, on_submit)))
+    monkeypatch.setattr(dsp_preset_actions.dialogs, "message", lambda app, heading, body: shown.update(message=(heading, body)))
+    refreshed = []
+    monkeypatch.setattr(dsp_preset_actions, "refresh_dsp_preset_list", lambda a: refreshed.append(a))
+
+    app, saved, deleted, _ = _preset_app(["Warm", "Late night"], selected=1)
+    dsp_preset_actions.on_dsp_preset_delete_clicked(app, None)
+    heading, body, label, on_confirm, kw = shown["confirm"]
+    assert heading == "Delete Preset?" and "“Late night”" in body and label == "Delete"
+    assert kw == {"destructive": True}  # styled as destructive, and Enter cancels
+    assert deleted == []
+    on_confirm()
+    assert deleted == ["Late night"] and refreshed == [app]
+
+    dsp_preset_actions.on_dsp_preset_save_clicked(app, None)
+    heading, initial, on_submit = shown["prompt"]
+    assert heading == "Save DSP Preset" and initial.startswith("My Preset")
+    on_submit("")  # a cleared entry keeps the suggested name
+    on_submit("Bright")
+    assert saved == [initial, "Bright"] and "message" not in shown
+
+    full, saved_full, _, _ = _preset_app([f"P{i}" for i in range(20)])
+    dsp_preset_actions.on_dsp_preset_save_clicked(full, None)
+    shown["prompt"][2]("One more")
+    assert shown["message"] == ("Cannot Save Preset", "Preset limit reached (max 20).")
+
+
+def test_the_usb_access_question_has_a_heading_and_each_answer_does_its_job(toolkit, monkeypatch):
+    from actions import audio_settings_actions as aud
+
+    appearance = SimpleNamespace(DESTRUCTIVE="destructive", SUGGESTED="suggested")
+    monkeypatch.setattr(aud, "Adw", SimpleNamespace(AlertDialog=_Alert, ResponseAppearance=appearance))
+    did = []
+    monkeypatch.setattr(aud, "on_usb_fix_permissions_clicked", lambda app, device_id=None: did.append(("grant", device_id)))
+    monkeypatch.setattr(aud, "_show_usb_manual_setup_dialog", lambda app, device_id, intro=None: did.append(("manual", device_id)))
+    dialog = aud._show_usb_permission_dialog(toolkit, "Test DAC", "1234:5678")
+    assert dialog.heading == "USB Access Required" and "Test DAC" in dialog.body
+    assert dialog.parent == "the window"  # in the window, not a title-bar-only toplevel
+    assert [r for r, _ in dialog.responses] == ["cancel", "manual", "confirm"]
+    assert dialog.default == "confirm" and dialog.close == "cancel"
+    dialog.respond("cancel")
+    assert did == []
+    dialog.respond("manual")
+    dialog.respond("confirm")
+    assert did == [("manual", "1234:5678"), ("grant", "1234:5678")]

@@ -7,6 +7,8 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, GLib, Gtk
 
+from ui import dialogs  # fork
+
 logger = logging.getLogger(__name__)
 
 
@@ -47,30 +49,11 @@ def on_dsp_preset_save_clicked(self, btn):
 
     default_name = _next_default_preset_name(mgr)
 
-    dialog = Adw.MessageDialog(
-        transient_for=getattr(self, "win", None),
-        heading="Save DSP Preset",
-        body="Enter a name for this preset:",
-    )
-    name_entry = Gtk.Entry(text=default_name, width_chars=28)
-    name_entry.set_margin_top(8)
-    name_entry.set_margin_bottom(4)
-    # Select all text so user can overwrite easily
-    name_entry.select_region(0, -1)
-    dialog.set_extra_child(name_entry)
-    dialog.add_response("cancel", "Cancel")
-    dialog.add_response("save", "Save")
-    dialog.set_response_appearance("save", Adw.ResponseAppearance.SUGGESTED)
-
-    def on_response(d, response):
-        if response != "save":
-            return
-        name = name_entry.get_text().strip()
-        # Fall back to default name if entry was cleared
-        if not name:
-            name = default_name
-        ok = mgr.save_preset(name, self.settings)
-        if ok:
+    # Fork: the shared name prompt (ui/dialogs.py), in the window. It was a deprecated
+    # Adw.MessageDialog in a window of its own.
+    def _save(name):
+        name = name or default_name  # a cleared entry keeps the suggested name
+        if mgr.save_preset(name, self.settings):
             refresh_dsp_preset_list(self)
             dd = getattr(self, "dsp_preset_dd", None)
             if dd is not None:
@@ -78,16 +61,9 @@ def on_dsp_preset_save_clicked(self, btn):
                 if name in names:
                     dd.set_selected(names.index(name))
         else:
-            err = Adw.MessageDialog(
-                transient_for=getattr(self, "win", None),
-                heading="Cannot Save Preset",
-                body=f"Preset limit reached (max 20).",
-            )
-            err.add_response("ok", "OK")
-            err.present()
+            dialogs.message(self, "Cannot Save Preset", "Preset limit reached (max 20).")
 
-    dialog.connect("response", on_response)
-    dialog.present()
+    dialogs.prompt_text(self, "Save DSP Preset", "Enter a name for this preset:", default_name, _save)
 
 
 def on_dsp_preset_load_clicked(self, btn):
@@ -132,22 +108,14 @@ def on_dsp_preset_delete_clicked(self, btn):
     if not name or name == "(no presets)":
         return
 
-    dialog = Adw.MessageDialog(
-        transient_for=getattr(self, "win", None),
-        heading="Delete Preset",
-        body=f'Delete preset "{name}"?',
-    )
-    dialog.add_response("cancel", "Cancel")
-    dialog.add_response("delete", "Delete")
-    dialog.set_response_appearance("delete", Adw.ResponseAppearance.DESTRUCTIVE)
+    # Fork: the shared confirm (ui/dialogs.py), in the window, where Enter cancels instead of
+    # deleting. It was a deprecated Adw.MessageDialog in a window of its own.
+    def _delete():
+        mgr.delete_preset(name)
+        refresh_dsp_preset_list(self)
 
-    def on_response(d, response):
-        if response == "delete":
-            mgr.delete_preset(name)
-            refresh_dsp_preset_list(self)
-
-    dialog.connect("response", on_response)
-    dialog.present()
+    dialogs.confirm(self, "Delete Preset?", f"\u201c{name}\u201d will be removed from your presets.", "Delete",
+                    _delete, destructive=True)
 
 
 def _apply_dsp_preset_to_player(self, preset: dict):

@@ -10,7 +10,7 @@ import time
 
 import gi
 gi.require_version('Gtk', '4.0')
-from gi.repository import Gtk, GLib, Gdk
+from gi.repository import Adw, Gtk, GLib, Gdk
 
 from core.executor import submit_daemon
 from ui import dialogs  # fork: the small dialogs, one look
@@ -974,20 +974,8 @@ def _show_usb_manual_setup_dialog(app, device_id=None, intro=None):
     Used when automatic install via pkexec is unavailable or fails (e.g. no
     polkit agent on wlroots compositors), so users can finish setup by hand.
     """
-    win = getattr(app, "win", None)
-    dialog = Gtk.Dialog(title="Manual USB Setup", transient_for=win, modal=True)
-    try:
-        dialog.set_default_size(620, -1)
-    except Exception:
-        pass
-    root = Gtk.Box(
-        orientation=Gtk.Orientation.VERTICAL,
-        spacing=12,
-        margin_top=16,
-        margin_bottom=16,
-        margin_start=20,
-        margin_end=20,
-    )
+    # Fork: an in-window AlertDialog with a heading. It was a Gtk.Dialog whose title lived in the
+    # window's title bar, which niri doesn't draw, so it opened as an untitled 620 px window.
     intro_text = intro or (
         "Automatic setup needs a polkit authentication agent, which isn't running.\n"
         "On Hyprland/Sway and other wlroots compositors no agent is started by "
@@ -995,8 +983,8 @@ def _show_usb_manual_setup_dialog(app, device_id=None, intro=None):
         "Run the commands below in a terminal to install the USB access rule "
         "manually, then replug the DAC (or re-select it) and start playback."
     )
-    msg = Gtk.Label(label=intro_text, wrap=True, xalign=0.0, max_width_chars=64)
-    root.append(msg)
+    dialog = Adw.AlertDialog(heading="Manual USB Setup", body=intro_text)
+    dialog.set_prefer_wide_layout(True)
 
     script = _build_manual_udev_setup_script(device_id)
     text_view = Gtk.TextView()
@@ -1008,19 +996,16 @@ def _show_usb_manual_setup_dialog(app, device_id=None, intro=None):
     scroller.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.NEVER)
     scroller.set_min_content_height(150)
     scroller.set_child(text_view)
-    try:
-        scroller.add_css_class("card")
-    except Exception:
-        pass
-    root.append(scroller)
-
-    action_row = Gtk.Box(spacing=8, halign=Gtk.Align.END)
-    copy_btn = Gtk.Button(label="Copy Commands")
-    close_btn = Gtk.Button(label="Close", css_classes=["suggested-action"])
-    action_row.append(copy_btn)
-    action_row.append(close_btn)
-    root.append(action_row)
-    dialog.set_child(root)
+    scroller.add_css_class("card")
+    # A response would close the dialog, so Copy sits under the commands it copies.
+    copy_btn = Gtk.Button(label="Copy Commands", halign=Gtk.Align.END)
+    extra = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+    extra.append(scroller)
+    extra.append(copy_btn)
+    dialog.set_extra_child(extra)
+    dialog.add_response(dialogs.CANCEL, "Close")
+    dialog.set_default_response(dialogs.CANCEL)
+    dialog.set_close_response(dialogs.CANCEL)
 
     def _on_copy(_b):
         if _copy_text_to_clipboard(app, script):
@@ -1029,9 +1014,8 @@ def _show_usb_manual_setup_dialog(app, device_id=None, intro=None):
                 app.show_output_notice("Manual USB setup commands copied to clipboard.", "ok", 2200)
 
     copy_btn.connect("clicked", _on_copy)
-    close_btn.connect("clicked", lambda _b: dialog.response(Gtk.ResponseType.CLOSE))
-    dialog.connect("response", lambda d, _r: d.destroy())
-    dialog.present()
+    dialogs.present(app, dialog)
+    return dialog
 
 
 _USB_FALLBACK_NAME_RE = re.compile(
@@ -1046,41 +1030,26 @@ def _usb_device_needs_permission(dev):
 
 def _show_usb_permission_dialog(app, dev_name, device_id):
     """Ask user whether to grant USB access; if yes, run pkexec install."""
-    dialog = Gtk.Dialog(title="USB Access Required", transient_for=app.win, modal=True)
-    root = Gtk.Box(
-        orientation=Gtk.Orientation.VERTICAL,
-        spacing=12,
-        margin_top=16,
-        margin_bottom=16,
-        margin_start=20,
-        margin_end=20,
-    )
-    msg = Gtk.Label(
-        label=(
-            f"USB audio device detected, but access permission is missing.\n\n"
-            f"Grant system-level USB access for \"{dev_name}\"?\n\n"
-            "This installs a udev rule and requires your password."
+    # Fork: an in-window AlertDialog with a heading; its title used to be only the window's title
+    # bar, so on niri it opened as bare text over three buttons.
+    dialog = Adw.AlertDialog(
+        heading="USB Access Required",
+        body=(
+            f"Ebb found \"{dev_name}\" but has no permission to open it directly.\n\n"
+            "Granting access installs a udev rule and asks for your password."
         ),
-        wrap=True,
-        xalign=0.0,
-        max_width_chars=52,
     )
-    root.append(msg)
-    action_row = Gtk.Box(spacing=8, halign=Gtk.Align.END)
-    no_btn = Gtk.Button(label="Not Now")
-    manual_btn = Gtk.Button(label="Manual Setup")
-    yes_btn = Gtk.Button(label="Grant Access", css_classes=["suggested-action"])
-    action_row.append(no_btn)
-    action_row.append(manual_btn)
-    action_row.append(yes_btn)
-    root.append(action_row)
-    dialog.set_child(root)
+    dialog.add_response(dialogs.CANCEL, "Not Now")
+    dialog.add_response("manual", "Manual Setup")
+    dialog.add_response(dialogs.CONFIRM, "Grant Access")
+    dialog.set_response_appearance(dialogs.CONFIRM, Adw.ResponseAppearance.SUGGESTED)
+    dialog.set_default_response(dialogs.CONFIRM)
+    dialog.set_close_response(dialogs.CANCEL)
 
-    def _on_response(d, resp):
-        d.destroy()
-        if resp == Gtk.ResponseType.YES:
+    def _on_response(_d, resp):
+        if resp == dialogs.CONFIRM:
             on_usb_fix_permissions_clicked(app, device_id=device_id)
-        elif resp == Gtk.ResponseType.APPLY:
+        elif resp == "manual":
             _show_usb_manual_setup_dialog(
                 app,
                 device_id,
@@ -1091,11 +1060,9 @@ def _show_usb_permission_dialog(app, dev_name, device_id):
                 ),
             )
 
-    no_btn.connect("clicked", lambda _b: dialog.response(Gtk.ResponseType.NO))
-    manual_btn.connect("clicked", lambda _b: dialog.response(Gtk.ResponseType.APPLY))
-    yes_btn.connect("clicked", lambda _b: dialog.response(Gtk.ResponseType.YES))
     dialog.connect("response", _on_response)
-    dialog.present()
+    dialogs.present(app, dialog)
+    return dialog
 
 
 def _usb_rule_covers_device(device_id):
