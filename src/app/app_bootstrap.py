@@ -111,6 +111,33 @@ def _configure_icon_theme(display):
     return icon_theme
 
 
+# Fork: quitting must end the process. With the headphones' output wedged, the audio engine's
+# teardown blocked for nearly two minutes after the window had closed. The process kept Ebb's
+# D-Bus name, so every launch meanwhile asked it for a window, got no answer and gave up after
+# 25 s ("Failed to register: Timeout was reached"). By the time the watchdog is armed the
+# settings are on disk; the kernel and D-Bus free the device and its reservation at exit.
+SHUTDOWN_GRACE_S = 6.0
+
+
+def _arm_exit_watchdog(grace_s=SHUTDOWN_GRACE_S, exit_fn=None):
+    """Force the process to exit if it is still alive `grace_s` seconds from now."""
+    import threading
+
+    def _expire():
+        time.sleep(grace_s)
+        logger.warning("Shutdown still blocked after %.0f s (audio output not answering); exiting now", grace_s)
+        for handler in logging.getLogger().handlers:
+            try:
+                handler.flush()
+            except Exception:
+                pass
+        (exit_fn or os._exit)(0)
+
+    thread = threading.Thread(target=_expire, name="ebb-exit-watchdog", daemon=True)
+    thread.start()
+    return thread
+
+
 def do_shutdown(self):
     logger.info("Shutting down application...")
     # Fork: send a playlist removal that is still inside its Undo window.
@@ -151,6 +178,7 @@ def do_shutdown(self):
         GLib.source_remove(update_check)
         self._update_check_source = 0
     self.save_settings()
+    _arm_exit_watchdog()  # fork: also covers the worker threads Python joins at exit
     if self.player is not None:
         self.player.cleanup()
     # Call explicit parent vfunc to avoid introspection edge-cases when
