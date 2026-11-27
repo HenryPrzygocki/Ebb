@@ -99,7 +99,12 @@ def setup_logging() -> None:
             encoding="utf-8",
         )
         file_handler.setLevel(level)
-        file_handler.setFormatter(formatter)
+        # Fork: the file keeps every session, so its lines carry the date. With the time alone,
+        # finding one incident among days of interleaved sessions was guesswork.
+        file_handler.setFormatter(logging.Formatter(
+            fmt="%(asctime)s | %(levelname)-7s | %(name)s | %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        ))
         root.addHandler(file_handler)
 
     _apply_module_levels(root, level)

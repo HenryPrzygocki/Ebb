@@ -140,7 +140,18 @@ class PipeWireSinkWatch:
         with self._lock:
             before, self._snapshot = self._snapshot, after
         name = self._preferred_sink()
-        if not sink_needs_rebind(name, before, after):
+        needs = sink_needs_rebind(name, before, after)
+        # Fork: a record of every change in the sink set, so a headset drop and what the watch
+        # made of it are in the log when the sound goes missing.
+        if after != before:
+            gone = sorted(set(before) - set(after))
+            came = sorted(f"{n}#{after[n]}" for n in after if before.get(n) != after[n])
+            logger.info(
+                "PipeWire sinks changed: removed=%s added/re-created=%s; watching %s; %s",
+                gone or "-", came or "-", name or "nothing",
+                "re-attaching" if needs else "no re-attach (watched sink not new)",
+            )
+        if not needs:
             return
         logger.info(
             "PipeWire sink %s appeared/re-created (index %s -> %s); re-attaching output",

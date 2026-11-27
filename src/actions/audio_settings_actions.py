@@ -1283,7 +1283,12 @@ def _reattach_pipewire_sink(app, node):
         or next((d.get("name") for d in devices if d.get("device_id") == target), None)
         or str(app.settings.get("device") or target)
     )
-    logger.info("PipeWire sink watch: re-attaching output to %s (%s, sink node %s)", name, target, node)
+    logger.info(
+        "PipeWire sink watch: re-attaching output to %s (%s, sink node %s); track %s at %.1f s",
+        name, target, node,
+        "playing" if getattr(player, "_cached_is_playing", False) else "paused/stopped",
+        float(getattr(player, "_cached_pos_s", 0.0) or 0.0),
+    )
     if not player.set_output("PipeWire", target):
         logger.warning("PipeWire sink watch: re-attach to %s failed", target)
         update_output_status_ui(app)

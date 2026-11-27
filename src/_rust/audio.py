@@ -3766,6 +3766,60 @@ class RustAudioPlayerAdapter:
             self._rust_last_play_ts = time.monotonic()
             self._refresh_rust_cache(force=True)
             self._retune_idle_timers()
+            self._start_play_progress_check()
+
+    # Fork: one log line per Play saying whether playback actually moved. A resume that the
+    # engine reports as Playing while the output is dead (a headset that reset while paused)
+    # left no trace in the log at all.
+    _PLAY_CHECK_SAMPLES = 4
+
+    def _start_play_progress_check(self):
+        old = getattr(self, "_play_check_source", 0)
+        if old:
+            GLib.source_remove(old)
+        self._play_check_source = 0
+        try:
+            self._refresh_rust_cache(force=True)
+            positions = [float(self._cached_pos_s or 0.0)]
+        except Exception:
+            return
+        uri = str(getattr(self, "_last_loaded_uri", "") or "")
+        driver, device = self._effective_output_selection()
+
+        def _tick():
+            if not self._cached_is_playing:
+                self._play_check_source = 0
+                err = getattr(self, "output_error", None)
+                if err or getattr(self, "output_state", None) in ("error", "fallback"):
+                    logger.warning(
+                        "Play check: playback halted by the output (%s s) driver=%s device=%s state=%s error=%s",
+                        " -> ".join(f"{x:.1f}" for x in positions), driver, device,
+                        getattr(self, "output_state", None), err,
+                    )
+                return False  # a pause by the user: nothing to judge
+            try:
+                self._refresh_rust_cache(force=True)
+                positions.append(float(self._cached_pos_s or 0.0))
+            except Exception:
+                self._play_check_source = 0
+                return False
+            if len(positions) <= self._PLAY_CHECK_SAMPLES:
+                return True
+            self._play_check_source = 0
+            trail = " -> ".join(f"{x:.1f}" for x in positions)
+            moved = positions[-1] - positions[0]
+            if moved >= 0.5 * self._PLAY_CHECK_SAMPLES:
+                logger.info("Play check: advancing (%s s) driver=%s device=%s", trail, driver, device)
+            else:
+                logger.warning(
+                    "Play check: NOT advancing (%s s) driver=%s device=%s state=%s error=%s uri=...%s",
+                    trail, driver, device, getattr(self, "output_state", None),
+                    getattr(self, "output_error", None), uri[-40:],
+                )
+            return False
+
+        self._play_check_source = GLib.timeout_add(1000, _tick)
+
     def pause(self):
         rc = self._rust.pause()
         logger.info("RustAdapter.pause: rust pause rc=%s", rc)
