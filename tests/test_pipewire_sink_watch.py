@@ -115,3 +115,48 @@ def test_hotplug_name_path_defers_to_sink_watch_only_when_it_runs():
     app._pw_sink_watch = object()
     assert owns(app, "PipeWire")
     assert not owns(app, "ALSA（mmap）")
+
+
+# Fork #5, 2026-11-27: on "Default PipeWire Sink" the watch did nothing. The Bose reset twice
+# while Ebb was paused; resuming played into the dead node, silently.
+
+def test_on_the_default_sink_the_watch_follows_whatever_node_is_default(monkeypatch):
+    monkeypatch.setattr(audio_settings_actions, "_pipewire_default_sink_name", lambda: BOSE)
+    watched = audio_settings_actions._pipewire_watched_sink
+    assert watched(SimpleNamespace(settings={"driver": "PipeWire", "device_id": "pipewire"})) == BOSE
+    assert watched(SimpleNamespace(settings={"driver": "PipeWire", "device_id": ""})) == BOSE
+    assert watched(SimpleNamespace(settings={"driver": "PipeWire", "device_id": SPEAKERS})) == SPEAKERS
+    assert watched(SimpleNamespace(settings={"driver": "ALSA（mmap）", "device_id": "hw:2,0"})) is None
+
+
+def test_a_default_sink_that_drops_and_returns_fires_the_re_attach(monkeypatch):
+    monkeypatch.setattr(psw, "GLib", SimpleNamespace(idle_add=lambda fn, *a: fn(*a)))
+    fired = []
+    default = {"now": SPEAKERS}  # during the drop WirePlumber falls back to the speakers
+    watch = psw.PipeWireSinkWatch(lambda: default["now"], fired.append)
+    watch._snapshot = {BOSE: 65, SPEAKERS: 40}
+    monkeypatch.setattr(psw, "list_sink_indices", lambda: {SPEAKERS: 40})
+    watch._check()
+    assert fired == []
+    default["now"] = BOSE
+    monkeypatch.setattr(psw, "list_sink_indices", lambda: {BOSE: 81, SPEAKERS: 40})
+    watch._check()
+    assert fired == [BOSE]
+
+
+def test_re_attach_on_the_default_sink_re_applies_default_and_names_the_device(monkeypatch):
+    calls = []
+    for fn in ("_refresh_devices_for_current_driver_ui_only", "update_output_status_ui", "_stop_output_hotplug_watch"):
+        monkeypatch.setattr(audio_settings_actions, fn, lambda *a, _fn=fn, **k: calls.append(_fn))
+    app = SimpleNamespace(
+        settings={"driver": "PipeWire", "device_id": "pipewire", "device": "Default PipeWire Sink"},
+        player=SimpleNamespace(output_state="active",
+                               set_output=lambda drv, dev: calls.append(("set_output", drv, dev)) or True),
+        driver_dd=_driver_dd("PipeWire"),
+        current_device_list=[{"name": "Default PipeWire Sink", "device_id": "pipewire"},
+                             {"name": "Bose QC Ultra 2 (USB)", "device_id": BOSE}],
+        show_output_notice=lambda *a: calls.append(("notice",) + a),
+    )
+    audio_settings_actions._reattach_pipewire_sink(app, BOSE)
+    assert ("set_output", "PipeWire", "pipewire") in calls
+    assert ("notice", "Output re-attached: Bose QC Ultra 2 (USB)", "ok", 2600) in calls

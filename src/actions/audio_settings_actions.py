@@ -1221,6 +1221,34 @@ def _pipewire_preferred_sink(app):
     return node
 
 
+def _pipewire_follows_default(app):
+    """True when the PipeWire output is "Default PipeWire Sink"."""
+    settings = getattr(app, "settings", None) or {}
+    if str(settings.get("driver") or "") != "PipeWire":
+        return False
+    node = str(settings.get("device_id") or "").strip()
+    return not node or node == "pipewire"
+
+
+def _pipewire_default_sink_name():
+    """Node name of PipeWire's current default sink, or None. Runs pactl: not on the GTK thread."""
+    try:
+        out = subprocess.run(["pactl", "get-default-sink"], capture_output=True, text=True, timeout=3, check=True).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return out.strip() or None
+
+
+def _pipewire_watched_sink(app):
+    """The sink node the watch keeps the output on: the saved one, or, on "Default PipeWire
+    Sink", whichever node is the default right now. Fork #5: the default case was left to
+    PipeWire, and a Bose reset while paused left the stream on the dead node: resuming played
+    silence. Called from the watch thread."""
+    if _pipewire_follows_default(app):
+        return _pipewire_default_sink_name()
+    return _pipewire_preferred_sink(app)
+
+
 def _pw_sink_watch_owns(app, driver_name):
     """True when the sink watch, not the name-based hotplug path, handles 'device came back'."""
     return (
@@ -1241,25 +1269,31 @@ def _reattach_pipewire_sink(app, node):
     drv_item = driver_dd.get_selected_item() if driver_dd is not None else None
     if player is None or drv_item is None or drv_item.get_string() != "PipeWire":
         return
-    if node != _pipewire_preferred_sink(app):
+    if _pipewire_follows_default(app):
+        target = "pipewire"  # fork #5: re-apply the default sink, as re-picking it by hand does
+    elif node == _pipewire_preferred_sink(app):
+        target = node
+    else:
         return  # the user picked something else while the event was in flight
     if str(getattr(player, "output_state", "") or "") == "switching":
         return
-    name = next(
-        (d.get("name") for d in (getattr(app, "current_device_list", None) or []) if d.get("device_id") == node),
-        None,
-    ) or str(app.settings.get("device") or node)
-    logger.info("PipeWire sink watch: re-attaching output to %s (%s)", name, node)
-    if not player.set_output("PipeWire", node):
-        logger.warning("PipeWire sink watch: re-attach to %s failed", node)
+    devices = getattr(app, "current_device_list", None) or []
+    name = (  # the device that came back (the Bose), not "Default PipeWire Sink"
+        next((d.get("name") for d in devices if d.get("device_id") == node), None)
+        or next((d.get("name") for d in devices if d.get("device_id") == target), None)
+        or str(app.settings.get("device") or target)
+    )
+    logger.info("PipeWire sink watch: re-attaching output to %s (%s, sink node %s)", name, target, node)
+    if not player.set_output("PipeWire", target):
+        logger.warning("PipeWire sink watch: re-attach to %s failed", target)
         update_output_status_ui(app)
         return
     app._last_disconnected_device_name = ""
     app._last_disconnected_driver = ""
     _stop_output_hotplug_watch(app)
-    _refresh_devices_for_current_driver_ui_only(app, reason="pipewire-sink-watch", prefer_device_id=node)
+    _refresh_devices_for_current_driver_ui_only(app, reason="pipewire-sink-watch", prefer_device_id=target)
     if hasattr(app, "_apply_viz_sync_offset_for_device"):
-        app._apply_viz_sync_offset_for_device("PipeWire", device_id=node, device_name=name)
+        app._apply_viz_sync_offset_for_device("PipeWire", device_id=target, device_name=name)
     update_output_status_ui(app)
     if hasattr(app, "show_output_notice"):
         app.show_output_notice(f"Output re-attached: {name}", "ok", 2600)
@@ -1271,7 +1305,7 @@ def ensure_pipewire_sink_watch(app):
         if getattr(app, "_pw_sink_watch", None) is not None:
             return
         watch = PipeWireSinkWatch(
-            preferred_sink=lambda: _pipewire_preferred_sink(app),
+            preferred_sink=lambda: _pipewire_watched_sink(app),  # fork #5: default sink too
             on_sink_returned=lambda node: _reattach_pipewire_sink(app, node),
         )
         app._pw_sink_watch = watch
